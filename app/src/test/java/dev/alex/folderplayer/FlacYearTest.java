@@ -16,8 +16,8 @@ public class FlacYearTest {
   ByteArrayOutputStream b=new ByteArrayOutputStream();b.write("fLaC".getBytes(StandardCharsets.US_ASCII));b.write(0x84);
   b.write(comments.length>>16);b.write(comments.length>>8);b.write(comments.length);b.write(comments);return b.toByteArray();
  }
- @Test public void suppliedCommentsRead1988AndStopBeforeAudio()throws Exception {
-  byte[] fixture;try(InputStream in=getClass().getResourceAsStream("/dyers-eve-comments.flac")){ assertNotNull(in);fixture=in.readAllBytes(); }
+ @Test public void syntheticCommentsRead1988AndStopBeforeAudio()throws Exception {
+  byte[] fixture;try(InputStream in=getClass().getResourceAsStream("/synthetic-year-comments.flac")){ assertNotNull(in);fixture=in.readAllBytes(); }
   InputStream guarded=new ByteArrayInputStream(fixture) {
    @Override public synchronized int read(){if(pos>=count)throw new AssertionError("Audio read attempted");return super.read();}
    @Override public synchronized int read(byte[] b,int o,int n){if(pos>=count)throw new AssertionError("Audio read attempted");return super.read(b,o,n);}
