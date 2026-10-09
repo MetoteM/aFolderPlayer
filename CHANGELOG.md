@@ -1,3 +1,9 @@
+## 0.6.0
+
+- Added explicit update checks in About using stable GitHub releases.
+- APK downloads verify size, SHA-256, package, signing identity and increasing version code before opening Android installation.
+- About now displays the installed version. No background checks.
+
 ## 0.5.2
 
 - Fixed empty icon hints.

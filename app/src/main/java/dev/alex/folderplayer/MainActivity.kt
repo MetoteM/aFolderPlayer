@@ -767,17 +767,18 @@ val labels=found.map { item ->
    (label.parent as? View)?.background=android.graphics.drawable.GradientDrawable().apply { setColor(if(current)Color.rgb(20,52,53) else PlayerScreens.bg);cornerRadius=dp(14).toFloat() }
   }
  }
- override fun onResume() { super.onResume();extensionManager.resume() }
+ override fun onResume() { super.onResume();extensionManager.resume();appUpdates.resume() }
  private val extensionManager by lazy { ExtensionManager(this,translationClient,{ if(alive)toast(it) },{ startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE),103) },{ if(alive && page=="translation")currentTrack()?.let { translate(it,true) } }) }
  private fun extensions() { extensionManager.show() }
+ private val appUpdates by lazy { AppUpdates(this) }
  private fun about() {
-  AlertDialog.Builder(this).setTitle("aFolderPlayer · 0.5.0").setMessage("Разработка при участии ChatGPT\n\nЛокальная музыка без рекламы и аналитики. Интернет используется по кнопке поиска текстов в LRCLIB и годов альбомов в MusicBrainz. Название и исполнитель отправляются выбранному сервису; аудиофайл не отправляется. Сохранённые тексты и годы доступны офлайн. Перевод необязателен: отдельный AFP Translate и выбранные языковые пакеты. Движок работает на телефоне без разрешения на интернет. Загрузки расширений — только по кнопке. MusicBrainz: https://musicbrainz.eu .\n\nMedia3 / AndroidX и OPUS-MT: Apache License 2.0. ONNX Runtime: MIT License.")
-   .setPositiveButton("Закрыть",null).show()
+  AlertDialog.Builder(this).setTitle("aFolderPlayer · ${appUpdates.installedVersion()}").setMessage("Разработка при участии ChatGPT\n\nЛокальная музыка без рекламы и аналитики. Интернет используется по кнопке поиска текстов в LRCLIB и годов альбомов в MusicBrainz. Название и исполнитель отправляются выбранному сервису; аудиофайл не отправляется. Сохранённые тексты и годы доступны офлайн. Перевод необязателен: отдельный AFP Translate и выбранные языковые пакеты. Движок работает на телефоне без разрешения на интернет. Загрузки расширений и проверка обновлений в GitHub — только по кнопке. MusicBrainz: https://musicbrainz.eu .\n\nMedia3 / AndroidX и OPUS-MT: Apache License 2.0. ONNX Runtime: MIT License.")
+   .setPositiveButton("Закрыть",null).setNeutralButton("Проверить обновления") { _,_ -> appUpdates.check() }.show()
  }
  override fun onStart() { super.onStart(); restorePlayingSource(); handler.removeCallbacks(ticker); handler.post(ticker) }
  override fun onStop() { handler.removeCallbacks(ticker); super.onStop() }
  override fun onDestroy() {
-  pageMotion.cancel();cancelTranslation();translationExecutor.shutdownNow();extensionManager.close()
+  pageMotion.cancel();cancelTranslation();translationExecutor.shutdownNow();extensionManager.close();appUpdates.close()
   directCancel?.cancel();directTask?.cancel(true)
   albumYears.close();alive=false;networkCancel?.cancel();networkTask?.cancel(true);networkExecutor.shutdownNow(); handler.removeCallbacksAndMessages(null); executor.shutdown()
   future?.let { MediaController.releaseFuture(it) }; super.onDestroy()
