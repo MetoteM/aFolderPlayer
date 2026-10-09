@@ -9,13 +9,13 @@ import kotlin.math.roundToInt
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal class SoftwareEqProcessor : BaseAudioProcessor() {
- @Volatile private var desired=DspEqualizer.Settings(false,0.0,DoubleArray(5))
+ @Volatile private var desired=DspEqualizer.Settings(false,0.0,DoubleArray(10))
  private var applied: DspEqualizer.Settings?=null
  private var current=DspEqualizer()
  private var previous: DspEqualizer?=null
  private var fadeFrame=0
  private var fadeLength=1
- fun setSettings(settings: DspEqualizer.Settings) { desired=settings }
+ fun setSettings(settings: DspEqualizer.Settings) { if(!desired.sameAs(settings)) desired=settings }
  override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
   if(inputAudioFormat.encoding!=C.ENCODING_PCM_16BIT) throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
   return inputAudioFormat
@@ -31,7 +31,7 @@ internal class SoftwareEqProcessor : BaseAudioProcessor() {
   // Do not allocate/copy an empty output: it may be the very same buffer.
   if(!inputBuffer.hasRemaining()) return
   val settings=desired
-  if(settings!==applied) {
+  if(!settings.sameAs(applied)) {
    previous=current
    current=DspEqualizer().apply { configure(inputAudioFormat.sampleRate,inputAudioFormat.channelCount,settings) }
    applied=settings; fadeFrame=0

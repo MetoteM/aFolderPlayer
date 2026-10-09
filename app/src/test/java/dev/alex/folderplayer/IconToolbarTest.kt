@@ -29,6 +29,8 @@ class IconToolbarTest {
  @Test fun normalTapWorksAndLongHoldOnlyShowsHintUntilRelease() {
   var calls=0;val b=button { calls++ };press(b,MotionEvent.ACTION_DOWN);press(b,MotionEvent.ACTION_UP);assertEquals(1,calls)
   press(b,MotionEvent.ACTION_DOWN);shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(600));assertTrue(b.hintVisible)
+  val popup=IconButton::class.java.getDeclaredField("hint").apply { isAccessible=true }.get(b) as PopupWindow
+  assertEquals("Библиотека",(popup.contentView as TextView).text.toString())
   press(b,MotionEvent.ACTION_UP);assertFalse(b.hintVisible);assertEquals(1,calls)
  }
  @Test fun LeavingButtonClearsHintAndNeverClicksEvenAfterReentry() {

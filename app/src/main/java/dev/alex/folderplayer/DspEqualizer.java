@@ -17,6 +17,10 @@ public final class DspEqualizer {
         private static double finiteClamp(double x, double min, double max) {
             return Double.isFinite(x) ? Math.max(min, Math.min(max, x)) : 0;
         }
+        public boolean sameAs(Settings other) {
+            return other != null && enabled == other.enabled
+                && preampDb == other.preampDb && java.util.Arrays.equals(gains, other.gains);
+        }
         public double gain(int i) { return gains[i]; }
         public boolean isBypass() {
             if (!enabled) return true;

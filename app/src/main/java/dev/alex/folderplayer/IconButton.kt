@@ -27,7 +27,7 @@ internal class IconButton(context:Context,kind:Kind,label:String,action:()->Unit
  }
  private fun showHint() {
   dismissHint()
-  val label=TextView(context).apply { text=contentDescription;textSize=14f;setTextColor(Color.WHITE);setPadding(dp(12),dp(8),dp(12),dp(8));background=GradientDrawable().apply { setColor(Color.rgb(45,61,68));cornerRadius=dp(8).toFloat() } }
+  val label=TextView(context).apply { text=this@IconButton.contentDescription;textSize=14f;setTextColor(Color.WHITE);setPadding(dp(12),dp(8),dp(12),dp(8));background=GradientDrawable().apply { setColor(Color.rgb(45,61,68));cornerRadius=dp(8).toFloat() } }
   hint=PopupWindow(label,-2,-2,false).apply { isTouchable=false;isOutsideTouchable=false;isClippingEnabled=true;showAsDropDown(this@IconButton,0,dp(4)) }
  }
  private fun dismissHint() { hint?.dismiss();hint=null }

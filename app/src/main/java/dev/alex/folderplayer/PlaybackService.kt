@@ -29,8 +29,9 @@ class PlaybackService : MediaSessionService() {
  private val handler=Handler(Looper.getMainLooper())
  private val equalizer=SoftwareEqProcessor()
  private val prefs by lazy { getSharedPreferences("playback",MODE_PRIVATE) }
+ private val applyEq=Runnable { updateEq() }
  private val changeListener=android.content.SharedPreferences.OnSharedPreferenceChangeListener { _,key ->
-  if(key=="eqEnabled" || key=="eqPreamp" || key?.startsWith("eqBand")==true) updateEq()
+  if(key=="eqEnabled" || key=="eqPreamp" || key?.startsWith("eqBand")==true) { handler.removeCallbacks(applyEq);handler.post(applyEq) }
  }
  private val checkpoint=object: Runnable {
   override fun run() {

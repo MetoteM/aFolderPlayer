@@ -1,3 +1,9 @@
+## 0.5.2
+
+- Fixed empty icon hints.
+- Coalesced equalizer preference updates and preserved filter state when settings are unchanged.
+- Added PCM regression checks for neutral output, reset and repeated settings.
+
 # Изменения
 
 ## 0.5.1 — в разработке
