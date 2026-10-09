@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ <permission android:name="dev.alex.afptranslate.USE_TRANSLATOR" android:protectionLevel="signature" />
+ <application android:label="AFP Translate" android:allowBackup="false" android:supportsRtl="true">
+  <service android:name="dev.alex.folderplayer.TranslationService" android:exported="true" android:permission="dev.alex.afptranslate.USE_TRANSLATOR" />
+ </application>
+</manifest>

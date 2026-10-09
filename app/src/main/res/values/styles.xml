@@ -1,0 +1,15 @@
+<resources>
+ <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
+  <item name="android:windowBackground">#10191E</item><item name="android:colorBackground">#10191E</item><item name="android:colorAccent">#69DFC2</item>
+  <item name="android:statusBarColor">#10191E</item><item name="android:navigationBarColor">#10191E</item>
+  <item name="android:textColorPrimary">#FFFFFF</item><item name="android:textColorSecondary">#A5B1B9</item>
+  <item name="android:alertDialogTheme">@style/AppDialogTheme</item><item name="android:buttonStyle">@style/AppButton</item>
+ </style>
+ <style name="AppDialogTheme" parent="android:style/Theme.Material.Dialog.Alert">
+  <item name="android:windowBackground">@drawable/dialog_background</item><item name="android:colorBackground">#1B272D</item><item name="android:colorAccent">#69DFC2</item>
+  <item name="android:textColorPrimary">#FFFFFF</item><item name="android:textColorSecondary">#A5B1B9</item><item name="android:buttonStyle">@style/AppButton</item>
+ </style>
+ <style name="AppButton" parent="android:style/Widget.Material.Button">
+  <item name="android:textAllCaps">false</item><item name="android:textColor">#FFFFFF</item><item name="android:backgroundTint">#1B272D</item><item name="android:minHeight">48dp</item>
+ </style>
+</resources>
