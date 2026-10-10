@@ -16,8 +16,8 @@ class TranslationService:Service() {
  private val store by lazy { TranslationStore(this) }
  private val binder=object:ITranslationService.Stub() {
   override fun apiVersion()=1
-  override fun modelReady(id:String)=id==OfflineTranslator.MODEL_ID && store.ready()
-  override fun modelBytes(id:String)=if(id==OfflineTranslator.MODEL_ID)store.bytes() else 0
+  override fun modelReady(id:String)=TranslationStore.supported(id) && store.ready(id)
+  override fun modelBytes(id:String)=if(TranslationStore.supported(id))store.bytes(id) else 0
   override fun installModel(id:String,file:ParcelFileDescriptor,callback:ITranslationCallback) {
    require(id.length<=128)
    val owned=ParcelFileDescriptor.dup(file.fileDescriptor);file.close()
@@ -27,19 +27,19 @@ class TranslationService:Service() {
    }
   }
   override fun translate(id:String,model:String,text:String,callback:ITranslationCallback) {
-   require(id.length<=128 && model==OfflineTranslator.MODEL_ID && text.length<=20000)
+   require(id.length<=128 && TranslationStore.supported(model) && text.length<=20000)
    val cancel=AtomicBoolean(false);jobs.put(id,cancel)?.set(true)
    worker.execute {
     try {
-     check(store.ready()) { "Языковой пакет не установлен" }
-     val result=OfflineTranslator(store.model).use { engine -> engine.translate(text,{ cancel.get() }) { done,total -> if(!cancel.get())runCatching { callback.progress(id,done,total) } } }
+     check(store.ready(model)) { "Языковой пакет не установлен" }
+     val result=OfflineTranslator(store.model(model)).use { engine -> engine.translate(text,{ cancel.get() }) { done,total -> if(!cancel.get())runCatching { callback.progress(id,done,total) } } }
      check(result.length<=200000) { "Перевод слишком большой" };if(!cancel.get())callback.complete(id,result)
     } catch(e:Throwable) { if(!cancel.get())runCatching { callback.failed(id,if(e is OutOfMemoryError)"Недостаточно памяти для перевода" else e.message ?: "Не удалось перевести") } }
     finally { jobs.remove(id,cancel) }
    }
   }
   override fun cancel(id:String) { jobs[id]?.set(true) }
-  override fun removeModel(id:String) { require(id==OfflineTranslator.MODEL_ID);jobs.values.forEach { it.set(true) };worker.submit { store.removeModel() }.get(30,java.util.concurrent.TimeUnit.SECONDS) }
+  override fun removeModel(id:String) { require(TranslationStore.supported(id));jobs.values.forEach { it.set(true) };worker.submit { store.removeModel(id) }.get(30,java.util.concurrent.TimeUnit.SECONDS) }
  }
  override fun onBind(intent:Intent)=binder
  override fun onDestroy() { jobs.values.forEach { it.set(true) };worker.shutdownNow();super.onDestroy() }

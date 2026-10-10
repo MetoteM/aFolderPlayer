@@ -26,4 +26,12 @@ class TranslationClientTest {
   val result=method.invoke(client,fake,AtomicBoolean(false),{done:Int,_:Int -> progress=done},start)
   assertEquals("Привет",result);assertEquals(1,progress);assertFalse(fake.cancelled)
  }
+ @Test fun cancelledCompletedCallbackCannotReturnSuccess() {
+  val client=TranslationClient(RuntimeEnvironment.getApplication());val fake=Fake();val cancel=AtomicBoolean(false)
+  val method=TranslationClient::class.java.declaredMethods.single { it.name=="awaitResult" }.apply { isAccessible=true }
+  val start:(String,ITranslationCallback)->Unit={id,cb -> cancel.set(true);cb.complete(id,"Не сохранять") }
+  try { method.invoke(client,fake,cancel,{_:Int,_:Int -> },start);fail("cancelled callback must fail") }
+  catch(e:java.lang.reflect.InvocationTargetException) { assertTrue(e.cause is InterruptedException) }
+  assertTrue(fake.cancelled)
+ }
 }

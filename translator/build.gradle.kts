@@ -5,7 +5,7 @@ android {
  namespace = "dev.alex.afptranslate"
  compileSdk = 36
  buildToolsVersion = "36.0.0"
- defaultConfig { applicationId = "dev.alex.afptranslate"; minSdk = 26; targetSdk = 36; versionCode = 1; versionName = "0.1.0"; ndk { abiFilters += "arm64-v8a" } }
+ defaultConfig { applicationId = "dev.alex.afptranslate"; minSdk = 26; targetSdk = 36; versionCode = 2; versionName = "0.2.0"; ndk { abiFilters += "arm64-v8a" } }
  signingConfigs { create("personalRelease") {
   storeFile = rootProject.file("signing/folder-player.p12")
   storePassword = signingProps.getProperty("storePassword")
@@ -23,4 +23,11 @@ dependencies {
  implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
  testImplementation("junit:junit:4.13.2")
  testImplementation("org.robolectric:robolectric:4.14.1")
+}
+
+// Package integration tests must rerun when a supplied archive changes.
+tasks.withType<Test>().configureEach {
+ for (name in listOf("AFP_MODEL_PACKAGE", "AFP_MODEL_V2_PACKAGE")) {
+  System.getenv(name)?.takeIf { it.isNotBlank() }?.let { inputs.file(it).withPropertyName(name) }
+ }
 }

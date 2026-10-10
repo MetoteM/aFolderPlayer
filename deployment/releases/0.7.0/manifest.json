@@ -1,0 +1,43 @@
+{
+  "version": "0.7.0",
+  "certificate_sha256": "36efde603967282debd976200c92acf46b68144b2704d61930ebdd9c171302cd",
+  "apks": [
+    {
+      "name": "aFolderPlayer_0.7.0.apk",
+      "size": 3796815,
+      "sha256": "492d269ae24d5f59e6dc59ab61688b82b529cb34d2f0ca97a68eb9c8399e4af4",
+      "parts": [
+        "deployment/releases/0.7.0/player.apk.part000",
+        "deployment/releases/0.7.0/player.apk.part001"
+      ],
+      "version": "0.7.0",
+      "versionCode": 26,
+      "package": "dev.alex.folderplayer"
+    },
+    {
+      "name": "AFP_Translate_0.2.0.apk",
+      "size": 19190905,
+      "sha256": "658090c7488bcf49a2f9ea438ba15f8d2bd2390c6dd21c7934a53efe2f81cf0d",
+      "parts": [
+        "deployment/releases/0.7.0/engine.apk.part000",
+        "deployment/releases/0.7.0/engine.apk.part001",
+        "deployment/releases/0.7.0/engine.apk.part002",
+        "deployment/releases/0.7.0/engine.apk.part003",
+        "deployment/releases/0.7.0/engine.apk.part004",
+        "deployment/releases/0.7.0/engine.apk.part005",
+        "deployment/releases/0.7.0/engine.apk.part006",
+        "deployment/releases/0.7.0/engine.apk.part007",
+        "deployment/releases/0.7.0/engine.apk.part008",
+        "deployment/releases/0.7.0/engine.apk.part009"
+      ],
+      "version": "0.2.0",
+      "versionCode": 2,
+      "package": "dev.alex.afptranslate"
+    }
+  ],
+  "model": {
+    "name": "AFP_English_Russian_v2.zip",
+    "size": 112527869,
+    "sha256": "ddb334359395e3b52f56aa8a496927d7e3ab5dfa9d41d7b6c5e1747779c39a84"
+  }
+}

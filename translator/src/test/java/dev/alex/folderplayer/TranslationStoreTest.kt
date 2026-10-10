@@ -40,4 +40,14 @@ class TranslationStoreTest {
   assertTrue(store.ready());assertEquals(51_628_446L,File(store.model,"encoder.onnx").length());assertEquals(58_560_874L,File(store.model,"decoder.onnx").length())
  }
 
+ @Test fun v2PackageKeepsLegacyModelAndUsesSeparateIdentity() {
+  val path=System.getenv("AFP_MODEL_V2_PACKAGE")
+  org.junit.Assume.assumeTrue("Set AFP_MODEL_V2_PACKAGE for package integration",!path.isNullOrBlank())
+  val store=setup();store.model.mkdirs();for(name in listOf("encoder.onnx","decoder.onnx","tokenizer.json","verified"))File(store.model,name).writeText("previous")
+  File(path!!).inputStream().use { store.install(it) }
+  assertTrue(store.ready());assertTrue(store.ready(TranslationStore.MODEL_V2))
+  assertEquals("previous",File(store.model,"tokenizer.json").readText())
+  assertEquals(2_325_321L,File(store.model(TranslationStore.MODEL_V2),"tokenizer.json").length())
+  store.removeModel(TranslationStore.MODEL_V2);assertTrue(store.ready());assertFalse(store.ready(TranslationStore.MODEL_V2))
+ }
 }

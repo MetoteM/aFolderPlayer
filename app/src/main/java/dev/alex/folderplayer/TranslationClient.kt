@@ -58,6 +58,7 @@ internal class TranslationClient(private val context:Context) {
     check(service.asBinder().isBinderAlive) { "Движок перевода отключился" }
     check(SystemClock.elapsedRealtime()<deadline) { "Перевод не завершился вовремя" }
    }
+   if(cancel.get() || Thread.currentThread().isInterrupted)throw InterruptedException()
    failure.get()?.let { error(it) };return value.get() ?: error("Нет результата перевода")
   } catch(e:Throwable) { runCatching { service.cancel(id) };throw e }
  }

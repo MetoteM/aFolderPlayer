@@ -8,6 +8,7 @@
  <queries><package android:name="dev.alex.afptranslate" /></queries>
  <application android:label="aFolderPlayer" android:icon="@drawable/ic_player" android:theme="@style/AppTheme" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true">
   <provider android:name=".ExtensionFileProvider" android:authorities="dev.alex.folderplayer.extensions" android:exported="false" android:grantUriPermissions="true" />
+  <activity android:name=".DocumentActivity" android:exported="false" />
   <activity android:name=".MainActivity" android:exported="true">
    <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
   </activity>

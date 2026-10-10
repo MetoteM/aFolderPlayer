@@ -15,7 +15,7 @@ import java.security.MessageDigest
 import java.util.concurrent.Executors
 
 internal class ExtensionManager(private val host:Activity,private val engine:TranslationClient,private val message:(String)->Unit,private val importModel:()->Unit,private val changed:()->Unit={}) {
- companion object { const val DEFAULT_CATALOG="https://github.com/MetoteM/aFolderPlayer/releases/download/extensions-v1/" }
+ companion object { const val DEFAULT_CATALOG="https://github.com/MetoteM/aFolderPlayer/releases/download/v0.7.0/" }
  private val worker=Executors.newSingleThreadExecutor()
  private val main=Handler(Looper.getMainLooper())
  private val prefs=host.getSharedPreferences("extensions",0)

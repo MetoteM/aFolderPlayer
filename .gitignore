@@ -4,3 +4,6 @@
 /**/build/
 /signing/
 /.idea/
+/.kotlin/
+/release-assets/
+/qa/ui-*/

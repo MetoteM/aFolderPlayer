@@ -16,7 +16,7 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
   fun back(); fun open(page:String); fun toggle(); fun previous(); fun next(); fun skip(direction:Int)
   fun seek(progress:Int); fun favorite(); fun playlists(); fun repeat(); fun sound()
   fun lyricsMenu(); fun select(index:Int); fun move(from:Int,to:Int)
-  fun installTranslationModel() {};fun retryTranslation() {};
+  fun installTranslationModel() {};fun retryTranslation() {};fun documentTranslation() {};
   fun retryLyrics() {};fun chooseLyrics(index:Int) {}
  }
  data class State(val id:String?,val title:String,val artist:String,val album:String,val source:String,
@@ -63,6 +63,7 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
   when(page) {
    "translation" -> {
     title=text("",18f);content!!.addView(title)
+    content!!.addView(button("Полный текст · сравнение и история","Проверить и сохранить полный перевод") { actions.documentTranslation() })
     translationStatus=text("Готовим перевод…",13f).apply { setTextColor(muted) };content!!.addView(translationStatus)
     translationText=text("",22f).apply { setLineSpacing(dp(12).toFloat(),1f);setTextIsSelectable(true) };content!!.addView(translationText)
     translationButton=button("Расширения перевода","Установить офлайн-пакет английский → русский") { if(translatedAction==1)actions.installTranslationModel() else actions.retryTranslation() };content!!.addView(translationButton)

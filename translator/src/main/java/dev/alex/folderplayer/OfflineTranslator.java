@@ -22,7 +22,7 @@ public final class OfflineTranslator implements AutoCloseable {
   JSONArray words=new JSONObject(read(new File(directory,"tokenizer.json"))).getJSONObject("model").getJSONArray("vocab");
   vocabulary=new String[words.length()];double minimum=0;
   for(int i=0;i<words.length();i++) {
-   JSONArray item=words.getJSONArray(i);String token=item.getString(0);double score=item.getDouble(1);vocabulary[i]=token;minimum=Math.min(minimum,score);
+   JSONArray item=words.getJSONArray(i);String token=item.getString(0);double score=item.getDouble(1);vocabulary[i]=token;if(score<=-1e8)continue;minimum=Math.min(minimum,score);
    if(i==0 || i==1 || i==62517)continue;
    Node node=trie;for(int j=0;j<token.length();j++)node=node.children.computeIfAbsent(token.charAt(j),k->new Node());node.id=i;node.score=score;
   }

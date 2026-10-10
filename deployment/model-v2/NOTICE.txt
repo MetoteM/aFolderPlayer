@@ -1,0 +1,13 @@
+AFP offline translation package v2 — English to Russian
+Model: Helsinki-NLP/opus-mt-en-ru (OPUS-MT), Apache License 2.0
+https://huggingface.co/Helsinki-NLP/opus-mt-en-ru
+Quantized ONNX conversion: Xenova/opus-mt-en-ru
+https://huggingface.co/Xenova/opus-mt-en-ru
+Model creator: Helsinki-NLP / OPUS-MT contributors.
+These files contain model weights and vocabulary, not executable application code.
+Install through Extensions in aFolderPlayer 0.7.0 using AFP Translate 0.2.0.
+Text is processed locally; no translation network requests or telemetry are implemented.
+Machine translation is approximate and is not a literary/rhyming adaptation.
+The application normalizes source text with NFKC and decodes greedily, line by line.
+
+Tokenizer v2 restores source SentencePiece scores and excludes vocabulary entries unavailable to the English source tokenizer. Model weights are unchanged.

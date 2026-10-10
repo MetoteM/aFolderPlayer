@@ -107,6 +107,14 @@ class MainActivity : Activity() {
    override fun repeat() { repeatDialog() }
    override fun sound() { equalizer() }
    override fun installTranslationModel() { extensions() }
+   override fun documentTranslation() {
+    val track=currentTrack()
+    cancelTranslation();translationId=track?.uri
+    executor.execute {
+     val result=runCatching { track?.let { loadLyrics(it) }?.let { LyricsDocument(it).plain } ?: "" }
+     handler.post { if(alive)result.onSuccess { startActivityForResult(Intent(this@MainActivity,DocumentActivity::class.java).putExtra("source",it).putExtra("track",track?.uri),107) }.onFailure { toast(it.message ?: "Не удалось прочитать текст") } }
+    }
+   }
    override fun retryTranslation() { currentTrack()?.let { translate(it,true) } }
    override fun retryLyrics() { currentTrack()?.let { directLyrics(it) } }
    override fun chooseLyrics(index:Int) { val track=currentTrack();val result=directResults.getOrNull(index);if(track!=null && track.uri==directId && result!=null)saveDirectLyrics(track,result) }
@@ -419,6 +427,7 @@ class MainActivity : Activity() {
  }
  override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
   super.onActivityResult(requestCode,resultCode,data)
+  if(requestCode==107) { if(page=="translation")currentTrack()?.let { translate(it,true) };return }
   if(requestCode==104 && resultCode==RESULT_OK) data?.data?.let { extensionManager.importEngine(it) }
   if(requestCode==103 && resultCode==RESULT_OK) data?.data?.let { uri ->
    cancelTranslation();val track=currentTrack();screens.setTranslation(track?.uri,"","Устанавливаем и проверяем языковой пакет…")
@@ -523,7 +532,7 @@ class MainActivity : Activity() {
     val raw=loadLyrics(track) ?: error("Сначала найди или добавь оригинальный текст на соседнем экране")
     val source=LyricsDocument(raw).plain
     require(source.any { it.isLetter() }) { "В оригинале нет слов для перевода" }
-    require(model!="opus-en-ru-v1" || source.count { it in 'А'..'я' || it=='ё' || it=='Ё' }<=source.count { it in 'A'..'Z' || it in 'a'..'z' }) { "Этот текст уже на русском. В первой версии переводим с английского на русский" }
+    require(!model.startsWith("opus-en-ru-") || source.count { it in 'А'..'я' || it=='ё' || it=='Ё' }<=source.count { it in 'A'..'Z' || it in 'a'..'z' }) { "Этот текст уже на русском. В первой версии переводим с английского на русский" }
     translationStore.read(track.uri,source,model)?.let { return@runCatching it }
     handler.post { if(alive && translationCancel===cancel && page=="translation")screens.setTranslation(track.uri,"","${modelTitle} · переводим на устройстве…") }
     translationClient.translate(source,cancel,model) { done,total -> handler.post { if(alive && translationCancel===cancel && page=="translation")screens.setTranslation(track.uri,"","${modelTitle} · $done / $total строк · на устройстве") } }
