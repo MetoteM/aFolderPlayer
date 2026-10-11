@@ -1,6 +1,13 @@
 name: Android checks
 on:
   push:
+    branches: [main]
+    paths-ignore:
+      - 'deployment/releases/**'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/android.yml'
+      - 'tools/publish-release.py'
+      - 'docs/GITHUB_RELEASES.md'
   pull_request:
   workflow_dispatch:
 permissions:

@@ -1,0 +1,59 @@
+{
+  "source_commit": "f2824ce7b0b9666c0cdf7b997025378303c68e1c",
+  "certificate_sha256": "36efde603967282debd976200c92acf46b68144b2704d61930ebdd9c171302cd",
+  "apks": [
+    {
+      "name": "aFolderPlayer_0.7.1.apk",
+      "size": 3805915,
+      "sha256": "511f4aeeca490c5c128931c6343cbb6d72575f7dc5ead983e96836aa832e9567",
+      "compression": "gzip",
+      "compressed_sha256": "596b00cbcc822b8bc8158ca9c64b7da2539caeaa781419d126323db82c80042a",
+      "parts": [
+        "deployment/releases/0.7.1/aFolderPlayer_0.7.1.apk.gz.part00",
+        "deployment/releases/0.7.1/aFolderPlayer_0.7.1.apk.gz.part01",
+        "deployment/releases/0.7.1/aFolderPlayer_0.7.1.apk.gz.part02",
+        "deployment/releases/0.7.1/aFolderPlayer_0.7.1.apk.gz.part03",
+        "deployment/releases/0.7.1/aFolderPlayer_0.7.1.apk.gz.part04",
+        "deployment/releases/0.7.1/aFolderPlayer_0.7.1.apk.gz.part05",
+        "deployment/releases/0.7.1/aFolderPlayer_0.7.1.apk.gz.part06",
+        "deployment/releases/0.7.1/aFolderPlayer_0.7.1.apk.gz.part07"
+      ]
+    },
+    {
+      "name": "AFP_Translate_0.3.0.apk",
+      "size": 19211709,
+      "sha256": "4f28db45cae1118ea76c727dc497009a76a6d7f243f9b8deccc8af15892bf6b5",
+      "compression": "gzip",
+      "compressed_sha256": "7aeff7818dcfba2645d78c323bd88ded6db7986eeea12158401adad189c5b7d3",
+      "parts": [
+        "deployment/releases/0.7.1/AFP_Translate_0.3.0.apk.gz.part00",
+        "deployment/releases/0.7.1/AFP_Translate_0.3.0.apk.gz.part01",
+        "deployment/releases/0.7.1/AFP_Translate_0.3.0.apk.gz.part02",
+        "deployment/releases/0.7.1/AFP_Translate_0.3.0.apk.gz.part03",
+        "deployment/releases/0.7.1/AFP_Translate_0.3.0.apk.gz.part04",
+        "deployment/releases/0.7.1/AFP_Translate_0.3.0.apk.gz.part05",
+        "deployment/releases/0.7.1/AFP_Translate_0.3.0.apk.gz.part06",
+        "deployment/releases/0.7.1/AFP_Translate_0.3.0.apk.gz.part07",
+        "deployment/releases/0.7.1/AFP_Translate_0.3.0.apk.gz.part08",
+        "deployment/releases/0.7.1/AFP_Translate_0.3.0.apk.gz.part09",
+        "deployment/releases/0.7.1/AFP_Translate_0.3.0.apk.gz.part10",
+        "deployment/releases/0.7.1/AFP_Translate_0.3.0.apk.gz.part11",
+        "deployment/releases/0.7.1/AFP_Translate_0.3.0.apk.gz.part12",
+        "deployment/releases/0.7.1/AFP_Translate_0.3.0.apk.gz.part13",
+        "deployment/releases/0.7.1/AFP_Translate_0.3.0.apk.gz.part14"
+      ]
+    }
+  ],
+  "models": [
+    {
+      "name": "AFP_English_Russian_v2.zip",
+      "size": 112527869,
+      "sha256": "ddb334359395e3b52f56aa8a496927d7e3ab5dfa9d41d7b6c5e1747779c39a84"
+    },
+    {
+      "name": "AFP_Chinese_Russian_v1.zip",
+      "size": 227250942,
+      "sha256": "59ce8b6e7579e0135f455310379cbdc1410355bbdecd90b0483f21a58d301f59"
+    }
+  ]
+}
