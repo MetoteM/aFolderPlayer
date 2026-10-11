@@ -15,7 +15,7 @@ import java.security.MessageDigest
 import java.util.concurrent.Executors
 
 internal class ExtensionManager(private val host:Activity,private val engine:TranslationClient,private val message:(String)->Unit,private val importModel:()->Unit,private val changed:()->Unit={}) {
- companion object { const val DEFAULT_CATALOG="https://github.com/MetoteM/aFolderPlayer/releases/download/v0.7.0/" }
+ companion object { const val DEFAULT_CATALOG="https://github.com/MetoteM/aFolderPlayer/releases/download/v0.7.1/" }
  private val worker=Executors.newSingleThreadExecutor()
  private val main=Handler(Looper.getMainLooper())
  private val prefs=host.getSharedPreferences("extensions",0)
@@ -30,7 +30,7 @@ internal class ExtensionManager(private val host:Activity,private val engine:Tra
   choices.add("Скачать расширения")
   choices.add("Источник загрузки")
   choices.add("Установить движок из APK-файла")
-  if(installed) { choices.add("Установить языковой пакет из ZIP");choices.add("Языковой пакет: размер / удалить");choices.add("Удалить движок AFP Translate");if(File(host.filesDir,"translation/opus-en-ru-v1/verified").isFile)choices.add("Перенести модель из 0.4.0") }
+  if(installed) { choices.add("Выбрать язык перевода");choices.add("Установить языковой пакет из ZIP");choices.add("Языковой пакет: размер / удалить");choices.add("Удалить движок AFP Translate");if(File(host.filesDir,"translation/opus-en-ru-v1/verified").isFile)choices.add("Перенести модель из 0.4.0") }
   if(File(host.filesDir,"translation/opus-en-ru-v1").exists())choices.add("Удалить оставшуюся модель из 0.4.0")
   AlertDialog.Builder(host).setTitle(if(installed)"Расширения · движок установлен" else "Расширения · без движка").setItems(choices.toTypedArray()) { _,index ->
    when(choices[index]) {
@@ -38,6 +38,13 @@ internal class ExtensionManager(private val host:Activity,private val engine:Tra
     "Скачать расширения" -> fetchCatalog()
     "Источник загрузки" -> address()
     "Установить движок из APK-файла" -> host.startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/vnd.android.package-archive").addCategory(Intent.CATEGORY_OPENABLE),104)
+    "Выбрать язык перевода" -> run("Проверяем установленные языки…") {
+     val models=engine.availableModels().toList()
+     main.post { if(!closed && !cancelled) {
+      if(models.isEmpty())message("Сначала установи языковой пакет")
+      else AlertDialog.Builder(host).setTitle("Язык перевода").setSingleChoiceItems(models.map { it.second }.toTypedArray(),models.indexOfFirst { it.first==engine.modelId }) { dialog,index -> engine.selectModel(models[index].first,models[index].second);changed();dialog.dismiss() }.setNegativeButton("Отмена",null).show()
+     } }
+    }
     "Установить языковой пакет из ZIP" -> importModel()
     "Языковой пакет: размер / удалить" -> run("Проверяем пакет…") {
      val bytes=engine.modelBytes();main.post { if(!closed)AlertDialog.Builder(host).setTitle(engine.modelTitle).setMessage(if(bytes<0)"Пакет не установлен" else "На устройстве: ${bytes/1_000_000} МБ").setPositiveButton("Закрыть",null).apply { if(bytes>=0)setNegativeButton("Удалить пакет") { _,_ -> run("Удаляем пакет…") { engine.removeModel();main.post { message("Пакет удалён. Сохранённые переводы остались") } } } }.show() }

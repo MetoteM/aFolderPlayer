@@ -15,15 +15,18 @@ public final class OfflineTranslator implements AutoCloseable {
  private final OrtSession encoder,decoder;
  private final Node trie=new Node();
  private final String[] vocabulary;
+ private final int padding;
  private double unknownScore=-100;
  private static final class Node { final Map<Character,Node> children=new HashMap<>();int id=-1;double score; }
- public OfflineTranslator(File directory) throws Exception {
+ public OfflineTranslator(File directory) throws Exception { this(directory,62517); }
+ public OfflineTranslator(File directory,int padding) throws Exception {
+  this.padding=padding;
   environment.setTelemetry(false);
   JSONArray words=new JSONObject(read(new File(directory,"tokenizer.json"))).getJSONObject("model").getJSONArray("vocab");
-  vocabulary=new String[words.length()];double minimum=0;
+  vocabulary=new String[words.length()];if(padding<2 || padding>=words.length())throw new IOException("Invalid vocabulary");double minimum=0;
   for(int i=0;i<words.length();i++) {
    JSONArray item=words.getJSONArray(i);String token=item.getString(0);double score=item.getDouble(1);vocabulary[i]=token;if(score<=-1e8)continue;minimum=Math.min(minimum,score);
-   if(i==0 || i==1 || i==62517)continue;
+   if(i==0 || i==1 || i==padding)continue;
    Node node=trie;for(int j=0;j<token.length();j++)node=node.children.computeIfAbsent(token.charAt(j),k->new Node());node.id=i;node.score=score;
   }
   unknownScore=minimum-10;
@@ -57,13 +60,13 @@ public final class OfflineTranslator implements AutoCloseable {
   long[][] mask=new long[1][input.length];Arrays.fill(mask[0],1);
   try(OnnxTensor ids=OnnxTensor.createTensor(environment,new long[][]{input});OnnxTensor attention=OnnxTensor.createTensor(environment,mask);
       OrtSession.Result encoded=encoder.run(Map.of("input_ids",ids,"attention_mask",attention))) {
-   OnnxTensor hidden=(OnnxTensor)encoded.get("last_hidden_state").orElseThrow();List<Long> output=new ArrayList<>();output.add(62517L);
+   OnnxTensor hidden=(OnnxTensor)encoded.get("last_hidden_state").orElseThrow();List<Long> output=new ArrayList<>();output.add((long)padding);
    boolean completed=false;
    for(int step=0;step<Math.min(160,input.length*3+24);step++) {
     check(cancelled);long[][] target=new long[1][output.size()];for(int i=0;i<output.size();i++)target[0][i]=output.get(i);
     try(OnnxTensor targetIds=OnnxTensor.createTensor(environment,target);OrtSession.Result decoded=decoder.run(Map.of("input_ids",targetIds,"encoder_hidden_states",hidden,"encoder_attention_mask",attention))) {
      OnnxTensor logits=(OnnxTensor)decoded.get("logits").orElseThrow();java.nio.FloatBuffer values=logits.getFloatBuffer();int size=vocabulary.length;int offset=(output.size()-1)*size;int best=0;float score=Float.NEGATIVE_INFINITY;
-     for(int i=0;i<size;i++)if(i!=62517 && i!=1) { float value=values.get(offset+i);if(value>score) { score=value;best=i; } }
+     for(int i=0;i<size;i++)if(i!=padding && i!=1) { float value=values.get(offset+i);if(value>score) { score=value;best=i; } }
      if(best==0) { completed=true;break; }output.add((long)best);
     }
    }
@@ -80,13 +83,8 @@ public final class OfflineTranslator implements AutoCloseable {
    if(!line.isEmpty()) {
     String translated=repeated.get(line);
     if(translated==null) {
-     StringBuilder value=new StringBuilder();StringBuilder chunk=new StringBuilder();
-     for(String word:line.split("\\s+")) {
-      String next=chunk.length()==0?word:chunk+" "+word;
-      if(encode(next).length>70 && chunk.length()>0) { if(value.length()>0)value.append(' ');value.append(sentence(chunk.toString(),cancelled));chunk.setLength(0); }
-      if(chunk.length()>0)chunk.append(' ');chunk.append(word);
-     }
-     if(chunk.length()>0) { if(value.length()>0)value.append(' ');value.append(sentence(chunk.toString(),cancelled)); }
+     StringBuilder value=new StringBuilder();
+     for(String chunk:chunks(line)) { if(value.length()>0)value.append(' ');value.append(sentence(chunk,cancelled)); }
      translated=value.toString();repeated.put(line,translated);
     }
     result.append(translated);
@@ -94,6 +92,22 @@ public final class OfflineTranslator implements AutoCloseable {
    progress.update(i+1,lines.length);
   }
   return result.toString();
+ }
+ public List<String> chunks(String line) {
+  List<String> result=new ArrayList<>();StringBuilder pending=new StringBuilder();
+  for(String word:line.split("\\s+")) {
+   if(word.isEmpty())continue;
+   String next=pending.length()==0?word:pending+" "+word;
+   if(encode(next).length<=70) { pending.setLength(0);pending.append(next);continue; }
+   if(pending.length()>0) { result.add(pending.toString());pending.setLength(0); }
+   for(int offset=0;offset<word.length();) {
+    int cp=word.codePointAt(offset);String character=new String(Character.toChars(cp));
+    if(encode(pending+character).length>70 && pending.length()>0) { result.add(pending.toString());pending.setLength(0); }
+    pending.append(character);offset+=Character.charCount(cp);
+    if("。！？；!?;".indexOf(cp)>=0) { result.add(pending.toString());pending.setLength(0); }
+   }
+  }
+  if(pending.length()>0)result.add(pending.toString());return result;
  }
  @Override public void close() throws OrtException { try { decoder.close(); } finally { encoder.close(); } }
 }

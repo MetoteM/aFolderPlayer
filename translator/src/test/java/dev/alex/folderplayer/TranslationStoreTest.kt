@@ -50,4 +50,20 @@ class TranslationStoreTest {
   assertEquals(2_325_321L,File(store.model(TranslationStore.MODEL_V2),"tokenizer.json").length())
   store.removeModel(TranslationStore.MODEL_V2);assertTrue(store.ready());assertFalse(store.ready(TranslationStore.MODEL_V2))
  }
+ @Test fun mixedAndIncompleteChinesePackagesPreserveEnglish() {
+  val store=setup();store.model.mkdirs();for(name in listOf("encoder.onnx","decoder.onnx","tokenizer.json","verified"))File(store.model,name).writeText("previous")
+  for(names in listOf(arrayOf("zh-en/encoder.onnx"),arrayOf("zh-en/tokenizer.json","en-ru/tokenizer.json"),arrayOf("zh-en/../encoder.onnx"))) {
+   try { store.install(ByteArrayInputStream(zip(*names)));fail() } catch(_:IllegalArgumentException){}
+   assertEquals("previous",File(store.model,"tokenizer.json").readText());assertFalse(store.ready(ModelPackages.CHINESE))
+  }
+ }
+ @Test fun chinesePackageInstallsBothStagesAndKeepsEnglish() {
+  val path=System.getenv("AFP_CHINESE_PACKAGE");org.junit.Assume.assumeTrue("Supply the real Chinese package",!path.isNullOrBlank())
+  val store=setup();store.model.mkdirs();for(name in listOf("encoder.onnx","decoder.onnx","tokenizer.json","verified"))File(store.model,name).writeText("previous")
+  assertEquals(ModelPackages.CHINESE,File(path!!).inputStream().use { store.install(it) })
+  assertTrue(store.ready(ModelPackages.CHINESE));assertTrue(store.ready())
+  assertEquals(52_899_742L,File(store.model(ModelPackages.CHINESE),"zh-en/encoder.onnx").length())
+  File(store.model(ModelPackages.CHINESE),"en-ru/decoder.onnx").delete();assertFalse(store.ready(ModelPackages.CHINESE))
+  store.removeModel(ModelPackages.CHINESE);assertTrue(store.ready())
+ }
 }

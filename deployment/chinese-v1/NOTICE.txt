@@ -1,0 +1,13 @@
+AFP Chinese → Russian v1: fully offline Chinese → English → Russian.
+Chinese → English: Helsinki-NLP/opus-mt-zh-en, CC BY 4.0.
+Developed by the Language Technology Research Group, University of Helsinki.
+Authors: Jörg Tiedemann and Santhosh Thottingal (OPUS-MT, EAMT 2020).
+Source: https://huggingface.co/Helsinki-NLP/opus-mt-zh-en
+License: https://creativecommons.org/licenses/by/4.0/
+Changes: ONNX quantization by Xenova; source tokenizer score correction by AFP.
+Xenova revision: 39d480d52a9ea3065a1f117adfe4dbc55de10e6f.
+English → Russian: audited AFP English Russian v2, unchanged weights.
+Both stages included; a separately installed English model is not required.
+Translation aims to convey general meaning. The intermediate English can lose
+nuance, names, imagery, gender and grammatical relationships. Rhyme and meter
+are not guaranteed. This package contains no executable code or networking.

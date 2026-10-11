@@ -22,7 +22,7 @@ class TranslationService:Service() {
    require(id.length<=128)
    val owned=ParcelFileDescriptor.dup(file.fileDescriptor);file.close()
    worker.execute {
-    try { ParcelFileDescriptor.AutoCloseInputStream(owned).use { store.install(it) };callback.complete(id,"") }
+    try { val installed=ParcelFileDescriptor.AutoCloseInputStream(owned).use { store.install(it) };callback.complete(id,installed) }
     catch(e:Exception) { runCatching { callback.failed(id,e.message ?: "Не удалось установить пакет") } }
    }
   }
@@ -32,7 +32,12 @@ class TranslationService:Service() {
    worker.execute {
     try {
      check(store.ready(model)) { "Языковой пакет не установлен" }
-     val result=OfflineTranslator(store.model(model)).use { engine -> engine.translate(text,{ cancel.get() }) { done,total -> if(!cancel.get())runCatching { callback.progress(id,done,total) } } }
+     var result=text
+     val stages=ModelPackages.find(model)!!.stages
+     for((index,stage) in stages.withIndex()) {
+      check(!cancel.get()) { "Отменено" }
+      result=OfflineTranslator(java.io.File(store.model(model),stage.directory),stage.padding).use { engine -> engine.translate(result,{ cancel.get() }) { done,total -> if(!cancel.get())runCatching { callback.progress(id,index*total+done,stages.size*total) } } }
+     }
      check(result.length<=200000) { "Перевод слишком большой" };if(!cancel.get())callback.complete(id,result)
     } catch(e:Throwable) { if(!cancel.get())runCatching { callback.failed(id,if(e is OutOfMemoryError)"Недостаточно памяти для перевода" else e.message ?: "Не удалось перевести") } }
     finally { jobs.remove(id,cancel) }

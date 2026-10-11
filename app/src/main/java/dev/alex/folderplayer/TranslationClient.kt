@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 internal class TranslationClient(private val context:Context) {
- companion object { const val PACKAGE="dev.alex.afptranslate";const val MODEL="opus-en-ru-v1" }
+ companion object { const val PACKAGE="dev.alex.afptranslate";const val MODEL="opus-en-ru-v1";val MODELS=linkedMapOf(MODEL to "Английский → русский · v1","opus-en-ru-v2" to "Английский → русский · v2","opus-zh-ru-v1" to "Китайский → русский · через английский") }
  private val prefs=context.getSharedPreferences("extensions",0)
  val modelId:String get()=prefs.getString("model",MODEL) ?: MODEL
  val modelTitle:String get()=prefs.getString("modelTitle","Английский → русский") ?: "Английский → русский"
@@ -38,7 +38,11 @@ internal class TranslationClient(private val context:Context) {
  }
  fun modelBytes()=connected { if(it.modelReady(modelId))it.modelBytes(modelId) else -1 }
  fun removeModel()=connected { it.removeModel(modelId) }
- fun install(file:ParcelFileDescriptor)=connected { service -> awaitResult(service,AtomicBoolean(false),{ _,_ -> }) { id,callback -> service.installModel(id,file,callback) };Unit }
+ fun availableModels()=connected { service -> MODELS.filterKeys { service.modelReady(it) } }
+ fun install(file:ParcelFileDescriptor)=connected { service ->
+  val installed=awaitResult(service,AtomicBoolean(false),{ _,_ -> }) { id,callback -> service.installModel(id,file,callback) }
+  MODELS[installed]?.let { selectModel(installed,it) };Unit
+ }
  fun translate(text:String,cancel:AtomicBoolean,model:String=modelId,progress:(Int,Int)->Unit):String=connected { service ->
   if(!service.modelReady(model))throw MissingModel()
   awaitResult(service,cancel,progress) { id,callback -> service.translate(id,model,text,callback) }

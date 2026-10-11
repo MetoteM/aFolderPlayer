@@ -13,6 +13,8 @@ public final class CompletenessRules {
   }return result;
  }
  private static void plainUnits(String source,List<String> result){String text=source.replaceAll("\\s+"," ").trim();if(text.isEmpty())return;
+  Matcher chinese=Pattern.compile("[。！？]+[\"”’」』]?\\s*").matcher(text);int chineseStart=0;
+  if(chinese.find()){do{result.add(text.substring(chineseStart,chinese.end()).trim());chineseStart=chinese.end();}while(chinese.find());if(chineseStart<text.length())plainUnits(text.substring(chineseStart),result);return;}
   Matcher m=Pattern.compile("[.!?]+[\"”']?\\s+(?=[A-Z])").matcher(text);int start=0;
   while(m.find()){Matcher word=Pattern.compile("([A-Za-z]+)$").matcher(text.substring(0,m.start()));if(word.find()&&(word.group(1).length()==1||TITLES.contains(word.group(1).toLowerCase(Locale.ROOT))))continue;int end=m.start()+m.group().trim().length();result.add(text.substring(start,end));start=m.end();}
   result.add(text.substring(start));

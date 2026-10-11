@@ -1,3 +1,10 @@
+## 0.7.1
+
+- Chinese → Russian offline, through English, in a self-contained package.
+- Installed-language selector and automatic model selection after manual ZIP import.
+- Chinese sentence boundaries, long unspaced text, Unicode and repeated chorus.
+- AFP Translate 0.3.0 supports audited multi-stage packages and English v1/v2.
+
 ## 0.7.0
 
 - Перенесены сравнение полного текста, выбор блока или предложений, копирование и история переводов из AFP Translate Lab в плеер.

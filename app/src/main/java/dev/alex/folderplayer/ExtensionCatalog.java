@@ -12,7 +12,7 @@ public final class ExtensionCatalog {
   public final String id,kind,title,file,hash,model;public final long size;
   Entry(JSONObject item) throws Exception {
    id=item.getString("id");kind=item.getString("kind");title=item.getString("title");file=item.getString("file");hash=item.getString("sha256");size=item.getLong("size");model=item.optString("model","");
-   if(!Set.of("engine","model").contains(kind) || !file.matches("[A-Za-z0-9_.-]{1,100}") || !hash.matches("[a-f0-9]{64}") || size<=0 || size>150_000_000 || title.length()>150)throw new IOException("Некорректный каталог расширений");
+   if(!Set.of("engine","model").contains(kind) || !file.matches("[A-Za-z0-9_.-]{1,100}") || !hash.matches("[a-f0-9]{64}") || size<=0 || size>240_000_000 || title.length()>150)throw new IOException("Некорректный каталог расширений");
    if(kind.equals("engine") && !id.equals("engine") || kind.equals("model") && !model.matches("[a-z0-9][a-z0-9_-]{1,63}"))throw new IOException("Пакет пока не поддерживается этой версией");
   }
  }

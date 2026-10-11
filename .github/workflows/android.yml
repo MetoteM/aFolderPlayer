@@ -24,7 +24,22 @@ jobs:
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
         with:
           packages: 'platforms;android-36 build-tools;36.0.0'
+      - name: Chinese package and CPU inference
+        run: |
+          mkdir /tmp/models /tmp/chinese-model /tmp/inference-test
+          python3 tools/download-chinese-inputs.py /tmp/models
+          python3 tools/build-chinese-package.py /tmp/models /tmp/models/english.zip /tmp/models/chinese.zip
+          curl --fail --location --retry 3 -o /tmp/ort.jar https://repo.maven.apache.org/maven2/com/microsoft/onnxruntime/onnxruntime/1.20.0/onnxruntime-1.20.0.jar
+          curl --fail --location --retry 3 -o /tmp/json.jar https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar
+          echo 'c46608681692b3693914defb42fa3119ad7cb6146870581ece247e0ed5793fe8  /tmp/ort.jar' | sha256sum -c -
+          echo '3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed  /tmp/json.jar' | sha256sum -c -
+          unzip -q /tmp/models/chinese.zip -d /tmp/chinese-model
+          javac -cp /tmp/ort.jar:/tmp/json.jar -d /tmp/inference-test translator/src/main/java/dev/alex/folderplayer/OfflineTranslator.java tools/inference-test/dev/alex/folderplayer/ChineseCheck.java
+          java -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar dev.alex.folderplayer.ChineseCheck /tmp/chinese-model
       - name: Build and test
+        env:
+          AFP_MODEL_V2_PACKAGE: /tmp/models/english.zip
+          AFP_CHINESE_PACKAGE: /tmp/models/chinese.zip
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon :app:assembleRelease :translator:assembleRelease :app:testReleaseUnitTest :translator:testReleaseUnitTest :app:lintRelease :translator:lintRelease --max-workers=2
