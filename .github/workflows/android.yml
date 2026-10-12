@@ -7,6 +7,7 @@ on:
       - '.github/workflows/release.yml'
       - '.github/workflows/android.yml'
       - 'tools/publish-release.py'
+      - 'tools/apk-delta.py'
       - 'docs/GITHUB_RELEASES.md'
   pull_request:
   workflow_dispatch:
