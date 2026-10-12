@@ -535,7 +535,7 @@ class MainActivity : Activity() {
     require(!model.startsWith("opus-en-ru-") || source.count { it in 'А'..'я' || it=='ё' || it=='Ё' }<=source.count { it in 'A'..'Z' || it in 'a'..'z' }) { "Этот текст уже на русском. В первой версии переводим с английского на русский" }
     translationStore.read(track.uri,source,model)?.let { return@runCatching it }
     handler.post { if(alive && translationCancel===cancel && page=="translation")screens.setTranslation(track.uri,"","${modelTitle} · переводим на устройстве…") }
-    translationClient.translate(source,cancel,model) { done,total -> handler.post { if(alive && translationCancel===cancel && page=="translation")screens.setTranslation(track.uri,"","${modelTitle} · $done / $total строк · на устройстве") } }
+    DocumentEngine(this,model).translateSentences(source,cancel) { done,total -> handler.post { if(alive && translationCancel===cancel && page=="translation")screens.setTranslation(track.uri,"","${modelTitle} · $done / $total фрагментов · на устройстве") } }
     .also { if(!cancel.get())translationStore.save(track.uri,source,it,model) }
    }
    handler.post { if(alive && page=="translation" && currentTrack()?.uri==track.uri && translationCancel===cancel && !cancel.get()) {

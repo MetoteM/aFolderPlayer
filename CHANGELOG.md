@@ -1,3 +1,10 @@
+## 0.7.2
+
+- Ordinary translation now uses the same sentence context as full-text translation.
+- Soft line breaks within phrases are joined; paragraph boundaries and repeated chorus are retained.
+- Language choice is captured for the whole request, and incomplete/cancelled results are not saved.
+- AFP Translate 0.3.0 and existing language packages are unchanged.
+
 ## 0.7.1
 
 - Chinese → Russian offline, through English, in a self-contained package.
