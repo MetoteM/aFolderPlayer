@@ -84,7 +84,7 @@ internal class AppUpdates(private val host:Activity) {
    val release=c.inputStream.use { candidate(ExtensionCatalog.read(it,2_000_000),installedVersion()) }
    main.post { if(!closed && !cancelled) {
     if(release==null)AlertDialog.Builder(host).setTitle("Обновление").setMessage("Новых стабильных версий нет. Установлена ${installedVersion()}.").setPositiveButton("Закрыть",null).show()
-    else AlertDialog.Builder(host).setTitle("Доступна ${release.version}").setMessage("Установлена ${installedVersion()}\nAPK · ${"%.1f".format(release.size/1_000_000.0)} МБ"+if(release.notes.isBlank())"" else "\n\n${release.notes}").setPositiveButton("Скачать") { _,_ -> download(release) }.setNegativeButton("Позже",null).show()
+    else AlertDialog.Builder(host).setTitle("Доступна ${release.version}").setMessage("Установлена ${installedVersion()}\nРазмер · ${"%.1f".format(release.size/1_000_000.0)} МБ"+if(release.notes.isBlank())"" else "\n\n${release.notes}").setPositiveButton("Скачать") { _,_ -> download(release) }.setNegativeButton("Позже",null).show()
    } }
   } finally { connection=null;c.disconnect() }
  }
@@ -109,7 +109,7 @@ internal class AppUpdates(private val host:Activity) {
 
  private fun install() {
   if(!host.packageManager.canRequestPackageInstalls()) {
-   AlertDialog.Builder(host).setTitle("Установка обновления").setMessage("Разреши aFolderPlayer устанавливать APK. После возврата откроется установка скачанного обновления.").setPositiveButton("Разрешить") { _,_ -> prefs.edit().putBoolean("pendingInstall",true).apply();host.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:${host.packageName}"))) }.setNegativeButton("Позже",null).show();return
+   AlertDialog.Builder(host).setTitle("Установка обновления").setMessage("Разреши aFolderPlayer устанавливать обновления. После возврата откроется установка скачанного обновления.").setPositiveButton("Разрешить") { _,_ -> prefs.edit().putBoolean("pendingInstall",true).apply();host.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:${host.packageName}"))) }.setNegativeButton("Позже",null).show();return
   }
   host.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse("content://dev.alex.folderplayer.extensions/player-update.apk"),"application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
  }

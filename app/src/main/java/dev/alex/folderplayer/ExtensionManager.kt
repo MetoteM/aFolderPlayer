@@ -29,15 +29,15 @@ internal class ExtensionManager(private val host:Activity,private val engine:Tra
   choices.add("Перевод: "+if(prefs.getBoolean("enabled",false))"включён" else "выключен")
   choices.add("Скачать расширения")
   choices.add("Источник загрузки")
-  choices.add("Установить движок из APK-файла")
-  if(installed) { choices.add("Выбрать язык перевода");choices.add("Установить языковой пакет из ZIP");choices.add("Установленный язык");choices.add("Удалить движок AFP Translate");if(File(host.filesDir,"translation/opus-en-ru-v1/verified").isFile)choices.add("Перенести модель из 0.4.0") }
+  choices.add("Установить переводчик из файла")
+  if(installed) { choices.add("Выбрать язык перевода");choices.add("Добавить язык из файла");choices.add("Установленный язык");choices.add("Удалить движок AFP Translate");if(File(host.filesDir,"translation/opus-en-ru-v1/verified").isFile)choices.add("Перенести модель из 0.4.0") }
   if(File(host.filesDir,"translation/opus-en-ru-v1").exists())choices.add("Удалить оставшуюся модель из 0.4.0")
   optionMenu(host,"Расширения",choices) { index ->
    when(choices[index]) {
     choices[0] -> { prefs.edit().putBoolean("enabled",!prefs.getBoolean("enabled",false)).apply();changed();choices[0]="Перевод: "+if(prefs.getBoolean("enabled",false))"включён" else "выключен" }
     "Скачать расширения" -> fetchCatalog()
     "Источник загрузки" -> address()
-    "Установить движок из APK-файла" -> host.startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/vnd.android.package-archive").addCategory(Intent.CATEGORY_OPENABLE),104)
+    "Установить переводчик из файла" -> host.startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/vnd.android.package-archive").addCategory(Intent.CATEGORY_OPENABLE),104)
     "Выбрать язык перевода" -> run("Проверяем установленные языки…") {
      val models=engine.availableModels().toList()
      main.post { if(!closed && !cancelled) {
@@ -45,7 +45,7 @@ internal class ExtensionManager(private val host:Activity,private val engine:Tra
       else AlertDialog.Builder(host).setTitle("Язык перевода").setSingleChoiceItems(models.map { it.second }.toTypedArray(),models.indexOfFirst { it.first==engine.modelId }) { dialog,index -> engine.selectModel(models[index].first,models[index].second);changed();dialog.dismiss() }.setNegativeButton("Отмена",null).show()
      } }
     }
-    "Установить языковой пакет из ZIP" -> importModel()
+    "Добавить язык из файла" -> importModel()
     "Установленный язык" -> run("Проверяем пакет…") {
      val bytes=engine.modelBytes();main.post { if(!closed)AlertDialog.Builder(host).setTitle(engine.modelTitle).setMessage(if(bytes<0)"Пакет не установлен" else "На устройстве: ${bytes/1_000_000} МБ").setPositiveButton("Закрыть",null).apply { if(bytes>=0)setNegativeButton("Удалить пакет") { _,_ -> run("Удаляем пакет…") { engine.removeModel();main.post { message("Пакет удалён. Сохранённые переводы остались") } } } }.show() }
     }
@@ -66,7 +66,7 @@ internal class ExtensionManager(private val host:Activity,private val engine:Tra
  fun enable() { prefs.edit().putBoolean("enabled",true).apply() }
  private fun address() {
   val field=EditText(host).apply { setText(prefs.getString("server",DEFAULT_CATALOG));hint="https://…/afp/";inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI }
-  val dialog=AlertDialog.Builder(host).setTitle("Сервер расширений").setMessage("Собственный HTTPS-сервер или зеркало. Адрес сохраняется без подключения; запрос — только по кнопке загрузки.").setView(field).setPositiveButton("Сохранить",null).setNegativeButton("Отмена",null).create()
+  val dialog=AlertDialog.Builder(host).setTitle("Источник расширений").setMessage("Собственный HTTPS-сервер или зеркало. Адрес сохраняется без подключения; запрос — только по кнопке загрузки.").setView(field).setPositiveButton("Сохранить",null).setNegativeButton("Отмена",null).create()
   dialog.setOnShowListener { dialog.getButton(-1).setOnClickListener {
    runCatching { val value=field.text.toString().trim();if(value.isNotEmpty())ExtensionCatalog.base(value);prefs.edit().putString("server",value).apply();dialog.dismiss() }.onFailure { field.error=it.message }
   } };dialog.show()
@@ -107,7 +107,7 @@ internal class ExtensionManager(private val host:Activity,private val engine:Tra
    else { ParcelFileDescriptor.open(destination,ParcelFileDescriptor.MODE_READ_ONLY).use { engine.install(it) };engine.selectModel(entry.model,entry.title);enable();destination.delete();main.post { if(!closed) { changed();message("Языковой пакет установлен") } } }
   } finally { connection=null;c.disconnect();part.delete() }
  }
- fun importEngine(uri:Uri) = run("Проверяем APK движка…") {
+ fun importEngine(uri:Uri) = run("Проверяем переводчик…") {
   val file=File(folder,"engine.apk");val part=File(folder,"engine.apk.part")
   try {
    host.contentResolver.openInputStream(uri)?.use { input -> part.outputStream().use { out -> var count=0L;val buffer=ByteArray(65536);while(true) { check(!cancelled) { "Отменено" };val n=input.read(buffer);if(n<0)break;count+=n;require(count<=60_000_000) { "APK слишком большой" };out.write(buffer,0,n) } } } ?: error("Не удалось открыть APK")

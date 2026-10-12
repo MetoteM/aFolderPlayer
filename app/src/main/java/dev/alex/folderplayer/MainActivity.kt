@@ -404,7 +404,7 @@ class MainActivity : Activity() {
    5 -> { returnToOptions=true;menu?.dismiss();equalizer() }
    6 -> extensions()
    7 -> about()
-   8 -> startActivity(Intent(this,RecognitionActivity::class.java))
+   8 -> { controller?.pause();startActivity(Intent(this,RecognitionActivity::class.java)) }
   } }
  }
  private fun folders() {

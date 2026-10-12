@@ -136,6 +136,7 @@ class RecognitionActivity : Activity() {
   history.edit().putString("items",next.toString()).apply()
  }
  private fun showHistory(){
+  cancel()
   val items=runCatching { JSONArray(history.getString("items","[]")) }.getOrDefault(JSONArray())
   if(items.length()==0){Toast.makeText(this,"История пока пуста",Toast.LENGTH_SHORT).show();return}
   AlertDialog.Builder(this).setTitle("Определённые песни").setItems(Array(items.length()){ i -> val item=items.getJSONObject(i);"${item.optString("title")} — ${item.optString("artist")}" }) { _,i ->
