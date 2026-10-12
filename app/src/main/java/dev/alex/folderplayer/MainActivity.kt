@@ -29,6 +29,7 @@ class MainActivity : Activity() {
  private var page="library"
  private lateinit var pageMotion:SheetMotion
  private var soundReturn="player"
+ private var returnToOptions=false
  private var lyricsRequestedId:String?=null
  private var directCancel:LyricsSearch.Cancel?=null
  private var directTask:java.util.concurrent.Future<*>?=null
@@ -392,17 +393,19 @@ class MainActivity : Activity() {
   } }.show()
  }
  private fun settings() {
-  val names=mutableListOf("Добавить папку","Выбранные папки","Обновить библиотеку","Шаг перемотки","Таймер сна","Эквалайзер","Расширения","О приложении")
-  AlertDialog.Builder(this).setTitle("Настройки").setItems(names.toTypedArray()) { _,i -> when(i) {
+  val names=mutableListOf("Добавить папку","Выбранные папки","Обновить библиотеку","Шаг перемотки","Таймер сна","Эквалайзер","Расширения","О приложении","Определить песню")
+  var menu:AlertDialog?=null
+  menu=optionMenu(this,"Настройки",names) { i -> when(i) {
    0 -> startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION),100)
    1 -> folders()
    2 -> scan()
    3 -> AlertDialog.Builder(this).setTitle("Шаг перемотки").setSingleChoiceItems(arrayOf("10 секунд","20 секунд"),if(prefs.getInt("seekSeconds",10)==10) 0 else 1) { d,n -> prefs.edit().putInt("seekSeconds",if(n==0) 10 else 20).apply(); d.dismiss() }.show()
    4 -> AlertDialog.Builder(this).setTitle("Остановить музыку через…").setItems(arrayOf("15 минут","30 минут","60 минут","Выключить таймер")) { _,n -> prefs.edit().putLong("sleepDeadline",if(n==3) 0 else System.currentTimeMillis()+listOf(15,30,60)[n]*60000L).apply(); toast(if(n==3) "Таймер выключен" else "Таймер установлен") }.show()
-   5 -> equalizer()
+   5 -> { returnToOptions=true;menu?.dismiss();equalizer() }
    6 -> extensions()
    7 -> about()
-  } }.show()
+   8 -> startActivity(Intent(this,RecognitionActivity::class.java))
+  } }
  }
  private fun folders() {
   val roots=library.roots()
@@ -480,7 +483,7 @@ class MainActivity : Activity() {
  private fun currentTrack()=tracks.find { it.uri==controller?.currentMediaItem?.mediaId }
  private fun backPage() {
   val target=when(page) { "player"->"library";"sound"->soundReturn;"translation"->"lyrics";else->"player" }
-  if(page=="player")showPage(target) else pageMotion.leavePage { if(alive)showPage(target) }
+  if(page=="player")showPage(target) else pageMotion.leavePage { if(alive) { showPage(target);if(returnToOptions){returnToOptions=false;settings()} } }
  }
  private fun previewPlayer(travel:Float) {
   if(page!="library")return
@@ -718,7 +721,7 @@ class MainActivity : Activity() {
   panel.addView(label("По кнопке поиска LRCLIB получит название и исполнителя. Аудиофайл и библиотека не отправляются. Выбранный текст можно сохранить для офлайн-просмотра.",14f))
   val status=label("",14f);panel.addView(status)
   var busy=false
-  val dialog=AlertDialog.Builder(this).setTitle("Поиск текста · LRCLIB").setView(ScrollView(this).apply { addView(panel) }).setPositiveButton("Поиск",null).setNegativeButton("Закрыть",null).create()
+  val dialog=AlertDialog.Builder(this).setTitle("Поиск текста").setView(ScrollView(this).apply { addView(panel) }).setPositiveButton("Поиск",null).setNegativeButton("Закрыть",null).create()
   dialog.setOnDismissListener { networkCancel?.cancel();networkTask?.cancel(true);networkCancel=null;networkTask=null }
   dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
    if(busy) return@setOnClickListener
@@ -781,8 +784,14 @@ val labels=found.map { item ->
  private fun extensions() { extensionManager.show() }
  private val appUpdates by lazy { AppUpdates(this) }
  private fun about() {
-  AlertDialog.Builder(this).setTitle("aFolderPlayer · ${appUpdates.installedVersion()}").setMessage("Разработка при участии ChatGPT\n\nЛокальная музыка без рекламы и аналитики. Интернет используется по кнопке поиска текстов в LRCLIB и годов альбомов в MusicBrainz. Название и исполнитель отправляются выбранному сервису; аудиофайл не отправляется. Сохранённые тексты и годы доступны офлайн. Перевод необязателен: отдельный AFP Translate и выбранные языковые пакеты. Движок работает на телефоне без разрешения на интернет. Загрузки расширений и проверка обновлений в GitHub — только по кнопке. MusicBrainz: https://musicbrainz.eu .\n\nMedia3 / AndroidX и OPUS-MT: Apache License 2.0. ONNX Runtime: MIT License.")
-   .setPositiveButton("Закрыть",null).setNeutralButton("Проверить обновления") { _,_ -> appUpdates.check() }.show()
+  AlertDialog.Builder(this).setTitle("aFolderPlayer · ${appUpdates.installedVersion()}")
+   .setMessage("Музыка по папкам, тексты песен и перевод. Без рекламы и аналитики.\n\nИнтернет используется только по твоему запросу. Перевод работает на телефоне после установки языкового пакета.")
+   .setPositiveButton("Закрыть",null).setNeutralButton("Проверить обновления") { _,_ -> appUpdates.check() }
+   .setNegativeButton("Подробнее") { _,_ ->
+    AlertDialog.Builder(this).setTitle("Сервисы и лицензии")
+     .setMessage("Поиск текстов: LRCLIB. Годы альбомов: MusicBrainz. Обновления: GitHub. Распознавание: неофициальный интерфейс Shazam; отправляется звуковой отпечаток, запись и геолокация не отправляются.\n\nMedia3 / AndroidX: Apache 2.0. Языковые пакеты: см. лицензии пакетов. ONNX Runtime: MIT. Алгоритм распознавания адаптирован из ShazamIO 0.4.0.0, MIT, © 2021 dotX12.\n\nРазработка при участии ChatGPT.")
+     .setPositiveButton("Закрыть",null).show()
+   }.show()
  }
  override fun onStart() { super.onStart(); restorePlayingSource(); handler.removeCallbacks(ticker); handler.post(ticker) }
  override fun onStop() { handler.removeCallbacks(ticker); super.onStop() }

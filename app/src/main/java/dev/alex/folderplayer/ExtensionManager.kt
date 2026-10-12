@@ -26,15 +26,15 @@ internal class ExtensionManager(private val host:Activity,private val engine:Tra
  @Volatile private var connection:java.net.HttpURLConnection?=null
  fun show() {
   val installed=engine.installed();val choices=mutableListOf<String>()
-  choices.add("Машинный перевод: "+if(prefs.getBoolean("enabled",false))"включён" else "выключен")
+  choices.add("Перевод: "+if(prefs.getBoolean("enabled",false))"включён" else "выключен")
   choices.add("Скачать расширения")
   choices.add("Источник загрузки")
   choices.add("Установить движок из APK-файла")
-  if(installed) { choices.add("Выбрать язык перевода");choices.add("Установить языковой пакет из ZIP");choices.add("Языковой пакет: размер / удалить");choices.add("Удалить движок AFP Translate");if(File(host.filesDir,"translation/opus-en-ru-v1/verified").isFile)choices.add("Перенести модель из 0.4.0") }
+  if(installed) { choices.add("Выбрать язык перевода");choices.add("Установить языковой пакет из ZIP");choices.add("Установленный язык");choices.add("Удалить движок AFP Translate");if(File(host.filesDir,"translation/opus-en-ru-v1/verified").isFile)choices.add("Перенести модель из 0.4.0") }
   if(File(host.filesDir,"translation/opus-en-ru-v1").exists())choices.add("Удалить оставшуюся модель из 0.4.0")
-  AlertDialog.Builder(host).setTitle(if(installed)"Расширения · движок установлен" else "Расширения · без движка").setItems(choices.toTypedArray()) { _,index ->
+  optionMenu(host,"Расширения",choices) { index ->
    when(choices[index]) {
-    choices[0] -> { prefs.edit().putBoolean("enabled",!prefs.getBoolean("enabled",false)).apply();changed();show() }
+    choices[0] -> { prefs.edit().putBoolean("enabled",!prefs.getBoolean("enabled",false)).apply();changed();choices[0]="Перевод: "+if(prefs.getBoolean("enabled",false))"включён" else "выключен" }
     "Скачать расширения" -> fetchCatalog()
     "Источник загрузки" -> address()
     "Установить движок из APK-файла" -> host.startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/vnd.android.package-archive").addCategory(Intent.CATEGORY_OPENABLE),104)
@@ -46,7 +46,7 @@ internal class ExtensionManager(private val host:Activity,private val engine:Tra
      } }
     }
     "Установить языковой пакет из ZIP" -> importModel()
-    "Языковой пакет: размер / удалить" -> run("Проверяем пакет…") {
+    "Установленный язык" -> run("Проверяем пакет…") {
      val bytes=engine.modelBytes();main.post { if(!closed)AlertDialog.Builder(host).setTitle(engine.modelTitle).setMessage(if(bytes<0)"Пакет не установлен" else "На устройстве: ${bytes/1_000_000} МБ").setPositiveButton("Закрыть",null).apply { if(bytes>=0)setNegativeButton("Удалить пакет") { _,_ -> run("Удаляем пакет…") { engine.removeModel();main.post { message("Пакет удалён. Сохранённые переводы остались") } } } }.show() }
     }
     "Перенести модель из 0.4.0" -> run("Переносим модель в AFP Translate…") {
@@ -60,7 +60,7 @@ internal class ExtensionManager(private val host:Activity,private val engine:Tra
     "Удалить движок AFP Translate" -> host.startActivity(Intent(Intent.ACTION_DELETE,Uri.parse("package:${TranslationClient.PACKAGE}")))
     else -> AlertDialog.Builder(host).setTitle("Модель из 0.4.0").setMessage("Удалить старую модель из плеера? Сохранённые переводы останутся. Для отдельного движка пакет устанавливается заново.").setPositiveButton("Удалить") { _,_ -> run("Удаляем старую модель…") { File(host.filesDir,"translation/opus-en-ru-v1").deleteRecursively();main.post { message("Старая модель удалена") } } }.setNegativeButton("Отмена",null).show()
    }
-  }.setNegativeButton("Закрыть",null).show()
+  }
  }
  fun enabled()=prefs.getBoolean("enabled",false)
  fun enable() { prefs.edit().putBoolean("enabled",true).apply() }
