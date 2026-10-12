@@ -43,10 +43,19 @@ jobs:
           unzip -q /tmp/models/chinese.zip -d /tmp/chinese-model
           javac -cp /tmp/ort.jar:/tmp/json.jar -d /tmp/inference-test translator/src/main/java/dev/alex/folderplayer/OfflineTranslator.java tools/inference-test/dev/alex/folderplayer/ChineseCheck.java
           java -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar dev.alex.folderplayer.ChineseCheck /tmp/chinese-model
+      - name: German package and CPU inference
+        run: |
+          mkdir /tmp/german /tmp/german-model
+          python3 tools/download-german-inputs.py /tmp/german
+          python3 tools/build-german-package.py /tmp/german /tmp/models/english.zip /tmp/models/german.zip
+          unzip -q /tmp/models/german.zip -d /tmp/german-model
+          javac -cp /tmp/ort.jar:/tmp/json.jar -d /tmp/inference-test translator/src/main/java/dev/alex/folderplayer/OfflineTranslator.java tools/inference-test/dev/alex/folderplayer/GermanCheck.java
+          java -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar dev.alex.folderplayer.GermanCheck /tmp/german-model
       - name: Build and test
         env:
           AFP_MODEL_V2_PACKAGE: /tmp/models/english.zip
           AFP_CHINESE_PACKAGE: /tmp/models/chinese.zip
+          AFP_GERMAN_PACKAGE: /tmp/models/german.zip
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon :app:assembleRelease :translator:assembleRelease :app:testReleaseUnitTest :translator:testReleaseUnitTest :app:lintRelease :translator:lintRelease --max-workers=2

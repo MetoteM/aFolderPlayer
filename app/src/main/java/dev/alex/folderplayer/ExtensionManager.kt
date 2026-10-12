@@ -15,7 +15,7 @@ import java.security.MessageDigest
 import java.util.concurrent.Executors
 
 internal class ExtensionManager(private val host:Activity,private val engine:TranslationClient,private val message:(String)->Unit,private val importModel:()->Unit,private val changed:()->Unit={}) {
- companion object { const val DEFAULT_CATALOG="https://github.com/MetoteM/aFolderPlayer/releases/download/v0.7.2/" }
+ companion object { const val DEFAULT_CATALOG="https://github.com/MetoteM/aFolderPlayer/releases/download/v0.7.5/" }
  private val worker=Executors.newSingleThreadExecutor()
  private val main=Handler(Looper.getMainLooper())
  private val prefs=host.getSharedPreferences("extensions",0)
@@ -92,6 +92,10 @@ internal class ExtensionManager(private val host:Activity,private val engine:Tra
   }
  }
  private fun confirm(base:java.net.URI,entry:ExtensionCatalog.Entry) {
+  @Suppress("DEPRECATION") val installedCode=runCatching { host.packageManager.getPackageInfo(TranslationClient.PACKAGE,0).versionCode.toLong() }.getOrDefault(0)
+  if(entry.kind=="model" && installedCode<entry.minimumEngine){
+   AlertDialog.Builder(host).setTitle("Обнови переводчик").setMessage("Для этого языка нужен новый переводчик. В списке расширений сначала выбери «Переводчик», установи обновление, затем добавь язык.").setPositiveButton("К списку"){_,_->fetchCatalog()}.setNegativeButton("Закрыть",null).show();return
+  }
   if(entry.kind=="model" && !engine.installed()) { message("Сначала установи AFP Translate");return }
   AlertDialog.Builder(host).setTitle(entry.title).setMessage("Скачать ${entry.size/1_000_000} МБ с ${base.host}?"+(if(entry.kind=="engine")" Затем Android попросит подтвердить установку." else " Пакет будет установлен в AFP Translate.")).setPositiveButton("Скачать") { _,_ -> download(base,entry) }.setNegativeButton("Отмена",null).show()
  }
