@@ -49,9 +49,9 @@ class IconToolbarTest {
   try {
    val icons=all(a.window.decorView).filterIsInstance<IconButton>();assertEquals(5,icons.size);assertEquals(1,icons.map { it.parent }.distinct().size)
    assertTrue(icons.all { it.text.isEmpty() && it.contentDescription.isNotBlank() });assertFalse(all(a.window.decorView).filterIsInstance<Button>().any { it.text=="⋮" })
-   icons.single { it.contentDescription=="Меню" }.performClick();shadowOf(ShadowAlertDialog.getLatestAlertDialog()).clickOnItem(7)
+   icons.single { it.contentDescription=="Меню" }.performClick();ShadowAlertDialog.getLatestAlertDialog().listView.performItemClick(null,7,7)
    val text=all(ShadowAlertDialog.getLatestAlertDialog().window!!.decorView).filterIsInstance<TextView>().joinToString("\n") { it.text.toString() }
-   assertTrue(text.contains("Разработка при участии ChatGPT"));assertFalse(text.contains("Личный проект"));assertFalse(text.contains("Исходный код"));assertFalse(text.contains("Цель проверки"))
+   assertTrue(text.contains("Без рекламы и аналитики"));assertFalse(text.contains("ONNX"));assertFalse(text.contains("Apache"));assertFalse(text.contains("Личный проект"));assertFalse(text.contains("Исходный код"));assertFalse(text.contains("Цель проверки"))
   } finally { host.stop().destroy() }
  }
  @Test fun openingPreviewFollowsFingerAndCompletionKeepsItsPosition() {

@@ -8,12 +8,10 @@ import android.widget.ArrayAdapter
 internal fun optionMenu(host: Activity, title: String, choices: List<String>, action: (Int) -> Unit): AlertDialog {
  val dialog=AlertDialog.Builder(host).setTitle(title).setItems(choices.toTypedArray(),null)
   .setNegativeButton("Закрыть",null).create()
- dialog.setOnShowListener {
-  dialog.listView.setOnItemClickListener { _,_,index,_ ->
-   action(index)
-   dialog.listView.adapter=ArrayAdapter(host,android.R.layout.simple_list_item_1,choices.toTypedArray())
-  }
- }
  dialog.show()
+ dialog.listView.setOnItemClickListener { _,_,index,_ ->
+  action(index)
+  dialog.listView.adapter=ArrayAdapter(host,android.R.layout.simple_list_item_1,choices.toTypedArray())
+ }
  return dialog
 }
