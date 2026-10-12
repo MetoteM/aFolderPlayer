@@ -29,4 +29,16 @@ class RecognitionUiTest {
   val field=RecognitionActivity::class.java.getDeclaredField("recorder").apply { isAccessible=true }
   assertNull(field.get(activity));host.pause().stop().destroy();assertNull(field.get(activity))
  }
+ @Test fun foundLyricsRemainOnScreenWithoutChoiceDialog(){
+  val host=Robolectric.buildActivity(RecognitionActivity::class.java).setup();val activity=host.get()
+  RecognitionActivity::class.java.getDeclaredMethod("showResult",String::class.java,String::class.java).apply { isAccessible=true }.invoke(activity,"Ghost Riders in the Sky","Legendary Shack Shakers")
+  val rows=LyricsSearch.parse("""[{"id":1,"trackName":"Ghost Riders in the Sky","artistName":"Other singer","plainLyrics":"Sample words"}]""",0)
+  RecognitionActivity::class.java.declaredMethods.first { it.name=="showLyrics" }.apply { isAccessible=true }.invoke(activity,rows,"Legendary Shack Shakers")
+  val field=RecognitionActivity::class.java.getDeclaredField("lyricsChoices").apply { isAccessible=true }
+  val choices=field.get(activity) as android.widget.LinearLayout
+  assertEquals(1,choices.childCount);val choice=choices.getChildAt(0) as android.widget.Button
+  assertTrue(choice.text.contains("Другая версия"));assertTrue(choice.text.contains("Other singer"))
+  host.pause().stop().start().resume();assertEquals(1,choices.childCount)
+  host.pause().stop().destroy()
+ }
 }

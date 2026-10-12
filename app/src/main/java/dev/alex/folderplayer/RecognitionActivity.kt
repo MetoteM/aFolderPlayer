@@ -27,6 +27,7 @@ class RecognitionActivity : Activity() {
  private lateinit var start:Button
  private lateinit var stop:Button
  private lateinit var results:LinearLayout
+ private lateinit var lyricsChoices:LinearLayout
  @Volatile private var cancelled=true
  @Volatile private var recorder:AudioRecord?=null
  @Volatile private var connection:HttpURLConnection?=null
@@ -42,7 +43,7 @@ class RecognitionActivity : Activity() {
   panel.addView(TextView(this).apply { text="Поднеси телефон к музыке. Запись — до 30 секунд. Для определения нужен интернет." })
   status=TextView(this).apply { text="Готово к прослушиванию";textSize=18f };panel.addView(status)
   start=Button(this).apply { text="Слушать";setOnClickListener { begin() } };panel.addView(start)
-  stop=Button(this).apply { text="Отмена";isEnabled=false;setOnClickListener { cancel();status.text="Прослушивание отменено" } };panel.addView(stop)
+  stop=Button(this).apply { text="Отмена";isEnabled=false;setOnClickListener { cancel();status.text="Действие отменено" } };panel.addView(stop)
   results=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL };panel.addView(results)
   panel.addView(Button(this).apply { text="История";setOnClickListener { showHistory() } })
   panel.addView(Button(this).apply { text="О распознавании";setOnClickListener {
@@ -113,20 +114,55 @@ class RecognitionActivity : Activity() {
  private fun showResult(title:String,artist:String){
   results.removeAllViews();results.addView(TextView(this).apply { text="$title\n$artist";textSize=22f })
   results.addView(Button(this).apply { text="Найти текст и перевести";setOnClickListener { findLyrics(title,artist) } })
+  lyricsChoices=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL };results.addView(lyricsChoices)
+  results.addView(Button(this).apply { text="Исправить запрос";setOnClickListener { editQuery(title,artist) } })
+  results.addView(Button(this).apply { text="Поиск в интернете";setOnClickListener { LyricsWeb.open(this@RecognitionActivity,title,artist) } })
+  results.addView(Button(this).apply { text="Вставить текст";setOnClickListener { enterText() } })
  }
+ private fun editQuery(title:String,artist:String){
+  cancel();status.text="Можно уточнить запрос"
+  val panel=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+  val name=EditText(this).apply { hint="Название песни";setText(title);isSingleLine=true;filters=arrayOf(android.text.InputFilter.LengthFilter(200)) };panel.addView(name)
+  val performer=EditText(this).apply { hint="Исполнитель (можно оставить пустым)";setText(artist);isSingleLine=true;filters=arrayOf(android.text.InputFilter.LengthFilter(200)) };panel.addView(performer)
+  val dialog=AlertDialog.Builder(this).setTitle("Поиск текста").setView(panel).setPositiveButton("Поиск",null).setNegativeButton("Закрыть",null).create()
+  dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+   if(name.text.isBlank()){name.error="Введи название песни";return@setOnClickListener}
+   val t=name.text.toString().trim();val a=performer.text.toString().trim();dialog.dismiss();showResult(t,a);findLyrics(t,a)
+  } };dialog.show()
+ }
+ private fun enterText(){
+  cancel();status.text="Можно добавить текст"
+  val field=EditText(this).apply { hint="Вставь или введи слова песни";minLines=6;gravity=android.view.Gravity.TOP;filters=arrayOf(android.text.InputFilter.LengthFilter(20000)) }
+  val dialog=AlertDialog.Builder(this).setTitle("Слова песни").setView(field).setPositiveButton("Открыть",null).setNegativeButton("Закрыть",null).create()
+  dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+   if(field.text.isBlank()){field.error="Добавь текст";return@setOnClickListener}
+   val source=field.text.toString();dialog.dismiss();openText(source)
+  } };dialog.show()
+ }
+ private fun openText(source:String){startActivity(Intent(this,DocumentActivity::class.java).putExtra("source",source))}
+ private fun showLyrics(found:List<LyricsSearch.Result>,requestedArtist:String){
+  lyricsChoices.removeAllViews()
+  val unique=found.filter { it.text.isNotBlank() }.distinctBy { LyricsSearch.clean(it.artist)+"|"+LyricsDocument(it.text).plain.replace(Regex("\\s+")," ") }.take(12)
+  if(unique.isEmpty()){status.text="Текст не найден. Уточни запрос или поищи в интернете.";return}
+  status.text="Найдено текстов: ${unique.size}. Выбери подходящий."
+  unique.forEach { item ->
+   val other=LyricsSearch.clean(item.artist)!=LyricsSearch.clean(requestedArtist) && requestedArtist.isNotBlank()
+   lyricsChoices.addView(Button(this).apply {
+    text="${item.title} — ${item.artist}"+(if(other)"\nДругая версия — проверь слова" else "")
+    setOnClickListener { openText(LyricsDocument(item.text).plain) }
+   })
+  }
+ }
+ private val lyricsSearch=LyricsSearch()
  private fun findLyrics(title:String,artist:String){
   cancel();val token=generation;cancelled=false;start.isEnabled=false;stop.isEnabled=true;status.text="Ищем текст…"
+  if(::lyricsChoices.isInitialized)lyricsChoices.removeAllViews()
   val signal=LyricsSearch.Cancel();lyricsCancel=signal
   task=worker.submit {
-   val outcome=runCatching { LyricsSearch().search(title,artist,0L,signal) }
+   val outcome=runCatching { lyricsSearch.searchExpanded(title,artist,0L,signal) }
    ui(token){cancelled=true;start.isEnabled=true;stop.isEnabled=false
-    outcome.onSuccess { matches ->
-     val found=matches.filter { it.text.isNotBlank() }
-     if(found.isEmpty())status.text="Текст не найден"
-     else {status.text="Выбери текст";AlertDialog.Builder(this).setTitle("Найденные тексты").setItems(found.map { "${it.title} — ${it.artist}" }.toTypedArray()) { _,index ->
-      startActivity(Intent(this,DocumentActivity::class.java).putExtra("source",LyricsDocument(found[index].text).plain))
-     }.setNegativeButton("Закрыть",null).show()}
-    }.onFailure { status.text="Не удалось найти текст. Попробуй позже." }
+    outcome.onSuccess { showLyrics(it,artist) }
+     .onFailure { status.text="Не удалось выполнить поиск. Проверь подключение или попробуй позже." }
    }
   }
  }
@@ -136,7 +172,7 @@ class RecognitionActivity : Activity() {
   history.edit().putString("items",next.toString()).apply()
  }
  private fun showHistory(){
-  cancel()
+  cancel();status.text="История распознавания"
   val items=runCatching { JSONArray(history.getString("items","[]")) }.getOrDefault(JSONArray())
   if(items.length()==0){Toast.makeText(this,"История пока пуста",Toast.LENGTH_SHORT).show();return}
   AlertDialog.Builder(this).setTitle("Определённые песни").setItems(Array(items.length()){ i -> val item=items.getJSONObject(i);"${item.optString("title")} — ${item.optString("artist")}" }) { _,i ->
@@ -145,6 +181,6 @@ class RecognitionActivity : Activity() {
  }
  private fun cancel(){generation++;cancelled=true;lyricsCancel?.cancel();lyricsCancel=null;connection?.disconnect();runCatching { recorder?.stop() };task?.cancel(true);task=null;if(::start.isInitialized){start.isEnabled=true;stop.isEnabled=false}}
  override fun onRequestPermissionsResult(code:Int,permissions:Array<out String>,grants:IntArray){super.onRequestPermissionsResult(code,permissions,grants);if(code==1){if(grants.firstOrNull()==PackageManager.PERMISSION_GRANTED)begin() else status.text="Для прослушивания разреши доступ к микрофону"}}
- override fun onStop(){cancel();if(::status.isInitialized && status.text.startsWith("Слушаем"))status.text="Прослушивание остановлено";super.onStop()}
+ override fun onStop(){val busy=!cancelled;cancel();if(busy && ::status.isInitialized)status.text="Действие остановлено. Можно повторить.";super.onStop()}
  override fun onDestroy(){alive=false;cancel();worker.shutdownNow();main.removeCallbacksAndMessages(null);super.onDestroy()}
 }

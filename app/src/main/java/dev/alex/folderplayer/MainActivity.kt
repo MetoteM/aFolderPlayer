@@ -29,7 +29,6 @@ class MainActivity : Activity() {
  private var page="library"
  private lateinit var pageMotion:SheetMotion
  private var soundReturn="player"
- private var returnToOptions=false
  private var lyricsRequestedId:String?=null
  private var directCancel:LyricsSearch.Cancel?=null
  private var directTask:java.util.concurrent.Future<*>?=null
@@ -393,18 +392,16 @@ class MainActivity : Activity() {
   } }.show()
  }
  private fun settings() {
-  val names=mutableListOf("Добавить папку","Выбранные папки","Обновить библиотеку","Шаг перемотки","Таймер сна","Эквалайзер","Расширения","О приложении","Определить песню")
-  var menu:AlertDialog?=null
-  menu=optionMenu(this,"Настройки",names) { i -> when(i) {
+  val names=mutableListOf("Добавить папку","Выбранные папки","Обновить библиотеку","Шаг перемотки","Таймер сна","Расширения","О приложении","Определить песню")
+  optionMenu(this,"Настройки",names) { i -> when(i) {
    0 -> startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION),100)
    1 -> folders()
    2 -> scan()
    3 -> AlertDialog.Builder(this).setTitle("Шаг перемотки").setSingleChoiceItems(arrayOf("10 секунд","20 секунд"),if(prefs.getInt("seekSeconds",10)==10) 0 else 1) { d,n -> prefs.edit().putInt("seekSeconds",if(n==0) 10 else 20).apply(); d.dismiss() }.show()
    4 -> AlertDialog.Builder(this).setTitle("Остановить музыку через…").setItems(arrayOf("15 минут","30 минут","60 минут","Выключить таймер")) { _,n -> prefs.edit().putLong("sleepDeadline",if(n==3) 0 else System.currentTimeMillis()+listOf(15,30,60)[n]*60000L).apply(); toast(if(n==3) "Таймер выключен" else "Таймер установлен") }.show()
-   5 -> { returnToOptions=true;menu?.dismiss();equalizer() }
-   6 -> extensions()
-   7 -> about()
-   8 -> { controller?.pause();startActivity(Intent(this,RecognitionActivity::class.java)) }
+   5 -> extensions()
+   6 -> about()
+   7 -> { controller?.pause();startActivity(Intent(this,RecognitionActivity::class.java)) }
   } }
  }
  private fun folders() {
@@ -483,7 +480,7 @@ class MainActivity : Activity() {
  private fun currentTrack()=tracks.find { it.uri==controller?.currentMediaItem?.mediaId }
  private fun backPage() {
   val target=when(page) { "player"->"library";"sound"->soundReturn;"translation"->"lyrics";else->"player" }
-  if(page=="player")showPage(target) else pageMotion.leavePage { if(alive) { showPage(target);if(returnToOptions){returnToOptions=false;settings()} } }
+  if(page=="player")showPage(target) else pageMotion.leavePage { if(alive)showPage(target) }
  }
  private fun previewPlayer(travel:Float) {
   if(page!="library")return
@@ -556,7 +553,7 @@ class MainActivity : Activity() {
   directCancel?.cancel();directTask?.cancel(true);directResults=emptyList();directId=track.uri
   val cancel=LyricsSearch.Cancel();directCancel=cancel;screens.lyricsSearching(track.uri,true,"Ищем слова песни…")
   directTask=networkExecutor.submit {
-   val result=runCatching { lyricsSearch.search(track.title,track.artist,track.duration,cancel) }
+   val result=runCatching { lyricsSearch.searchExpanded(track.title,track.artist,track.duration,cancel) }
    prefs.edit().putLong("lyricsRetryUntil",lyricsSearch.cooldown()).apply()
    handler.post { if(alive && page=="lyrics" && directCancel===cancel && currentTrack()?.uri==track.uri) {
     directTask=null
@@ -573,7 +570,7 @@ class MainActivity : Activity() {
  private fun saveDirectLyrics(track:Track,item:LyricsSearch.Result) {
   screens.lyricsSearching(track.uri,true,"Сохраняем текст…")
   executor.execute {
-   val result=runCatching { val document=LyricsDocument(item.text);lyricStore.save(track.uri,item.text);prefs.edit().putString("lyricsSource:${track.uri}","Источник: LRCLIB № ${item.id} · ${item.title} — ${item.artist}").apply();document }
+   val result=runCatching { val document=LyricsDocument(item.text);lyricStore.save(track.uri,item.text);prefs.edit().putString("lyricsSource:${track.uri}","Источник: LRCLIB · ${item.title} — ${item.artist}").apply();document }
    handler.post { if(alive && page=="lyrics" && currentTrack()?.uri==track.uri) {
     result.onSuccess { screens.lyricsSearching(track.uri,false,"");screens.setLyrics(track.uri,it,null);mediaLoadedId=track.uri }.onFailure { screens.lyricsSearching(track.uri,false,"Не удалось сохранить текст. Повтори попытку.") }
    } }
@@ -718,19 +715,21 @@ class MainActivity : Activity() {
   val panel=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(16,8,16,8) }
   val title=EditText(this).apply { hint="Название песни";setText(track.title);isSingleLine=true;filters=arrayOf(android.text.InputFilter.LengthFilter(200)) };panel.addView(title)
   val artist=EditText(this).apply { hint="Исполнитель (можно оставить пустым)";setText(track.artist);isSingleLine=true;filters=arrayOf(android.text.InputFilter.LengthFilter(200)) };panel.addView(artist)
-  panel.addView(label("По кнопке поиска LRCLIB получит название и исполнителя. Аудиофайл и библиотека не отправляются. Выбранный текст можно сохранить для офлайн-просмотра.",14f))
+  panel.addView(label("Поиск по названию и исполнителю. Перед сохранением проверь выбранный текст.",14f))
   val status=label("",14f);panel.addView(status)
   var busy=false
-  val dialog=AlertDialog.Builder(this).setTitle("Поиск текста").setView(ScrollView(this).apply { addView(panel) }).setPositiveButton("Поиск",null).setNegativeButton("Закрыть",null).create()
+  val dialog=AlertDialog.Builder(this).setTitle("Поиск текста").setView(ScrollView(this).apply { addView(panel) }).setPositiveButton("Поиск",null).setNegativeButton("Закрыть",null).setNeutralButton("В интернете",null).create()
   dialog.setOnDismissListener { networkCancel?.cancel();networkTask?.cancel(true);networkCancel=null;networkTask=null }
-  dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+  dialog.setOnShowListener {
+   dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener { LyricsWeb.open(this,title.text.toString(),artist.text.toString()) }
+   dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
    if(busy) return@setOnClickListener
    val name=title.text.toString().trim();val performer=artist.text.toString().trim()
    if(name.isBlank()) { title.error="Введи название песни";return@setOnClickListener }
    busy=true;dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=false;status.text="Ищем текст…"
    val cancel=LyricsSearch.Cancel();networkCancel=cancel
    networkTask=networkExecutor.submit {
-    val result=runCatching { lyricsSearch.search(name,performer,track.duration,cancel) };prefs.edit().putLong("lyricsRetryUntil",lyricsSearch.cooldown()).apply()
+    val result=runCatching { lyricsSearch.searchExpanded(name,performer,track.duration,cancel) };prefs.edit().putLong("lyricsRetryUntil",lyricsSearch.cooldown()).apply()
     handler.post { if(alive && dialog.isShowing) {
      busy=false;dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=true
      result.onFailure { status.text=SearchSupport.message(it,"LRCLIB") }.onSuccess { found ->
@@ -753,14 +752,14 @@ val labels=found.map { item ->
  }
  private fun previewLyrics(track:Track,item:LyricsSearch.Result) {
   val panel=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(16,8,16,8) }
-  panel.addView(label("${item.title} — ${item.artist}\n${item.album}\nИсточник: LRCLIB № ${item.id}\nТекст сохранится для «${track.title}» и заменит прежний сохранённый текст.",14f))
+  panel.addView(label("${item.title} — ${item.artist}\n${item.album}\nТекст сохранится для «${track.title}» и заменит прежний сохранённый текст.",14f))
   val preview=label(if(item.text.isBlank()) "Запись помечена как инструментальная: текста нет." else LyricsDocument(item.text).plain,16f);preview.setTextIsSelectable(true);panel.addView(preview)
   val dialog=AlertDialog.Builder(this).setTitle("Проверить текст").setView(ScrollView(this).apply { addView(panel) }).setPositiveButton("Сохранить",null).setNegativeButton("Отмена",null).create()
   dialog.setOnShowListener {
    dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=item.text.isNotBlank()
    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
     dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=false
-    executor.execute { val result=runCatching { lyricStore.save(track.uri,item.text);prefs.edit().putString("lyricsSource:${track.uri}","Источник: LRCLIB № ${item.id} · ${item.title} — ${item.artist}").apply() }
+    executor.execute { val result=runCatching { lyricStore.save(track.uri,item.text);prefs.edit().putString("lyricsSource:${track.uri}","Источник: LRCLIB · ${item.title} — ${item.artist}").apply() }
      handler.post { if(alive) { if(result.isSuccess) { dialog.dismiss();localMedia(track) } else { dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled=true;toast("Не удалось сохранить текст") } } }
     }
    }

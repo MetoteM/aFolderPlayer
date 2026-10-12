@@ -58,7 +58,10 @@ public final class LyricsSearch {
   return results.subList(0,Math.min(20,results.size()));
  }
  public List<Result> search(String title,String artist,long durationMs,Cancel cancel) throws Exception {
-  URL url=url(title,artist);beforeRequest();
+  return request(url(title,artist),durationMs,cancel);
+ }
+ private List<Result> request(URL url,long durationMs,Cancel cancel) throws Exception {
+  beforeRequest();
   cancel.check();HttpURLConnection c=connections.open(url);cancel.attach(c);
   try {
    c.setConnectTimeout(10000);c.setReadTimeout(30000);c.setInstanceFollowRedirects(false);
@@ -77,4 +80,44 @@ public final class LyricsSearch {
    }
   } finally { c.disconnect();cancel.clear(); }
  }
+ /** Explicit search with at most three queries. Covers are returned for user review only. */
+ public List<Result> searchExpanded(String title,String artist,long durationMs,Cancel cancel) throws Exception {
+  url(title,artist); // Validate before normalization or network access.
+  List<Result> found=search(title,artist,durationMs,cancel);
+  if(found.stream().anyMatch(r -> !r.text.trim().isEmpty()))return found;
+  String name=cleanTitle(title),performer=clean(artist);
+  if(name.isEmpty())return found;
+  if(!name.equals(title.trim()) || !performer.equals(artist.trim())) {
+   awaitReady(cancel);found=search(name,performer,durationMs,cancel);
+   if(found.stream().anyMatch(r -> !r.text.trim().isEmpty()))return found;
+  }
+  awaitReady(cancel);
+  found=request(new URL("https://lrclib.net/api/search?q="+URLEncoder.encode(name,"UTF-8")),durationMs,cancel);
+  List<Result> useful=new ArrayList<>();Set<String> seen=new HashSet<>();
+  for(Result r:found) {
+   if(!r.text.trim().isEmpty() && related(name,r.title)) {
+    String key=clean(r.artist)+"|"+new LyricsDocument(r.text).plain.replaceAll("\\s+"," ").trim();
+    if(seen.add(key))useful.add(r);
+   }
+  }
+  useful.sort(Comparator.comparingInt(r -> clean(r.artist).equals(performer)?0:1));
+  return useful;
+ }
+ private void awaitReady(Cancel cancel) throws Exception {
+  while(true){cancel.check();long remaining=cooldown()-System.currentTimeMillis();if(remaining<=0)return;Thread.sleep(Math.min(50,remaining));}
+ }
+ public static String clean(String value) {
+  return java.text.Normalizer.normalize(value,java.text.Normalizer.Form.NFKC).replaceAll("[\\p{Cf}\\p{Cc}]"," ").replace('ё','е').replace('Ё','Е').replaceAll("\\s+"," ").trim().toLowerCase(Locale.ROOT);
+ }
+ public static String cleanTitle(String value) {
+  return clean(value).replaceAll("(?i)\\s*\\([^)]*(?:remaster|official|audio|video|feat\\.|ft\\.|ремастер)[^)]*\\)","")
+   .replaceAll("(?i)\\s+(?:feat\\.|ft\\.)\\s+.*$","").replaceAll("[\\p{Punct}«»“”‘’]"," ").replaceAll("\\s+"," ").trim();
+ }
+ public static boolean related(String requested,String candidate) {
+  Set<String> wanted=new HashSet<>(Arrays.asList(cleanTitle(requested).split(" "))),actual=new HashSet<>(Arrays.asList(cleanTitle(candidate).split(" ")));
+  wanted.remove("");actual.remove("");if(wanted.isEmpty())return false;
+  Set<String> shared=new HashSet<>(wanted);shared.retainAll(actual);
+  return shared.size()>=Math.max(1,(int)Math.ceil(wanted.size()*.75)) && shared.size()>=Math.max(1,(int)Math.ceil(actual.size()*.6));
+ }
+
 }
