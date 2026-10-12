@@ -1,8 +1,8 @@
-name: Publish verified 0.7.3 release
+name: Publish verified 0.7.4 release
 on:
   push:
     branches: [main]
-    paths: ['deployment/releases/0.7.3/manifest.json']
+    paths: ['deployment/releases/0.7.4/manifest.json']
   workflow_dispatch:
 permissions:
   contents: read
@@ -26,7 +26,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          RELEASE_SOURCE=$(python3 -c 'import json;print(json.load(open("deployment/releases/0.7.3/manifest.json"))["source_commit"])')
+          RELEASE_SOURCE=$(python3 -c 'import json;print(json.load(open("deployment/releases/0.7.4/manifest.json"))["source_commit"])')
           gh api "repos/${{ github.repository }}/actions/runs?head_sha=$RELEASE_SOURCE" > /tmp/runs.json
           python3 -c 'import json;assert any(r["name"]=="Android checks" and r["conclusion"]=="success" for r in json.load(open("/tmp/runs.json"))["workflow_runs"]),"Source checks are not successful"'
           git diff --name-only "$RELEASE_SOURCE" HEAD -- app translator tools/build-chinese-package.py tools/download-chinese-inputs.py tools/inference-test deployment/chinese-v1 > /tmp/source-changes
@@ -40,7 +40,7 @@ jobs:
           python3 tools/build-chinese-package.py /tmp/models /tmp/models/english.zip release-output/AFP_Chinese_Russian_v1.zip
       - name: Verify signed assets and catalogue
         run: |
-          python3 tools/publish-release.py release-output "$ANDROID_HOME/build-tools/36.0.0/apksigner" 0.7.3
+          python3 tools/publish-release.py release-output "$ANDROID_HOME/build-tools/36.0.0/apksigner" 0.7.4
           cd release-output
           sha256sum -c SHA256SUMS
           python3 -c 'import json,base64;d=json.load(open("catalog.json"));open("payload","wb").write(base64.b64decode(d["payload"]));open("signature","wb").write(base64.b64decode(d["signature"]))'
@@ -49,7 +49,7 @@ jobs:
           rm payload signature public.pem
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: verified-0.7.3
+          name: verified-0.7.4
           path: release-output/
           retention-days: 7
   publish:
@@ -60,7 +60,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: verified-0.7.3
+          name: verified-0.7.4
           path: release-output
       - name: Publish all assets before making the release visible
         env:
@@ -68,13 +68,13 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_COMMIT: ${{ github.sha }}
         run: |
-          if gh release view v0.7.3 --json isDraft --jq '.isDraft' > /tmp/draft 2>/dev/null; then
+          if gh release view v0.7.4 --json isDraft --jq '.isDraft' > /tmp/draft 2>/dev/null; then
             if [ "$(cat /tmp/draft)" != 'true' ]; then
               echo 'Published release exists; refusing asset replacement.'
               exit 0
             fi
           else
-            gh release create v0.7.3 --target "$RELEASE_COMMIT" --title 'aFolderPlayer 0.7.3' --notes-file release-output/release-notes.md --draft
+            gh release create v0.7.4 --target "$RELEASE_COMMIT" --title 'aFolderPlayer 0.7.4' --notes-file release-output/release-notes.md --draft
           fi
-          gh release upload v0.7.3 release-output/aFolderPlayer_0.7.3.apk release-output/AFP_Translate_0.3.0.apk release-output/AFP_English_Russian_v2.zip release-output/AFP_Chinese_Russian_v1.zip release-output/catalog.json release-output/SHA256SUMS --clobber
-          gh release edit v0.7.3 --draft=false --latest
+          gh release upload v0.7.4 release-output/aFolderPlayer_0.7.4.apk release-output/AFP_Translate_0.3.0.apk release-output/AFP_English_Russian_v2.zip release-output/AFP_Chinese_Russian_v1.zip release-output/catalog.json release-output/SHA256SUMS --clobber
+          gh release edit v0.7.4 --draft=false --latest
