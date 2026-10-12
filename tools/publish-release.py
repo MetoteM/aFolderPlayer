@@ -9,11 +9,12 @@ manifest=json.loads((release/'manifest.json').read_text())
 out=Path(sys.argv[1]);out.mkdir(parents=True, exist_ok=True)
 for asset in manifest['apks']:
  target=out/asset['name']
- data=b''.join((ROOT/part).read_bytes() for part in asset['parts'])
- if asset.get('compression')=='gzip':
-  if hashlib.sha256(data).hexdigest()!=asset['compressed_sha256']:raise ValueError('Compressed APK integrity mismatch')
-  data=gzip.decompress(data)
- target.write_bytes(data)
+ if 'parts' in asset:
+  data=b''.join((ROOT/part).read_bytes() for part in asset['parts'])
+  if asset.get('compression')=='gzip':
+   if hashlib.sha256(data).hexdigest()!=asset['compressed_sha256']:raise ValueError('Compressed APK integrity mismatch')
+   data=gzip.decompress(data)
+  target.write_bytes(data)
  if target.stat().st_size!=asset['size'] or hashlib.sha256(target.read_bytes()).hexdigest()!=asset['sha256']:raise ValueError('APK integrity mismatch')
  result=subprocess.check_output([sys.argv[2], 'verify','--print-certs',str(target)],text=True)
  if 'Signer #1 certificate SHA-256 digest: '+manifest['certificate_sha256'] not in result:raise ValueError('APK certificate mismatch')
