@@ -27,6 +27,9 @@ class SongTextActivity:Activity(){
   source=intent.getStringExtra("source") ?: cached?.text.orEmpty()
   if(!intent.hasExtra("source") && cached!=null){title=cached.title;artist=cached.artist}
   val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(24,24,24,24) }
+  if(android.os.Build.VERSION.SDK_INT>=30)box.setOnApplyWindowInsetsListener { view,insets ->
+   val bars=insets.getInsets(android.view.WindowInsets.Type.systemBars());view.setPadding(24,bars.top+16,24,bars.bottom+16);insets
+  }
   box.addView(TextView(this).apply { text=title.ifBlank { "Текст песни" };textSize=24f })
   if(artist.isNotBlank())box.addView(TextView(this).apply { text=artist;textSize=18f })
   status=TextView(this);box.addView(status)

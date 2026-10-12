@@ -1,0 +1,10 @@
+AFP German → Russian package v1
+
+German → English: Helsinki-NLP/opus-mt-de-en (OPUS-MT, Helsinki Language Technology group), Apache License 2.0.
+Source: https://huggingface.co/Helsinki-NLP/opus-mt-de-en
+ONNX quantization: Xenova/opus-mt-de-en, revision 399dfd68706739fffd503f876093e455ae268a06.
+https://huggingface.co/Xenova/opus-mt-de-en
+AFP modification: source SentencePiece scores remapped to the shared vocabulary; target-only entries disabled for source segmentation. Padding ID 58100.
+
+English → Russian: same audited OPUS-MT model and corrected tokenizer as AFP English → Russian v2, Apache License 2.0.
+This package contains both stages and does not require a separate English package.
