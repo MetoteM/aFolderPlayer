@@ -66,4 +66,13 @@ class TranslationStoreTest {
   File(store.model(ModelPackages.CHINESE),"en-ru/decoder.onnx").delete();assertFalse(store.ready(ModelPackages.CHINESE))
   store.removeModel(ModelPackages.CHINESE);assertTrue(store.ready())
  }
+ @Test fun germanPackageInstallsBothStagesAndKeepsEnglish() {
+  val path=System.getenv("AFP_GERMAN_PACKAGE");org.junit.Assume.assumeTrue("Supply the real German package",!path.isNullOrBlank())
+  val store=setup();store.model.mkdirs();for(name in listOf("encoder.onnx","decoder.onnx","tokenizer.json","verified"))File(store.model,name).writeText("previous")
+  assertEquals(ModelPackages.GERMAN,File(path!!).inputStream().use { store.install(it) })
+  assertTrue(store.ready(ModelPackages.GERMAN));assertTrue(store.ready())
+  assertEquals(49_366_942L,File(store.model(ModelPackages.GERMAN),"de-en/encoder.onnx").length())
+  File(store.model(ModelPackages.GERMAN),"en-ru/decoder.onnx").delete();assertFalse(store.ready(ModelPackages.GERMAN))
+  store.removeModel(ModelPackages.GERMAN);assertTrue(store.ready())
+ }
 }

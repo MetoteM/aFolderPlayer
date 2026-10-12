@@ -70,8 +70,24 @@ public final class OfflineTranslator implements AutoCloseable {
      if(best==0) { completed=true;break; }output.add((long)best);
     }
    }
-   if(!completed)throw new IOException("Перевод строки не завершён. Попробуй сократить исходный текст");
+   if(!completed)throw new IncompleteTranslation("Перевод строки не завершён. Попробуй сократить исходный текст");
    StringBuilder result=new StringBuilder();for(int i=1;i<output.size();i++)result.append(vocabulary[output.get(i).intValue()]);return result.toString().replace('▁',' ').trim();
+  }
+ }
+ static final class IncompleteTranslation extends IOException { IncompleteTranslation(String message){super(message);} }
+ interface SentenceDecoder { String decode(String text) throws Exception; }
+ /** One bounded split retry; never force EOS or return a partial decoder output. */
+ private String adaptive(String text,BooleanSupplier cancelled,int depth) throws Exception {
+  return adaptiveRetry(text,cancelled,depth,value -> sentence(value,cancelled));
+ }
+ static String adaptiveRetry(String text,BooleanSupplier cancelled,int depth,SentenceDecoder decode) throws Exception {
+  try { return decode.decode(text); }
+  catch(IncompleteTranslation failure){
+   if(Thread.currentThread().isInterrupted() || cancelled.getAsBoolean())throw new InterruptedException("Translation cancelled");
+   String[] words=text.trim().split("\\s+");if(depth>=1 || words.length<4)throw failure;
+   int middle=words.length/2;
+   String first=String.join(" ",Arrays.copyOfRange(words,0,middle)),second=String.join(" ",Arrays.copyOfRange(words,middle,words.length));
+   return adaptiveRetry(first,cancelled,depth+1,decode)+" "+adaptiveRetry(second,cancelled,depth+1,decode);
   }
  }
  public interface Progress { void update(int done,int total); }
@@ -84,7 +100,7 @@ public final class OfflineTranslator implements AutoCloseable {
     String translated=repeated.get(line);
     if(translated==null) {
      StringBuilder value=new StringBuilder();
-     for(String chunk:chunks(line)) { if(value.length()>0)value.append(' ');value.append(sentence(chunk,cancelled)); }
+     for(String chunk:chunks(line)) { if(value.length()>0)value.append(' ');value.append(adaptive(chunk,cancelled,0)); }
      translated=value.toString();repeated.put(line,translated);
     }
     result.append(translated);

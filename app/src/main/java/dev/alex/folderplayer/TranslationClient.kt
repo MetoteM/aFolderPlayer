@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 internal class TranslationClient(private val context:Context) {
- companion object { const val PACKAGE="dev.alex.afptranslate";const val MODEL="opus-en-ru-v1";val MODELS=linkedMapOf(MODEL to "Английский → русский · v1","opus-en-ru-v2" to "Английский → русский · v2","opus-zh-ru-v1" to "Китайский → русский · через английский") }
+ companion object { const val PACKAGE="dev.alex.afptranslate";const val MODEL="opus-en-ru-v1";val MODELS=linkedMapOf(MODEL to "Английский → русский · v1","opus-en-ru-v2" to "Английский → русский · v2","opus-de-ru-v1" to "Немецкий → русский","opus-zh-ru-v1" to "Китайский → русский · через английский") }
  private val prefs=context.getSharedPreferences("extensions",0)
  val modelId:String get()=prefs.getString("model",MODEL) ?: MODEL
  val modelTitle:String get()=prefs.getString("modelTitle","Английский → русский") ?: "Английский → русский"

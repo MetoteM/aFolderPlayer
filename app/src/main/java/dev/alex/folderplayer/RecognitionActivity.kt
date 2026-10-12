@@ -34,6 +34,9 @@ class RecognitionActivity : Activity() {
  private var task:java.util.concurrent.Future<*>?=null
  private var lyricsCancel:LyricsSearch.Cancel?=null
  private var generation=0
+ private var cacheTitle=""
+ private var cacheArtist=""
+ private var cachedRead:Button?=null
  private var alive=true
  private val history by lazy { getSharedPreferences("recognition",0) }
  override fun onCreate(state:Bundle?) {
@@ -111,14 +114,23 @@ class RecognitionActivity : Activity() {
    checkActive(token);return JSONObject(bytes.toString("UTF-8"))
   } finally { c.disconnect();if(connection===c)connection=null }
  }
- private fun showResult(title:String,artist:String){
+ @JvmOverloads private fun showResult(title:String,artist:String,cacheName:String=title,cachePerformer:String=artist){
+  cacheTitle=cacheName;cacheArtist=cachePerformer
   results.removeAllViews();results.addView(TextView(this).apply { text="$title\n$artist";textSize=22f })
-  results.addView(Button(this).apply { text="Найти текст и перевести";setOnClickListener { findLyrics(title,artist) } })
+  results.addView(Button(this).apply { text="Найти текст";setOnClickListener { findLyrics(title,artist) } })
+  cachedRead=null;refreshSavedText()
   lyricsChoices=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL };results.addView(lyricsChoices)
   results.addView(Button(this).apply { text="Исправить запрос";setOnClickListener { editQuery(title,artist) } })
   results.addView(Button(this).apply { text="Поиск в интернете";setOnClickListener { LyricsWeb.open(this@RecognitionActivity,title,artist) } })
   results.addView(Button(this).apply { text="Вставить текст";setOnClickListener { enterText() } })
  }
+ private fun refreshSavedText(){
+  if(cachedRead!=null || cacheTitle.isBlank() || !::results.isInitialized || RecognizedTextStore(this).read(cacheTitle,cacheArtist)==null)return
+  cachedRead=Button(this).apply { text="Читать сохранённый текст";setOnClickListener {
+   startActivity(Intent(this@RecognitionActivity,SongTextActivity::class.java).putExtra("songTitle",cacheTitle).putExtra("artist",cacheArtist).putExtra("cacheTitle",cacheTitle).putExtra("cacheArtist",cacheArtist))
+  } };results.addView(cachedRead,minOf(2,results.childCount))
+ }
+ override fun onResume(){super.onResume();refreshSavedText()}
  private fun editQuery(title:String,artist:String){
   cancel();status.text="Можно уточнить запрос"
   val panel=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
@@ -127,7 +139,7 @@ class RecognitionActivity : Activity() {
   val dialog=AlertDialog.Builder(this).setTitle("Поиск текста").setView(panel).setPositiveButton("Поиск",null).setNegativeButton("Закрыть",null).create()
   dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
    if(name.text.isBlank()){name.error="Введи название песни";return@setOnClickListener}
-   val t=name.text.toString().trim();val a=performer.text.toString().trim();dialog.dismiss();showResult(t,a);findLyrics(t,a)
+   val t=name.text.toString().trim();val a=performer.text.toString().trim();dialog.dismiss();showResult(t,a,cacheTitle,cacheArtist);findLyrics(t,a)
   } };dialog.show()
  }
  private fun enterText(){
@@ -136,10 +148,10 @@ class RecognitionActivity : Activity() {
   val dialog=AlertDialog.Builder(this).setTitle("Слова песни").setView(field).setPositiveButton("Открыть",null).setNegativeButton("Закрыть",null).create()
   dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
    if(field.text.isBlank()){field.error="Добавь текст";return@setOnClickListener}
-   val source=field.text.toString();dialog.dismiss();openText(source)
+   val source=field.text.toString();dialog.dismiss();openText(source,cacheTitle,cacheArtist)
   } };dialog.show()
  }
- private fun openText(source:String){startActivity(Intent(this,DocumentActivity::class.java).putExtra("source",source))}
+ private fun openText(source:String,title:String="",artist:String=""){startActivity(Intent(this,SongTextActivity::class.java).putExtra("source",source).putExtra("songTitle",title).putExtra("artist",artist).putExtra("cacheTitle",cacheTitle).putExtra("cacheArtist",cacheArtist))}
  private fun showLyrics(found:List<LyricsSearch.Result>,requestedArtist:String){
   lyricsChoices.removeAllViews()
   val unique=found.filter { it.text.isNotBlank() }.distinctBy { LyricsSearch.clean(it.artist)+"|"+LyricsDocument(it.text).plain.replace(Regex("\\s+")," ") }.take(12)
@@ -149,7 +161,7 @@ class RecognitionActivity : Activity() {
    val other=LyricsSearch.clean(item.artist)!=LyricsSearch.clean(requestedArtist) && requestedArtist.isNotBlank()
    lyricsChoices.addView(Button(this).apply {
     text="${item.title} — ${item.artist}"+(if(other)"\nДругая версия — проверь слова" else "")
-    setOnClickListener { openText(LyricsDocument(item.text).plain) }
+    setOnClickListener { openText(LyricsDocument(item.text).plain,item.title,item.artist) }
    })
   }
  }
