@@ -40,6 +40,18 @@ class DocumentActivityTest {
    assertEquals("Здравствуйте.",TranslationStore(app).read("content://song","Hello."))
   } finally { screen.pause().stop().destroy() }
  }
+ @Test fun perTextTranslationModelOverridesOnlyCurrentDocument() {
+  val app=RuntimeEnvironment.getApplication()
+  val prefs=app.getSharedPreferences("extensions",0)
+  prefs.edit().putString("model","opus-zh-ru-v1").putString("modelTitle","Chinese").commit()
+  val screen=Robolectric.buildActivity(DocumentActivity::class.java,Intent(app,DocumentActivity::class.java)
+   .putExtra("source","Ich liebe dich.").putExtra("translationModel","opus-de-ru-v1")).create().start().resume()
+  try {
+   val model=DocumentActivity::class.java.getDeclaredField("model").apply { isAccessible=true }.get(screen.get())
+   assertEquals("opus-de-ru-v1",model)
+   assertEquals("opus-zh-ru-v1",prefs.getString("model",null))
+  } finally { screen.pause().stop().destroy();prefs.edit().clear().commit() }
+ }
  @Test fun corruptHistoryCannotBeOverwritten() {
   val app=RuntimeEnvironment.getApplication();val file=File(app.filesDir,"full-document-history.json");file.writeText("broken")
   val screen=Robolectric.buildActivity(DocumentActivity::class.java,Intent(app,DocumentActivity::class.java)).create().start().resume()

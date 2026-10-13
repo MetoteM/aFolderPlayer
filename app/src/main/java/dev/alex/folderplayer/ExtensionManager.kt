@@ -91,8 +91,8 @@ internal class ExtensionManager(private val host:Activity,private val engine:Tra
  }
  private fun downloadProgress(done:Long,total:Long,title:String) {
   main.post { if(!closed && !cancelled && busy!=null) {
-   progress?.isIndeterminate=false;progress?.progress=((done*1000)/total).toInt()
-   progressText?.text="Скачиваем $title\n${done*100/total}% · ${String.format(java.util.Locale.ROOT, "%.1f",done/1_000_000.0)} / ${String.format(java.util.Locale.ROOT, "%.1f",total/1_000_000.0)} МБ"
+   progress?.isIndeterminate=false;progress?.progress=ExtensionProgress.scaled(done,total)
+   progressText?.text=ExtensionProgress.label(title,done,total)
   } }
  }
  private fun phase(title:String) { main.post { if(!closed && !cancelled) { progress?.isIndeterminate=true;progressText?.text=title } } }
