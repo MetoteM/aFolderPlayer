@@ -1,0 +1,10 @@
+{
+  "id": "spanish-ru-v1",
+  "kind": "model",
+  "title": "Испанский → русский · прямой",
+  "file": "AFP_Spanish_Russian_v1.zip",
+  "size": 113373854,
+  "sha256": "9dbb7457b206fb2e168c3d51867de3418f7499eca7e293b46e82f5da821110e6",
+  "model": "opus-es-ru-v1",
+  "minimumEngine": 6
+}

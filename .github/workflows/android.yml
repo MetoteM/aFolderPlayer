@@ -69,6 +69,14 @@ jobs:
           unzip -q /tmp/models/french.zip -d /tmp/french-model
           javac -cp /tmp/ort.jar:/tmp/json.jar -d /tmp/inference-test translator/src/main/java/dev/alex/folderplayer/OfflineTranslator.java tools/inference-test/dev/alex/folderplayer/FrenchCheck.java
           /usr/bin/time -v java -Xmx768m -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar dev.alex.folderplayer.FrenchCheck /tmp/french-model
+      - name: Spanish direct package and CPU inference
+        run: |
+          mkdir /tmp/spanish /tmp/spanish-model
+          python3 tools/download-spanish-inputs.py /tmp/spanish
+          python3 tools/build-spanish-package.py /tmp/spanish /tmp/models/spanish.zip
+          unzip -q /tmp/models/spanish.zip -d /tmp/spanish-model
+          javac -cp /tmp/ort.jar:/tmp/json.jar -d /tmp/inference-test translator/src/main/java/dev/alex/folderplayer/OfflineTranslator.java tools/inference-test/dev/alex/folderplayer/SpanishCheck.java
+          /usr/bin/time -v java -Xmx768m -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar dev.alex.folderplayer.SpanishCheck /tmp/spanish-model
       - name: Build and test
         # Direct French package uses the same production Java decoder, one stage.
         env:
@@ -76,6 +84,7 @@ jobs:
           AFP_CHINESE_PACKAGE: /tmp/models/chinese.zip
           AFP_GERMAN_PACKAGE: /tmp/models/german.zip
           AFP_FRENCH_PACKAGE: /tmp/models/french.zip
+          AFP_SPANISH_PACKAGE: /tmp/models/spanish.zip
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon :app:assembleRelease :translator:assembleRelease :app:testReleaseUnitTest :translator:testReleaseUnitTest :app:lintRelease :translator:lintRelease --max-workers=2

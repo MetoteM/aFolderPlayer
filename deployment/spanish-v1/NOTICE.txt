@@ -1,0 +1,17 @@
+AFP Spanish → Russian package v1
+
+Direct Spanish → Russian: Helsinki-NLP/opus-mt-es-ru (OPUS-MT,
+Helsinki Language Technology group), Apache License 2.0.
+Source: https://huggingface.co/Helsinki-NLP/opus-mt-es-ru
+ONNX quantization: Xenova/opus-mt-es-ru, revision
+268ccd60bde3cabde17068d482ca6930512f1a85.
+https://huggingface.co/Xenova/opus-mt-es-ru
+
+AFP modification: source SentencePiece scores remapped to shared vocabulary;
+target-only entries disabled for source segmentation.
+Source source.spm SHA-256:
+b309d8a58c506172b66c39fdd552a89792f3fb256f09e0e9a3dbfc0faefa636f
+Source vocab.json SHA-256:
+d81cea81bca9898107f3eb07dfaed23252d4f922dec7552af7039a821a756db1
+Padding and decoder start ID 63429. EOS 0. Unknown 1.
+One stage; no English package required.

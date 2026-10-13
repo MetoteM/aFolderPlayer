@@ -3,6 +3,7 @@ package dev.alex.folderplayer
 /** Audited package identities; downloaded archives cannot supply executable settings. */
 internal object ModelPackages {
  const val GERMAN="opus-de-ru-v1"
+ const val SPANISH="opus-es-ru-v1"
  const val FRENCH="opus-fr-ru-v1"
  const val CHINESE="opus-zh-ru-v1"
  data class Stage(val directory:String,val padding:Int)
@@ -10,6 +11,7 @@ internal object ModelPackages {
  private val weights=mapOf("encoder.onnx" to "97f28d8295d231b7da721ded06fa8c034787df2122cd8f85b904abdc4d15bd53","decoder.onnx" to "7e4e602c31130176b086cd4bf31d6d08d44a6a367617e910870e0ea3e5408574")
  private val english=weights+mapOf("tokenizer.json" to "ab59614552269971b70f0bd5e966fe5adacf472cf9e08baf6841d41def76da35")
  val packages=listOf(
+  Package(SPANISH,mapOf("es-ru/encoder.onnx" to "04702c95f2380c074b9458735fffe44b095ef1a7632f0e13a7f7c7440d995241","es-ru/decoder.onnx" to "648cc96da4127a7ad9623e0d7f6da5c103a4438c64c697cb4fe9ff76148f7819","es-ru/tokenizer.json" to "d335f7bb4aab684324d8b24dde2f6701d39a0b66a4e8cf987683f003fe44212a"),listOf(Stage("es-ru",63429))),
   Package(FRENCH,mapOf("fr-ru/encoder.onnx" to "058326a2132a61b250d117ca78b4b3b6f53e81479c3d3b6bebf3c58850618743","fr-ru/decoder.onnx" to "97ad9b2f99421bd72cc026fcdd0ed579415408fcca910a7de8f9e3a06b7088a4","fr-ru/tokenizer.json" to "809421140b2ba260aedf9f9c96736bc9009a8fe07abaafa6bd71929ed3c322db"),listOf(Stage("fr-ru",64376))),
   Package(OfflineTranslator.MODEL_ID,weights+mapOf("tokenizer.json" to "981cd3d9fef6bb4dda8082afda716b65deb6717cb3ef35ac0b57002c09dec2bb"),listOf(Stage("",62517))),
   Package("opus-en-ru-v2",english,listOf(Stage("",62517))),

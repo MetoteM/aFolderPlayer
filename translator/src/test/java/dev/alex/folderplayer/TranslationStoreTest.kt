@@ -16,6 +16,21 @@ import java.util.zip.ZipOutputStream
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[28])
 class TranslationStoreTest {
+ @Test fun spanishPackageInstallsDirectlyAndRejectedReplacementPreservesLanguages() {
+  val path=System.getenv("AFP_SPANISH_PACKAGE");org.junit.Assume.assumeTrue("Supply the real Spanish package",!path.isNullOrBlank())
+  val store=setup()
+  assertEquals(ModelPackages.SPANISH,File(path!!).inputStream().use { store.install(it) })
+  assertTrue(store.ready(ModelPackages.SPANISH));assertFalse(store.ready(TranslationStore.MODEL_V2))
+  assertEquals(listOf(ModelPackages.Stage("es-ru",63429)),ModelPackages.find(ModelPackages.SPANISH)!!.stages)
+  assertEquals(52_095_390L,File(store.model(ModelPackages.SPANISH),"es-ru/encoder.onnx").length())
+  store.model.mkdirs();for(name in listOf("encoder.onnx","decoder.onnx","tokenizer.json","verified"))File(store.model,name).writeText("previous")
+  for(names in listOf(arrayOf("es-ru/encoder.onnx"),arrayOf("es-ru/tokenizer.json","en-ru/decoder.onnx"),arrayOf("es-ru/../decoder.onnx"))) {
+   try { store.install(ByteArrayInputStream(zip(*names)));fail("Invalid Spanish package accepted") }catch(_:IllegalArgumentException){}
+   assertTrue(store.ready(ModelPackages.SPANISH));assertTrue(store.ready())
+  }
+  store.removeModel(ModelPackages.SPANISH);assertFalse(store.ready(ModelPackages.SPANISH));assertTrue(store.ready())
+  assertEquals("previous",File(store.model,"tokenizer.json").readText())
+ }
  @Test fun directFrenchPackageInstallsWithoutEnglishAndSurvivesRejectedReplacement() {
   val path=System.getenv("AFP_FRENCH_PACKAGE");org.junit.Assume.assumeTrue("Supply the real French package",!path.isNullOrBlank())
   val store=setup()
