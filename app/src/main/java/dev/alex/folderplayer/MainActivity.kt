@@ -106,6 +106,7 @@ class MainActivity : Activity() {
    override fun playlists() { currentTrack()?.let { addToPlaylists(it) } }
    override fun repeat() { repeatDialog() }
    override fun sound() { equalizer() }
+   override fun recognize() { identifySong() }
    override fun installTranslationModel() { extensions() }
    override fun documentTranslation() {
     val track=currentTrack()
@@ -141,6 +142,10 @@ class MainActivity : Activity() {
   tools.addView(command(IconButton.Kind.MENU,"Меню") { settings() },weight().apply { height=dp(48) })
   bulkButton=button("В плейлист") { bulkAdd() };moreTools.addView(bulkButton,weight().apply { height=dp(48) })
   layout.addView(tools);layout.addView(moreTools)
+  val quick=row()
+  quick.addView(button("Определить песню") { identifySong() },LinearLayout.LayoutParams(0,dp(48),2f))
+  quick.addView(button("Обновить") { scan() },LinearLayout.LayoutParams(0,dp(48),1f))
+  layout.addView(quick)
   search=EditText(this).apply { hint="Найти песню или исполнителя"; setTextColor(Color.WHITE); setHintTextColor(Color.LTGRAY); isSingleLine=true }
   search.addTextChangedListener(object: android.text.TextWatcher {
    override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
@@ -316,8 +321,8 @@ class MainActivity : Activity() {
   }
   AlertDialog.Builder(this).setTitle("Сортировка библиотеки").setSingleChoiceItems(arrayOf("Название","Исполнитель","Папка и имя файла","Случайный порядок"),if(library.isRandom(""))3 else prefs.getInt("librarySort",0)) { d,i -> controller?.shuffleModeEnabled=false;if(i==3)library.randomize(tracks,"",prefs.getInt("librarySort",0)) else { library.clearRandom("");prefs.edit().putInt("librarySort",i).apply() };render();reorderPlayingQueue("");d.dismiss() }.setNeutralButton("Годы альбомов") { _,_ -> albumYears.show(tracks) }.show()
  }
- private fun reorderPlayingQueue(name:String) {
-  controller?.let { sendPlaybackCommand(it,PlaybackCommands.REORDER_QUEUE,Bundle().apply { putString("source",name) }) }
+ private fun reorderPlayingQueue(name:String,refreshSource:Boolean=false) {
+  controller?.let { sendPlaybackCommand(it,PlaybackCommands.REORDER_QUEUE,Bundle().apply { putString("source",name);putBoolean("refreshSource",refreshSource) }) }
  }
  private fun addFolderToPlaylist(name:String,onDone:()->Unit={}) {
   val folders=musicFolders(tracks)
@@ -330,11 +335,12 @@ class MainActivity : Activity() {
   AlertDialog.Builder(this).setTitle("Из папки в «$name»").setItems(labels.toTypedArray()) { _,index ->
    val folder=folders[index];val panel=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(24,8,24,8) }
    val count=label("",16f);val recursive=CheckBox(this).apply { text="Включить подпапки";isChecked=false }
+   val follow=CheckBox(this).apply { text="Добавлять новые песни при обновлении библиотеки";isChecked=name!="Избранное";visibility=if(name=="Избранное")View.GONE else View.VISIBLE }
    fun updateCount() { count.text="Песен: ${tracks.count { folder.contains(it,recursive.isChecked) }}. Уже добавленные не дублируются." }
-   recursive.setOnCheckedChangeListener { _,_ -> updateCount() };panel.addView(count);panel.addView(recursive);updateCount()
+   recursive.setOnCheckedChangeListener { _,_ -> updateCount() };panel.addView(count);panel.addView(recursive);panel.addView(follow);updateCount()
    AlertDialog.Builder(this).setTitle(folder.path).setView(panel).setPositiveButton("Добавить") { _,_ ->
     if(name!="Избранное" && name !in library.playlistNames()) toast("Плейлист уже удалён") else {
-     val added=library.addFolder(name,folder,recursive.isChecked);render();toast("Добавлено песен: $added")
+     val added=library.addFolder(name,folder,recursive.isChecked,follow.isChecked);render();toast("Добавлено песен: $added")
     };onDone()
    }.setNegativeButton("Отмена") { _,_ -> onDone() }.setOnCancelListener { onDone() }.show()
   }.setNegativeButton("Отмена") { _,_ -> onDone() }.setOnCancelListener { onDone() }.show()
@@ -391,8 +397,9 @@ class MainActivity : Activity() {
    3 -> AlertDialog.Builder(this).setTitle("Удалить «$name»?").setMessage("Песни останутся на телефоне.").setPositiveButton("Удалить") { _,_ -> library.removePlaylist(name);if(prefs.getString("queueSource","")==name)prefs.edit().putString("queueSource","").apply();selectedPlaylist=null;render() }.setNegativeButton("Отмена",null).show()
   } }.show()
  }
+ private fun identifySong() { controller?.pause();startActivity(Intent(this,RecognitionActivity::class.java)) }
  private fun settings() {
-  val names=mutableListOf("Добавить папку","Выбранные папки","Обновить библиотеку","Шаг перемотки","Таймер сна","Расширения","О приложении","Определить песню")
+  val names=mutableListOf("Добавить папку","Выбранные папки","Обновить библиотеку","Шаг перемотки","Таймер сна","Расширения","О приложении")
   optionMenu(this,"Настройки",names) { i -> when(i) {
    0 -> startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION),100)
    1 -> folders()
@@ -401,7 +408,6 @@ class MainActivity : Activity() {
    4 -> AlertDialog.Builder(this).setTitle("Остановить музыку через…").setItems(arrayOf("15 минут","30 минут","60 минут","Выключить таймер")) { _,n -> prefs.edit().putLong("sleepDeadline",if(n==3) 0 else System.currentTimeMillis()+listOf(15,30,60)[n]*60000L).apply(); toast(if(n==3) "Таймер выключен" else "Таймер установлен") }.show()
    5 -> extensions()
    6 -> about()
-   7 -> { controller?.pause();startActivity(Intent(this,RecognitionActivity::class.java)) }
   } }
  }
  private fun folders() {
@@ -422,7 +428,7 @@ class MainActivity : Activity() {
   scanning=true; render()
   executor.execute {
    val result=runCatching { library.scan() }
-   handler.post { if(alive) { scanning=false; result.onSuccess { (items,errors) -> tracks=items; render(); toast("Найдено ${items.size} песен"+if(errors>0) ". Не удалось прочитать файлов/папок: $errors" else "") }.onFailure { render(); toast("Не удалось обновить библиотеку") } } }
+   handler.post { if(alive) { scanning=false; result.onSuccess { (items,errors) -> tracks=items; render();reorderPlayingQueue(prefs.getString("queueSource","").orEmpty(),true); toast("Найдено ${items.size} песен"+if(errors>0) ". Не удалось прочитать файлов/папок: $errors" else "") }.onFailure { render(); toast("Не удалось обновить библиотеку") } } }
   }
  }
  override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {

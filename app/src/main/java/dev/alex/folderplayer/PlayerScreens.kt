@@ -17,7 +17,7 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
   fun seek(progress:Int); fun favorite(); fun playlists(); fun repeat(); fun sound()
   fun lyricsMenu(); fun select(index:Int); fun move(from:Int,to:Int)
   fun installTranslationModel() {};fun retryTranslation() {};fun documentTranslation() {};
-  fun retryLyrics() {};fun chooseLyrics(index:Int) {}
+  fun retryLyrics() {};fun chooseLyrics(index:Int) {};fun recognize() {}
  }
  data class State(val id:String?,val title:String,val artist:String,val album:String,val source:String,
   val playing:Boolean,val favorite:Boolean,val repeat:Int,val position:Long,val duration:Long,val step:Int)
@@ -92,6 +92,7 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
     controls.addView(button("⏮","Предыдущая песня") { actions.previous() },weight());play=button("▶","Воспроизведение / пауза",true) { actions.toggle() };controls.addView(play,LinearLayout.LayoutParams(dp(76),dp(76)))
     controls.addView(button("⏭","Следующая песня") { actions.next() },weight());forward=button("+10","Вперёд на несколько секунд") { actions.skip(1) };controls.addView(forward,weight());content!!.addView(controls)
     val links=row();links.addView(button("Текст","Открыть текст песни") { actions.open("lyrics") },weight());links.addView(button("Очередь","Открыть очередь") { actions.open("queue") },weight());links.addView(button("Звук","Эквалайзер") { actions.sound() },weight());repeat=button("Повтор: выкл","Режим повтора") { actions.repeat() };links.addView(repeat,weight());content!!.addView(links)
+    content!!.addView(button("Определить песню","Распознать музыку рядом") { actions.recognize() })
 
    }
   }

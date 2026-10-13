@@ -39,7 +39,8 @@ internal class Library(private val context: Context) {
    val retriever=MediaMetadataRetriever()
    try {
     retriever.setDataSource(context,file.uri)
-    val duration=retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: return
+    val duration=retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+    if(duration==null || duration<=0) { errors++;return }
     if(!eligibleDuration(duration)) return
     val title=retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)?.takeIf { it.isNotBlank() } ?: name.substringBeforeLast('.')
     val artist=retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST).orEmpty()
@@ -49,7 +50,7 @@ internal class Library(private val context: Context) {
      readAlbumYear(retriever,name,file.uri),
      tagNumber(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)),
      tagNumber(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DISC_NUMBER)),root)
-   } catch(_: Exception) { errors++ } finally { retriever.release() }
+   } catch(_: Exception) { errors++ } finally { runCatching { retriever.release() } }
   }
   for(root in roots()) {
    val tree=DocumentFile.fromTreeUri(context,Uri.parse(root))
@@ -58,6 +59,7 @@ internal class Library(private val context: Context) {
   }
   val sorted=found.values.sortedBy { it.title.lowercase() }
   prefs.edit().putString("tracks",JSONArray(sorted.map { it.json() }).toString()).apply()
+  syncFolderPlaylists(sorted)
   return AlbumYears(context).apply(sorted) to errors
  }
  fun isRandom(source:String)=prefs.contains("randomOrder:$source")
@@ -71,9 +73,32 @@ internal class Library(private val context: Context) {
  fun randomize(all:List<Track>,source:String,librarySort:Int) { val shuffled=ordered(all,source,librarySort).shuffled();prefs.edit().putString("randomOrder:$source",JSONArray(shuffled.map { it.uri }).toString()).apply() }
  fun playlistSort(name:String):Int = prefs.getInt("playlistSort:$name",SORT_MANUAL).coerceIn(0,3)
  fun setPlaylistSort(name:String,mode:Int) { require(mode in 0..3);prefs.edit().putInt("playlistSort:$name",mode).apply() }
- fun addFolder(name:String,folder:MusicFolder,recursive:Boolean):Int {
+ @Synchronized fun addFolder(name:String,folder:MusicFolder,recursive:Boolean,follow:Boolean=false):Int {
   val existing=playlist(name);val added=playlistOrder(tracks().filter { folder.contains(it,recursive) },SORT_ALBUM).map { it.uri }.filter { it !in existing }
-  savePlaylist(name,existing+added);return added.size
+  savePlaylist(name,existing+added)
+  val data=folderLinks();val links=data.optJSONArray(name) ?: JSONArray();val updated=JSONArray()
+  for(i in 0 until links.length()) {
+   val link=links.getJSONObject(i)
+   if(link.optString("root")!=folder.root || link.optString("path")!=folder.path)updated.put(link)
+  }
+  if(follow)updated.put(JSONObject().put("root",folder.root).put("path",folder.path).put("recursive",recursive).put("excluded",JSONArray()))
+  data.put(name,updated);prefs.edit().putString("playlistFolders",data.toString()).apply()
+  return added.size
+ }
+ private fun folderLinks()=runCatching { JSONObject(prefs.getString("playlistFolders","{}") ?: "{}") }.getOrDefault(JSONObject())
+ /** Append new folder members; manual removals remain excluded and existing order stays intact. */
+ @Synchronized internal fun syncFolderPlaylists(all:List<Track>):Int {
+  val data=folderLinks();var total=0
+  for(name in data.keys().asSequence().toList()) {
+   if(name !in playlistNames())continue
+   val current=playlist(name);val candidates=linkedSetOf<String>();val links=data.optJSONArray(name) ?: continue
+   for(i in 0 until links.length()) {
+    val link=links.getJSONObject(i);val folder=MusicFolder(link.getString("root"),link.getString("path"));val excluded=strings(link.optJSONArray("excluded")?.toString() ?: "[]").toSet()
+    candidates.addAll(playlistOrder(all.filter { folder.contains(it,link.optBoolean("recursive")) && it.uri !in excluded },SORT_ALBUM).map { it.uri })
+   }
+   val added=candidates.filter { it !in current };if(added.isNotEmpty()){savePlaylist(name,current+added);total+=added.size}
+  }
+  return total
  }
  internal fun readAlbumYear(retriever:MediaMetadataRetriever,name:String,uri:Uri):Int? {
   val nativeYear=tagYear(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_YEAR))
@@ -87,16 +112,22 @@ internal class Library(private val context: Context) {
  private fun lists() = runCatching { JSONObject(prefs.getString("playlists","{}") ?: "{}") }.getOrDefault(JSONObject())
  fun playlistNames(): List<String> = lists().keys().asSequence().toList().sorted()
  fun playlist(name: String): Set<String> = strings(lists().optJSONArray(name)?.toString() ?: "[]").toSet()
- fun savePlaylist(name: String, uris: Collection<String>) {
+ @Synchronized fun savePlaylist(name: String, uris: Collection<String>) {
+  val removed=playlist(name)-uris.toSet();val links=folderLinks();val rows=links.optJSONArray(name)
+  if(rows!=null) {
+   for(i in 0 until rows.length()) { val row=rows.getJSONObject(i);val excluded=strings(row.optJSONArray("excluded")?.toString() ?: "[]").toSet();row.put("excluded",JSONArray((excluded+removed)-uris.toSet())) }
+   prefs.edit().putString("playlistFolders",links.toString()).apply()
+  }
   val data=lists().put(name,JSONArray(uris)); prefs.edit().putString("playlists",data.toString()).apply()
  }
- fun renamePlaylist(old: String, name: String): Boolean {
+ @Synchronized fun renamePlaylist(old: String, name: String): Boolean {
   if(name.isBlank() || name=="Избранное" || old=="Избранное") return false
   val data=lists(); if(data.has(name) || !data.has(old)) return false
   data.put(name,data.getJSONArray(old)); data.remove(old)
+  val links=folderLinks();if(links.has(old)){links.put(name,links.getJSONArray(old));links.remove(old);prefs.edit().putString("playlistFolders",links.toString()).apply()}
   val edit=prefs.edit().putString("playlists",data.toString()).putInt("playlistSort:$name",playlistSort(old)).remove("playlistSort:$old");prefs.getString("randomOrder:$old",null)?.let { edit.putString("randomOrder:$name",it) };edit.remove("randomOrder:$old").apply(); return true
  }
- fun removePlaylist(name: String) { val data=lists(); data.remove(name); prefs.edit().putString("playlists",data.toString()).remove("playlistSort:$name").remove("randomOrder:$name").apply() }
+ @Synchronized fun removePlaylist(name: String) { val data=lists(); data.remove(name);val links=folderLinks();links.remove(name);prefs.edit().putString("playlistFolders",links.toString()).putString("playlists",data.toString()).remove("playlistSort:$name").remove("randomOrder:$name").apply() }
  fun toggleFavorite(track: Track) {
   val set=playlist("Избранное").toMutableSet(); if(!set.add(track.uri)) set.remove(track.uri); savePlaylist("Избранное",set)
  }

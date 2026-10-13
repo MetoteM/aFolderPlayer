@@ -16,6 +16,33 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[28],manifest=Config.NONE)
 class PlaylistFeaturesTest {
+ @Test fun followedFolderAddsNewTracksWithoutDuplicatesOrReAddingManualRemovals() {
+  val one=track("one");val two=track("two");val other=track("other",root="other-root");val child=track("child",folder="Music/Album/Sub")
+  val library=save(listOf(one));library.addFolder("P",MusicFolder("r","Music/Album"),false,true)
+  assertEquals(1,library.syncFolderPlaylists(listOf(one,two,other,child)))
+  assertEquals(listOf("one","two"),library.playlist("P").toList());assertEquals(0,library.syncFolderPlaylists(listOf(one,two)))
+  library.savePlaylist("P",listOf("two"));library.syncFolderPlaylists(listOf(one,two));assertEquals(listOf("two"),library.playlist("P").toList())
+  assertTrue(library.renamePlaylist("P","Renamed"));val three=track("three");library.syncFolderPlaylists(listOf(one,two,three));assertEquals(listOf("two","three"),library.playlist("Renamed").toList())
+  library.removePlaylist("Renamed");library.syncFolderPlaylists(listOf(one,two,three));assertFalse("Renamed" in library.playlistNames())
+ }
+ @Test fun staticFolderImportStaysStaticAndRecursiveLinksFollowChildren() {
+  val one=track("one");val child=track("child",folder="Music/Album/Sub");val new=track("new",folder="Music/Album/Sub")
+  val library=save(listOf(one,child));library.addFolder("Static",MusicFolder("r","Music/Album"),true)
+  library.addFolder("Follow",MusicFolder("r","Music/Album"),true,true)
+  library.syncFolderPlaylists(listOf(one,child,new));assertEquals(setOf("one","child"),library.playlist("Static"));assertEquals(setOf("one","child","new"),library.playlist("Follow"))
+ }
+ @Test fun refreshingPlayingSourceAppendsNewTracksAndPreservesPlaybackPosition() {
+  val one=track("file:///one.wav");val two=track("file:///two.wav");val library=save(listOf(one));val app=RuntimeEnvironment.getApplication();app.getSharedPreferences("playback",Context.MODE_PRIVATE).edit().clear().commit()
+  val host=Robolectric.buildService(PlaybackService::class.java).create();val service=host.get()
+  try {
+   service.applyPlaybackCommand(PlaybackCommands.START_QUEUE,Bundle().apply { putString("uri",one.uri) })
+   val player=PlaybackService::class.java.getDeclaredField("player").apply { isAccessible=true }.get(service) as Player
+   player.pause();player.seekTo(0,1200);player.repeatMode=Player.REPEAT_MODE_ALL
+   app.getSharedPreferences("library",Context.MODE_PRIVATE).edit().putString("tracks",JSONArray(listOf(one,two).map { it.json() }).toString()).commit()
+   service.applyPlaybackCommand(PlaybackCommands.REORDER_QUEUE,Bundle().apply { putBoolean("refreshSource",true) })
+   assertEquals(2,player.mediaItemCount);assertEquals(one.uri,player.currentMediaItem?.mediaId);assertEquals(1200L,player.currentPosition);assertFalse(player.playWhenReady);assertEquals(Player.REPEAT_MODE_ALL,player.repeatMode)
+  }finally{host.destroy()}
+ }
  private fun track(id:String,title:String=id,folder:String="Music/Album",filename:String="$title.mp3",album:String="",year:Int?=null,number:Int?=null,disc:Int?=null,root:String="r")=Track(id,title,"Artist",30000,folder,filename,album,"",year,number,disc,root)
  private fun save(tracks:List<Track>):Library {
   val app=RuntimeEnvironment.getApplication()
