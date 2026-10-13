@@ -54,27 +54,29 @@ class SongTextActivity:Activity(){
    main.post { if(alive){translate.isEnabled=true
     if(!foreground){status.text="Перевод не запущен. Можно повторить.";return@post}
     outcome.onSuccess { models ->
-     val expected=sourceModel(source)
-     val preferred=models.firstOrNull { it.first==expected }
-      ?: if(expected=="opus-en-ru-v2")models.firstOrNull { it.first==TranslationClient.MODEL } else null
-     if(preferred==null)missingLanguage()
-     if(models.isNotEmpty()) {
-      if(preferred!=null && models.size==1)launchTranslation(preferred)
-      else chooseInstalledLanguage(models,preferred)
+     val key=intent.getStringExtra("localUri") ?: "recognized:"+cacheTitle+"\n"+cacheArtist
+     when(val decision=SongTranslation.decide(source,models.map { it.first }.toSet(),SongTranslationChoice(this).read(key,source))) {
+      is SongTranslation.Decision.Ready -> launchTranslation(decision.model to TranslationClient.MODELS.getValue(decision.model))
+      is SongTranslation.Decision.Missing -> {
+       status.text=TranslationClient.MissingSongModel(decision.model).message
+       if(models.isNotEmpty())AlertDialog.Builder(this).setMessage(status.text).setNeutralButton("Выбрать вручную") { _,_ -> chooseInstalledLanguage(models,null) }.setPositiveButton("Закрыть",null).show()
+      }
+      SongTranslation.Decision.Choose -> if(models.isEmpty())status.text="Нет установленных языковых пакетов. Открой расширения." else chooseInstalledLanguage(models,null)
+      SongTranslation.Decision.Russian -> status.text="Оригинал уже на русском"
      }
-    }.onFailure { missingLanguage() }
+    }.onFailure { status.text=it.message ?: "Не удалось проверить языковые пакеты" }
    } }
   }
  }
  private fun chooseInstalledLanguage(models:List<Pair<String,String>>,preferred:Pair<String,String>?) {
   val ordered=if(preferred==null)models else listOf(preferred)+models.filterNot { it.first==preferred.first }
-  status.text=if(preferred==null)"Для текста нет подходящего языкового пакета. Можно вручную выбрать установленный язык." else "Проверь определённый язык оригинала"
+  status.text="Выбери язык оригинала только для этого текста"
   AlertDialog.Builder(this).setTitle("Язык оригинала")
    .setItems(ordered.map { it.second+(if(it.first==preferred?.first)" · предложен" else "") }.toTypedArray()) { _,index ->
-    launchTranslation(ordered[index])
+    val key=intent.getStringExtra("localUri") ?: "recognized:"+cacheTitle+"\n"+cacheArtist
+    runCatching { SongTranslationChoice(this).save(key,source,ordered[index].first) }.onSuccess { launchTranslation(ordered[index]) }.onFailure { status.text="Не удалось сохранить выбор языка" }
    }.setNegativeButton("Отмена",null).show()
  }
- private fun missingLanguage(){status.text="Для перевода нужен пакет «${TranslationClient.MODELS[sourceModel(source)]}». Установи его и переводчик в разделе «Расширения». Текст можно читать без них."}
  private fun launchTranslation(model:Pair<String,String>){
   getSharedPreferences("extensions",0).edit().putBoolean("enabled",true).apply()
   status.text="Текст сохранён для чтения без интернета"
@@ -84,20 +86,7 @@ class SongTextActivity:Activity(){
  override fun onStop(){foreground=false;super.onStop()}
  override fun onDestroy(){alive=false;worker.shutdownNow();main.removeCallbacksAndMessages(null);super.onDestroy()}
  companion object {
-  internal fun russian(value:String):Boolean { val letters=value.count { it.isLetter() };return letters>0 && value.count { it in 'А'..'я' || it=='ё' || it=='Ё' }>.6*letters }
-  internal fun sourceModel(value:String):String {
-   if(value.any { it in '\u4e00'..'\u9fff' })return "opus-zh-ru-v1"
-   val words=value.lowercase().split(Regex("[^\\p{L}]+"));val german=setOf("ich","du","nicht","und","mein","dein","mich","dich","wir","der","die","das","ist","ein","eine","mit","auf","für","hast","bist","habe","wenn","liebe","alle","zwei","drei","vier","fünf")
-   val unique=words.toSet()
-   val spanish=setOf("yo","tú","usted","ustedes","nosotros","vosotros","ellos","ellas","soy","eres","somos","estoy","estás","están","quiero","quieres","podemos","puedo","contigo","siempre","nunca","porque","cuando","pero","también","ahora","mañana","aquí","corazón","gracias","hola","dónde","mi","mis","tu","tus","el","los","las","del","que","no","sin")
-   if(value.any { it in "ñÑ¿¡" } || unique.count { it in spanish }>=3 ||
-    ("te" in unique && unique.any { it in setOf("quiero","amo") }) || unique.any { it in setOf("hola","gracias","corazón","quiero") })return "opus-es-ru-v1"
-   val french=setOf("le","la","du","est","je","suis","avec","nous","vous","pas","dans","une","cette","pour","mon","mes","ton","tes","les","des","amour","toujours","jamais","veux","sous","sans","quand","aussi","être")
-   if(unique.count { it in french }>=3 || ("je" in unique && ("aime" in unique || "suis" in unique)) ||
-    unique.any { it in setOf("cœur","coeur","bonjour") })return "opus-fr-ru-v1"
-   val strong=setOf("sonne","mutter","herz","augen","träume","mädchen","schwarz","feuer","himmel","liebst","liebt","liebe")
-   return if(value.any { it in "äöüÄÖÜß" } || unique.count { it in german }>=3 ||
-    ("du" in unique && "hast" in unique) || unique.any { it in strong })"opus-de-ru-v1" else "opus-en-ru-v2"
-  }
+  internal fun russian(value:String):Boolean = SongLanguage.detect(value)==SongLanguage.RUSSIAN
+  internal fun sourceModel(value:String):String = SongLanguage.detect(value)?.takeUnless { it==SongLanguage.RUSSIAN } ?: "opus-en-ru-v2"
  }
 }

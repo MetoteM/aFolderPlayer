@@ -113,7 +113,7 @@ class MainActivity : Activity() {
     cancelTranslation();translationId=track?.uri
     executor.execute {
      val result=runCatching { track?.let { loadLyrics(it) }?.let { LyricsDocument(it).plain } ?: "" }
-     handler.post { if(alive)result.onSuccess { startActivityForResult(Intent(this@MainActivity,DocumentActivity::class.java).putExtra("source",it).putExtra("track",track?.uri),107) }.onFailure { toast(it.message ?: "Не удалось прочитать текст") } }
+     handler.post { if(alive)result.onSuccess { if(track!=null && currentTrack()?.uri==track.uri)startActivityForResult(Intent(this@MainActivity,SongTextActivity::class.java).putExtra("source",it).putExtra("songTitle",track.title).putExtra("artist",track.artist).putExtra("localUri",track.uri),107) }.onFailure { toast(it.message ?: "Не удалось прочитать текст") } }
     }
    }
    override fun retryTranslation() { currentTrack()?.let { translate(it,true) } }
@@ -484,13 +484,14 @@ class MainActivity : Activity() {
  override fun onSaveInstanceState(out:Bundle) { out.putString("soundReturn",soundReturn);out.putString("uiPage",page);out.putString("lyricTarget",lyricTarget); super.onSaveInstanceState(out) }
  private fun currentSongMenu(track:Track) {
   stopDirectLyrics()
-  val choices=arrayOf("Найти текст в интернете","Свой текст","Импорт TXT / LRC","Разметить строки","Экспорт текста","Добавить в плейлист","Год альбома","Исправить поисковое название")
+  val choices=arrayOf("Найти текст в интернете","Свой текст","Импорт TXT / LRC","Разметить строки","Экспорт текста","Добавить в плейлист","Год альбома","Исправить поисковое название","Язык оригинала для перевода")
   AlertDialog.Builder(this).setTitle(track.title).setItems(choices) { _,which -> when(which) {
    0 -> { showPage("lyrics");directLyrics(track) }
    2 -> { lyricTarget=track.uri;startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE),101) }
    5 -> addToPlaylists(track)
    6 -> albumYears.show(tracks.filter { it.albumIdentity()==track.albumIdentity() })
    7 -> editSearchName(track)
+   8 -> editSongLanguage(track)
    else -> executor.execute {
     val raw=runCatching { loadLyrics(track) }.getOrNull().orEmpty()
     handler.post { if(alive)when(which) {
@@ -547,28 +548,59 @@ class MainActivity : Activity() {
  private fun cancelTranslation() {
   translationCancel?.set(true);translationTask?.cancel(true);translationCancel=null;translationTask=null;translationId=null
  }
+ private var translationForeground=false
+ private class ChooseSongLanguage(val source:String,val models:List<Pair<String,String>>):Exception()
  private fun translate(track:Track,force:Boolean=false) {
   if(!force && translationId==track.uri)return
   cancelTranslation();translationId=track.uri
-  val model=translationClient.modelId;val modelTitle=translationClient.modelTitle
   val cancel=java.util.concurrent.atomic.AtomicBoolean(false);translationCancel=cancel
   if(!extensionManager.enabled()) { screens.setTranslation(track.uri,"","Перевод выключен. Подключи отдельный движок и языковой пакет, если они нужны.",1);return }
-  screens.setTranslation(track.uri,"","Читаем сохранённый текст…")
+  screens.setTranslation(track.uri,"","Определяем язык текста…")
   translationTask=translationExecutor.submit {
+   var modelTitle=""
    val result=runCatching {
     val raw=loadLyrics(track) ?: error("Сначала найди или добавь оригинальный текст на соседнем экране")
-    val source=LyricsDocument(raw).plain
-    require(source.any { it.isLetter() }) { "В оригинале нет слов для перевода" }
-    require(!model.startsWith("opus-en-ru-") || source.count { it in 'А'..'я' || it=='ё' || it=='Ё' }<=source.count { it in 'A'..'Z' || it in 'a'..'z' }) { "Этот текст уже на русском. В первой версии переводим с английского на русский" }
+    val source=LyricsDocument(raw).plain;require(source.any { it.isLetter() }) { "В оригинале нет слов для перевода" }
+    val manual=SongTranslationChoice(this).read(track.uri,source)
+    if(manual==null && SongLanguage.detect(source)==SongLanguage.RUSSIAN){modelTitle="Оригинал уже на русском";return@runCatching source}
+    val expected=manual ?: SongLanguage.detect(source)
+    val cachedModels=if(expected=="opus-en-ru-v2")listOf(expected,TranslationClient.MODEL) else listOfNotNull(expected).filter { it in TranslationClient.MODELS }
+    for(cachedModel in cachedModels)translationStore.read(track.uri,source,cachedModel)?.let { modelTitle=TranslationClient.MODELS[cachedModel].orEmpty();return@runCatching it }
+    val installed=translationClient.availableModels()
+    val model=when(val decision=SongTranslation.decide(source,installed.keys,manual)) {
+     is SongTranslation.Decision.Ready -> decision.model
+     is SongTranslation.Decision.Missing -> throw TranslationClient.MissingSongModel(decision.model)
+     SongTranslation.Decision.Choose -> throw ChooseSongLanguage(source,installed.toList())
+     SongTranslation.Decision.Russian -> { modelTitle="Оригинал уже на русском";return@runCatching source }
+    }
+    if(cancel.get())throw InterruptedException()
+    modelTitle=TranslationClient.MODELS[model].orEmpty()
     translationStore.read(track.uri,source,model)?.let { return@runCatching it }
-    handler.post { if(alive && translationCancel===cancel && page=="translation")screens.setTranslation(track.uri,"","${modelTitle} · переводим на устройстве…") }
-    DocumentEngine(this,model).translateSentences(source,cancel) { done,total -> handler.post { if(alive && translationCancel===cancel && page=="translation")screens.setTranslation(track.uri,"","${modelTitle} · $done / $total фрагментов · на устройстве") } }
-    .also { if(!cancel.get())translationStore.save(track.uri,source,it,model) }
+    handler.post { if(alive && translationCancel===cancel && page=="translation")screens.setTranslation(track.uri,"","$modelTitle · переводим на устройстве…") }
+    DocumentEngine(this,model).translateSentences(source,cancel) { done,total -> handler.post { if(alive && translationCancel===cancel && page=="translation")screens.setTranslation(track.uri,"","$modelTitle · $done / $total фрагментов · на устройстве") } }
+     .also { if(!cancel.get())translationStore.save(track.uri,source,it,model) }
    }
    handler.post { if(alive && page=="translation" && currentTrack()?.uri==track.uri && translationCancel===cancel && !cancel.get()) {
-    result.onSuccess { screens.setTranslation(track.uri,it,"Машинный перевод · ${modelTitle} · сохранён на устройстве") }
-     .onFailure { val missing=it is TranslationClient.MissingEngine || it is TranslationClient.MissingModel;screens.setTranslation(track.uri,"",it.message ?: "Не удалось перевести",if(missing)1 else 2) }
+    result.onSuccess { screens.setTranslation(track.uri,it,if(modelTitle=="Оригинал уже на русском")modelTitle else "Машинный перевод · $modelTitle · сохранён на устройстве") }
+     .onFailure {
+      if(it is ChooseSongLanguage) { screens.setTranslation(track.uri,"","Язык текста неоднозначен. Выбери пакет только для этой песни.",2);if(translationForeground)chooseSongLanguage(track,it.source,it.models) }
+      else { val missing=it is TranslationClient.MissingEngine || it is TranslationClient.MissingModel || it is TranslationClient.MissingSongModel;screens.setTranslation(track.uri,"",it.message ?: "Не удалось перевести",if(missing)1 else 2) }
+     }
    } }
+  }
+ }
+ private fun chooseSongLanguage(track:Track,source:String,models:List<Pair<String,String>>) {
+  if(models.isEmpty()){screens.setTranslation(track.uri,"","Нет установленных языковых пакетов. Открой расширения.",1);return}
+  val choices=models.map { it.second }+"Определять автоматически"
+  AlertDialog.Builder(this).setTitle("Язык оригинала этой песни").setItems(choices.toTypedArray()) { _,i ->
+   if(currentTrack()?.uri!=track.uri)return@setItems
+   runCatching { val saved=SongTranslationChoice(this);if(i==models.size)saved.clear(track.uri,source) else saved.save(track.uri,source,models[i].first) }
+    .onSuccess { translate(track,true) }.onFailure { toast("Не удалось сохранить выбор языка") }
+  }.setNegativeButton("Отмена",null).show()
+ }
+ private fun editSongLanguage(track:Track) {
+  executor.execute { val result=runCatching { val source=loadLyrics(track)?.let { LyricsDocument(it).plain } ?: error("Сначала добавь текст");source to translationClient.availableModels().toList() }
+   handler.post { if(alive && currentTrack()?.uri==track.uri)result.onSuccess { (source,models) -> showPage("translation");cancelTranslation();translationId=track.uri;chooseSongLanguage(track,source,models) }.onFailure { toast(it.message ?: "Не удалось проверить языки") } }
   }
  }
  private fun stopDirectLyrics(clear:Boolean=false) {
@@ -819,7 +851,7 @@ val labels=found.map { item ->
    (label.parent as? View)?.background=android.graphics.drawable.GradientDrawable().apply { setColor(if(current)Color.rgb(20,52,53) else PlayerScreens.bg);cornerRadius=dp(14).toFloat() }
   }
  }
- override fun onResume() { super.onResume();extensionManager.resume();appUpdates.resume() }
+ override fun onResume() { super.onResume();translationForeground=true;extensionManager.resume();appUpdates.resume() }
  private val extensionManager by lazy { ExtensionManager(this,translationClient,{ if(alive)toast(it) },{ startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE),103) },{ if(alive && page=="translation")currentTrack()?.let { translate(it,true) } }) }
  private fun extensions() { extensionManager.show() }
  private val appUpdates by lazy { AppUpdates(this) }
@@ -834,7 +866,7 @@ val labels=found.map { item ->
    }.show()
  }
  override fun onStart() { super.onStart(); restorePlayingSource(); handler.removeCallbacks(ticker); handler.post(ticker) }
- override fun onStop() { handler.removeCallbacks(ticker); super.onStop() }
+ override fun onStop() { translationForeground=false;handler.removeCallbacks(ticker); super.onStop() }
  override fun onDestroy() {
   pageMotion.cancel();cancelTranslation();translationExecutor.shutdownNow();extensionManager.close();appUpdates.close()
   directCancel?.cancel();directTask?.cancel(true)
