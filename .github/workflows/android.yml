@@ -30,6 +30,8 @@ jobs:
           java -cp /tmp/http-test dev.alex.folderplayer.ExtensionHttpCheck
       - name: Release checkpoint tests
         run: python3 tools/test_release_checkpoint.py
+      - name: Release staging tests
+        run: python3 tools/test_stage_player_release.py
       - name: Android SDK 36
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
         with:
