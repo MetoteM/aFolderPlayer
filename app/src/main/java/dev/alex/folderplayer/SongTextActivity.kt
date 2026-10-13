@@ -89,6 +89,9 @@ class SongTextActivity:Activity(){
    if(value.any { it in '\u4e00'..'\u9fff' })return "opus-zh-ru-v1"
    val words=value.lowercase().split(Regex("[^\\p{L}]+"));val german=setOf("ich","du","nicht","und","mein","dein","mich","dich","wir","der","die","das","ist","ein","eine","mit","auf","für","hast","bist","habe","wenn","liebe","alle","zwei","drei","vier","fünf")
    val unique=words.toSet()
+   val french=setOf("le","la","du","est","je","suis","avec","nous","vous","pas","dans","une","cette","pour","mon","mes","ton","tes","les","des","amour","toujours","jamais","veux","sous","sans","quand","aussi","être")
+   if(unique.count { it in french }>=3 || ("je" in unique && ("aime" in unique || "suis" in unique)) ||
+    unique.any { it in setOf("cœur","coeur","bonjour") })return "opus-fr-ru-v1"
    val strong=setOf("sonne","mutter","herz","augen","träume","mädchen","schwarz","feuer","himmel","liebst","liebt","liebe")
    return if(value.any { it in "äöüÄÖÜß" } || unique.count { it in german }>=3 ||
     ("du" in unique && "hast" in unique) || unique.any { it in strong })"opus-de-ru-v1" else "opus-en-ru-v2"

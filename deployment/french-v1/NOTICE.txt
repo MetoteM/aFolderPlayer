@@ -1,0 +1,17 @@
+AFP French → Russian package v1
+
+Direct French → Russian: Helsinki-NLP/opus-mt-fr-ru (OPUS-MT,
+Helsinki Language Technology group), Apache License 2.0.
+Source: https://huggingface.co/Helsinki-NLP/opus-mt-fr-ru
+ONNX quantization: Xenova/opus-mt-fr-ru, revision
+c2ec732b045ae9f0e1ae1ea9267840145a8c03fe.
+https://huggingface.co/Xenova/opus-mt-fr-ru
+
+AFP modification: source SentencePiece scores remapped to the shared
+vocabulary; target-only entries disabled for source segmentation.
+Source source.spm SHA-256:
+e852342099cfac79243a4ee0184eeb426814a84bb44b0cdf50516795d696e373
+Source vocab.json SHA-256:
+1b9868de182074d2fc6d606d935b1c80bb18539a2dfc62670ef977571e44651c
+Padding and decoder start ID: 64376. EOS: 0. Unknown: 1.
+This package uses one stage and does not require an English package.

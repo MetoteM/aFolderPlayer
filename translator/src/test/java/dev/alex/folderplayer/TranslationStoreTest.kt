@@ -16,6 +16,22 @@ import java.util.zip.ZipOutputStream
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[28])
 class TranslationStoreTest {
+ @Test fun directFrenchPackageInstallsWithoutEnglishAndSurvivesRejectedReplacement() {
+  val path=System.getenv("AFP_FRENCH_PACKAGE");org.junit.Assume.assumeTrue("Supply the real French package",!path.isNullOrBlank())
+  val store=setup()
+  assertEquals(ModelPackages.FRENCH,File(path!!).inputStream().use { store.install(it) })
+  assertTrue(store.ready(ModelPackages.FRENCH));assertFalse(store.ready(TranslationStore.MODEL_V2))
+  val pkg=ModelPackages.find(ModelPackages.FRENCH)!!
+  assertEquals(listOf(ModelPackages.Stage("fr-ru",64376)),pkg.stages)
+  assertEquals(52_580_253L,File(store.model(ModelPackages.FRENCH),"fr-ru/encoder.onnx").length())
+  for(names in listOf(arrayOf("fr-ru/encoder.onnx"),arrayOf("fr-ru/encoder.onnx","en-ru/tokenizer.json"),arrayOf("fr-ru/../encoder.onnx"))) {
+   try { store.install(ByteArrayInputStream(zip(*names)));fail("Corrupt French package accepted") }catch(_:IllegalArgumentException){}
+   assertTrue(store.ready(ModelPackages.FRENCH))
+  }
+  store.model.mkdirs();for(name in listOf("encoder.onnx","decoder.onnx","tokenizer.json","verified"))File(store.model,name).writeText("previous")
+  store.removeModel(ModelPackages.FRENCH);assertFalse(store.ready(ModelPackages.FRENCH));assertTrue(store.ready())
+  assertEquals("previous",File(store.model,"tokenizer.json").readText())
+ }
  private fun setup():TranslationStore { val c=RuntimeEnvironment.getApplication() as Context;File(c.filesDir,"translation").deleteRecursively();return TranslationStore(c) }
  private fun zip(vararg names:String):ByteArray { val out=ByteArrayOutputStream();ZipOutputStream(out).use { zip -> for(name in names) { zip.putNextEntry(ZipEntry(name));zip.write("invalid".toByteArray());zip.closeEntry() } };return out.toByteArray() }
  @Test fun corruptedPackageCannotReplaceInstalledModel() {

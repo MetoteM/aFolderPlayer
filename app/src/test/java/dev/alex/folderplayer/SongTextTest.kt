@@ -34,6 +34,11 @@ class SongTextTest {
   try {store.save("Recognized song","Original singer","");fail()}catch(expected:IllegalArgumentException){}
   assertEquals("Saved words",store.read("Recognized song","Original singer"))
  }
+ @Test fun frenchIsSuggestedWithoutChangingEnglishOrGermanDetection(){
+  for(text in listOf("Je t'aime.","Je suis là.","Nous attendons dans une maison.","Nous attendons le lever du soleil.","Le cœur et la lumière."))assertEquals("opus-fr-ru-v1",SongTextActivity.sourceModel(text))
+  assertEquals("opus-en-ru-v2",SongTextActivity.sourceModel("I love you. You are always on my mind."))
+  assertEquals("opus-de-ru-v1",SongTextActivity.sourceModel("Ich liebe dich."))
+ }
  @Test fun languagesAreSuggestedFromDistinctGermanWordsAndChineseCharacters(){
   assertEquals("opus-de-ru-v1",SongTextActivity.sourceModel("Du hast mich gefragt. Ich liebe dich."))
   assertEquals("opus-en-ru-v2",SongTextActivity.sourceModel("Die, die, die. I will remember you."))
@@ -46,11 +51,13 @@ class SongTextTest {
  @Test fun songTranslationKeepsGlobalLanguageAndPassesPerTextModel(){
   val app=RuntimeEnvironment.getApplication();val prefs=app.getSharedPreferences("extensions",0)
   prefs.edit().putString("model","opus-zh-ru-v1").putString("modelTitle","Chinese").apply()
-  val host=Robolectric.buildActivity(SongTextActivity::class.java,Intent(app,SongTextActivity::class.java).putExtra("source","Ich liebe dich.")).setup()
-  SongTextActivity::class.java.getDeclaredMethod("launchTranslation",Pair::class.java).apply { isAccessible=true }.invoke(host.get(),"opus-de-ru-v1" to "German")
-  val next=org.robolectric.Shadows.shadowOf(host.get()).nextStartedActivity
-  assertEquals("opus-de-ru-v1",next.getStringExtra("translationModel"));assertEquals("opus-zh-ru-v1",prefs.getString("model",null))
-  host.pause().stop().destroy();prefs.edit().clear().apply()
+  for(model in listOf("opus-de-ru-v1","opus-fr-ru-v1")) {
+   val host=Robolectric.buildActivity(SongTextActivity::class.java,Intent(app,SongTextActivity::class.java).putExtra("source","Original text")).setup()
+   SongTextActivity::class.java.getDeclaredMethod("launchTranslation",Pair::class.java).apply { isAccessible=true }.invoke(host.get(),model to TranslationClient.MODELS[model]!!)
+   val next=org.robolectric.Shadows.shadowOf(host.get()).nextStartedActivity
+   assertEquals(model,next.getStringExtra("translationModel"));assertEquals("opus-zh-ru-v1",prefs.getString("model",null))
+   host.pause().stop().destroy()
+  };prefs.edit().clear().apply()
  }
  @Test fun missingGermanPackageNamesRequiredLanguage(){
   val app=RuntimeEnvironment.getApplication()

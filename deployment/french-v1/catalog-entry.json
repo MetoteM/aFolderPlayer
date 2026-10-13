@@ -1,0 +1,10 @@
+{
+  "id": "french-ru-v1",
+  "kind": "model",
+  "title": "Французский → русский · прямой",
+  "file": "AFP_French_Russian_v1.zip",
+  "size": 114369554,
+  "sha256": "083a0526f9aedb0f6d9abc689bd670c2313afc02aeede57e8a97efe2e1d2ca29",
+  "model": "opus-fr-ru-v1",
+  "minimumEngine": 5
+}
