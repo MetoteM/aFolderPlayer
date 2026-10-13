@@ -20,8 +20,8 @@ internal object TextHistory {
    host.startActivity(Intent(host,SongTextActivity::class.java).putExtra("songTitle",entry.title).putExtra("artist",entry.artist).putExtra("cacheTitle",entry.cacheTitle).putExtra("cacheArtist",entry.cacheArtist))
   })
   val archive=AtomicFile(File(host.filesDir,"full-document-history.json"))
-  fun documents():JSONArray=runCatching { val raw=try { archive.openRead().use { it.readBytes().toString(Charsets.UTF_8) } }catch(_:java.io.FileNotFoundException){null};val legacy=if(raw==null)File(host.filesDir,"full-document-last.json").takeIf { it.exists() }?.readText() else null;DocumentHistory.load(raw,legacy) }.getOrDefault(JSONArray())
-  val all=documents()
+  fun documents():JSONArray { val raw=try { archive.openRead().use { it.readBytes().toString(Charsets.UTF_8) } }catch(_:java.io.FileNotFoundException){null};val legacy=if(raw==null)File(host.filesDir,"full-document-last.json").takeIf { it.exists() }?.readText() else null;return DocumentHistory.load(raw,legacy) }
+  val all=runCatching { documents() }.getOrDefault(JSONArray())
   for(i in all.length()-1 downTo 0) { val row=all.getJSONObject(i);val id=row.getString("id");val text=row.optString("source");records.add(Record("translation:"+id,"Перевод · "+text.replace('\n',' ').take(70),text+"\n"+row.optString("translation")) {
    host.startActivity(Intent(host,DocumentActivity::class.java).putExtra("historyId",id))
   }) }

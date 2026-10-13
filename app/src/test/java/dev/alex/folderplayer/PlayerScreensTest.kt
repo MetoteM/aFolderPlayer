@@ -30,14 +30,15 @@ class PlayerScreensTest {
  private fun all(view:View):List<View> = listOf(view)+(if(view is ViewGroup)(0 until view.childCount).flatMap { all(view.getChildAt(it)) } else emptyList())
  private fun state(id:String="a",position:Long=1500)=PlayerScreens.State(id,"Песня","Автор","Альбом · 2026","Плейлист",true,true,Player.REPEAT_MODE_ALL,position,10000,20)
  @Test fun playerFitsPortraitAndLandscapeWithoutScrolling() {
-  val host=Robolectric.buildActivity(Activity::class.java).setup();val ui=PlayerScreens(host.get(),Actions());ui.show("player");ui.update(state().copy(title="Очень длинное название песни ".repeat(20),artist="Очень длинный исполнитель ".repeat(10)))
-  val density=host.get().resources.displayMetrics.density
+  val host=Robolectric.buildActivity(Activity::class.java).setup();val scaled=host.get().createConfigurationContext(android.content.res.Configuration(host.get().resources.configuration).apply { fontScale=1.3f })
+  for(context in listOf(host.get(),scaled)) { val ui=PlayerScreens(context,Actions());ui.show("player");ui.update(state().copy(title="Очень длинное название песни ".repeat(20),artist="Очень длинный исполнитель ".repeat(10)))
+  val density=context.resources.displayMetrics.density
   for(size in listOf(360 to 640,320 to 480,640 to 320)) {
    val w=(size.first*density).toInt();val h=(size.second*density).toInt()
    repeat(3){ui.view.measure(View.MeasureSpec.makeMeasureSpec(w,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(h,View.MeasureSpec.EXACTLY));ui.view.layout(0,0,w,h)}
    assertTrue(all(ui.view).none { it is android.widget.ScrollView })
    for(button in all(ui.view).filterIsInstance<Button>().filter { it.visibility==View.VISIBLE }) { val rect=android.graphics.Rect();button.getDrawingRect(rect);ui.view.offsetDescendantRectToMyCoords(button,rect);assertTrue("${button.text} outside $size: $rect",rect.bottom<=h && rect.top>=0 && rect.right<=w && rect.left>=0) }
-  };host.pause().stop().destroy()
+  } };host.pause().stop().destroy()
  }
  @Test fun controlsAndMiniPlayerKeepPlaybackStateAcrossScreens() {
   val activity=Robolectric.buildActivity(Activity::class.java).setup().get();val actions=Actions();val ui=PlayerScreens(activity,actions)
@@ -75,7 +76,7 @@ class PlayerScreensTest {
 
  @Test fun compactPlayerHasRepeatInActionRowAndSourceInHeader() {
   val activity=Robolectric.buildActivity(Activity::class.java).setup().get();val ui=PlayerScreens(activity,Actions());ui.show("player");ui.update(state())
-  val buttons=all(ui.view).filterIsInstance<Button>();val text=buttons.first { it.text=="Текст" };val repeat=buttons.first { it.contentDescription=="Режим повтора" }
+  val buttons=all(ui.view).filterIsInstance<Button>();val text=buttons.first { it.text=="Текст" };val repeat=buttons.first { it.contentDescription?.toString()?.startsWith("Повтор:")==true }
   assertSame(text.parent,repeat.parent);assertFalse(buttons.any { it.text=="Перемешать" })
   assertTrue(all(ui.view).filterIsInstance<TextView>().any { it.text=="Сейчас играет — Плейлист" });assertFalse(all(ui.view).filterIsInstance<TextView>().any { it.text.toString().startsWith("Плейлист ·") })
  }

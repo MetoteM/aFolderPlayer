@@ -13,7 +13,7 @@ internal class LyricsStore(private val context:Context) {
  fun save(uri:String,text:String) = synchronized(lock) {
   LyricsDocument(text) // Validate before changing the last saved version.
   val f=file(uri);val stream=f.startWrite()
-  try { stream.write(text.toByteArray(Charsets.UTF_8));f.finishWrite(stream) } catch(e:Exception) { f.failWrite(stream);throw e }
+  try { stream.write(text.toByteArray(Charsets.UTF_8));f.finishWrite(stream);context.getSharedPreferences("text-history",0).edit().remove("local:"+uri).apply() } catch(e:Exception) { f.failWrite(stream);throw e }
  }
  fun importText(uri:Uri):String = context.contentResolver.openInputStream(uri)?.use { stream ->
   val output=java.io.ByteArrayOutputStream();val buffer=ByteArray(4096)

@@ -76,7 +76,7 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
     title=text("",18f);content!!.addView(title)
     lyricStatus=text("Читаем локальный текст…",13f);content!!.addView(lyricStatus)
     lyricText=text("",22f).apply { setLineSpacing(dp(12).toFloat(),1f);setTextIsSelectable(true);setTextColor(muted) };content!!.addView(lyricText)
-    val toggle=Switch(context).apply { text="Автопрокрутка";setTextColor(Color.WHITE);isChecked=auto;setPadding(dp(12),dp(8),dp(12),dp(8));setOnCheckedChangeListener { _,yes -> auto=yes;active=Int.MIN_VALUE } }
+    val toggle=Switch(context).apply { text="Автопрокрутка";setTextColor(Color.WHITE);isChecked=auto;setPadding(dp(12),dp(8),dp(12),dp(8));setOnCheckedChangeListener { _,yes -> auto=yes;active=Int.MIN_VALUE;if(!yes && doc!=null)scroll?.let { ReadingPosition.attach(context,it,"lyrics:"+lyricId+"\n"+doc!!.plain,false) }else scroll?.setOnScrollChangeListener(null) } }
     retryButton=button("Найти текст","Найти или повторить поиск текста") { actions.retryLyrics() };content!!.addView(retryButton)
     resultPanel=LinearLayout(context).apply { orientation=LinearLayout.VERTICAL };content!!.addView(resultPanel)
     content!!.setOnClickListener { if(doc==null && !lyricBusy)actions.retryLyrics() }

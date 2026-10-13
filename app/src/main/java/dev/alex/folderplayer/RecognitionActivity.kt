@@ -53,7 +53,7 @@ class RecognitionActivity : Activity() {
   panel.addView(Button(this).apply { text="История";setOnClickListener { showHistory() } })
   panel.addView(Button(this).apply { text="О распознавании";setOnClickListener {
    AlertDialog.Builder(this@RecognitionActivity).setTitle("Распознавание музыки")
-    .setMessage("После нажатия «Слушать» микрофон записывает до 30 секунд. На сервер Shazam отправляется звуковой отпечаток; сама запись и геолокация не отправляются. Аудио не сохраняется. Используется неофициальный интерфейс сервиса: его доступность может меняться.")
+    .setMessage((if(localUri.isBlank())"После нажатия «Слушать» микрофон записывает до 30 секунд." else "Из текущего файла локально читается фрагмент до 30 секунд. Микрофон не используется.")+" На сервер Shazam отправляется звуковой отпечаток; сам звук, имя файла и геолокация не отправляются. Аудио не сохраняется. Используется неофициальный интерфейс сервиса: его доступность может меняться.")
     .setPositiveButton("Закрыть",null).show()
   } })
   setContentView(ScrollView(this).apply { addView(panel) })

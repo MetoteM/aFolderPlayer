@@ -18,8 +18,8 @@ internal object HistoryDialog {
   val dialog=AlertDialog.Builder(host).setTitle(title).setView(panel).setNegativeButton("Закрыть",null).create()
   list.setOnItemClickListener { _,_,i,_ -> val entry=shown[i]
    AlertDialog.Builder(host).setTitle(entry.label).setItems(arrayOf("Открыть","Удалить из истории")) { _,action ->
-    if(action==0) { dialog.dismiss();open(entry.id) } else if(remove(entry.id)) {
-     render();AlertDialog.Builder(host).setMessage("Запись удалена из истории.").setPositiveButton("Вернуть") { _,_ -> if(restore(entry.id))render() else Toast.makeText(host,"Не удалось вернуть запись",Toast.LENGTH_SHORT).show() }.setNegativeButton("Закрыть",null).show()
+    if(action==0) { dialog.dismiss();runCatching { open(entry.id) }.onFailure { Toast.makeText(host,"Не удалось открыть запись",Toast.LENGTH_SHORT).show() } } else if(runCatching { remove(entry.id) }.getOrDefault(false)) {
+     render();AlertDialog.Builder(host).setMessage("Запись удалена из истории.").setPositiveButton("Вернуть") { _,_ -> if(runCatching { restore(entry.id) }.getOrDefault(false))render() else Toast.makeText(host,"Не удалось вернуть запись",Toast.LENGTH_SHORT).show() }.setNegativeButton("Закрыть",null).show()
     }else Toast.makeText(host,"Не удалось удалить запись",Toast.LENGTH_SHORT).show()
    }.setNegativeButton("Отмена",null).show()
   }
