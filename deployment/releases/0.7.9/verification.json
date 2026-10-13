@@ -1,0 +1,67 @@
+{
+  "version": "0.7.9",
+  "release_url": "https://github.com/MetoteM/aFolderPlayer/releases/tag/v0.7.9",
+  "release_commit": "ce5ea808352ccd3a6d9df30e48c6d22ec707e01b",
+  "source_commit": "29157b850a7e66a40dd72d35834eff663c60149d",
+  "certificate_sha256": "36efde603967282debd976200c92acf46b68144b2704d61930ebdd9c171302cd",
+  "assets": [
+    {
+      "name": "aFolderPlayer_0.7.9.apk",
+      "size": 3871723,
+      "sha256": "44e0421cde6adbd72738eafbf07863b4e54e47269074de92cd79cedc9d7c2d11"
+    },
+    {
+      "name": "AFP_Chinese_Russian_v1.zip",
+      "size": 227250942,
+      "sha256": "59ce8b6e7579e0135f455310379cbdc1410355bbdecd90b0483f21a58d301f59"
+    },
+    {
+      "name": "AFP_English_Russian_v2.zip",
+      "size": 112527869,
+      "sha256": "ddb334359395e3b52f56aa8a496927d7e3ab5dfa9d41d7b6c5e1747779c39a84"
+    },
+    {
+      "name": "AFP_French_Russian_v1.zip",
+      "size": 114369554,
+      "sha256": "083a0526f9aedb0f6d9abc689bd670c2313afc02aeede57e8a97efe2e1d2ca29"
+    },
+    {
+      "name": "AFP_German_Russian_v1.zip",
+      "size": 219944325,
+      "sha256": "e07ff0d5a0adea86620ec15ae94584f03e61568acf8639677c56cfbd9ef8256c"
+    },
+    {
+      "name": "AFP_Spanish_Russian_v1.zip",
+      "size": 113373854,
+      "sha256": "9dbb7457b206fb2e168c3d51867de3418f7499eca7e293b46e82f5da821110e6"
+    },
+    {
+      "name": "AFP_Translate_0.3.3.apk",
+      "size": 19216004,
+      "sha256": "47b539ac4ed4a9f770d3aafcdac07014b1f3d68a3dbca2738534bc0d35473609"
+    },
+    {
+      "name": "catalog.json",
+      "size": 2589,
+      "sha256": "24ed0622ab609f50f3ad97ec4797bc180a39a2ba1aff43ed52d6f75caa546431"
+    },
+    {
+      "name": "SHA256SUMS",
+      "size": 722,
+      "sha256": "a1765601ba93f04abb3fa4e248add5a1faa54cf20bf1c73f020eb57d616508f5"
+    }
+  ],
+  "device_qa": "post-release-TD-DEVICE-079",
+  "result": "passed",
+  "verified_at": "2026-10-13T20:39:19.651662+00:00",
+  "release_workflow_run": 38463972390,
+  "source_checks_run": 38462155854,
+  "upgrade_identity": {
+    "from_version": "0.7.8",
+    "from_version_code": 34,
+    "to_version_code": 35,
+    "package": "dev.alex.folderplayer",
+    "certificate_match": true,
+    "device_install_test": "pending"
+  }
+}
