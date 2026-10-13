@@ -1,0 +1,52 @@
+{
+  "source_commit": "9e5c99c2d4a56592237f17bf368fc73e2e6a7e13",
+  "certificate_sha256": "36efde603967282debd976200c92acf46b68144b2704d61930ebdd9c171302cd",
+  "apks": [
+    {
+      "name": "aFolderPlayer_0.7.6.apk",
+      "size": 3843051,
+      "sha256": "d8b1b55ecf01f4af711583ee760db2430793816a387ea266cb29c93e927029d3",
+      "compression": "gzip",
+      "compressed_sha256": "b925fe25fa540dbee89b218ca4089570ffc2530d1ebd65275fa430a10553ac07",
+      "parts": [
+        "deployment/releases/0.7.6/aFolderPlayer_0.7.6.apk.gz.part00",
+        "deployment/releases/0.7.6/aFolderPlayer_0.7.6.apk.gz.part01",
+        "deployment/releases/0.7.6/aFolderPlayer_0.7.6.apk.gz.part02",
+        "deployment/releases/0.7.6/aFolderPlayer_0.7.6.apk.gz.part03",
+        "deployment/releases/0.7.6/aFolderPlayer_0.7.6.apk.gz.part04",
+        "deployment/releases/0.7.6/aFolderPlayer_0.7.6.apk.gz.part05",
+        "deployment/releases/0.7.6/aFolderPlayer_0.7.6.apk.gz.part06",
+        "deployment/releases/0.7.6/aFolderPlayer_0.7.6.apk.gz.part07"
+      ]
+    },
+    {
+      "name": "AFP_Translate_0.3.1.apk",
+      "size": 19211709,
+      "sha256": "d8f10cd07b2ea42963581d1db4507516a0c6ed4a9ffb441610046955fe7ef94e",
+      "delta": {
+        "base_name": "AFP_Translate_0.3.0.base.apk",
+        "base_url": "https://github.com/MetoteM/aFolderPlayer/releases/download/v0.7.4/AFP_Translate_0.3.0.apk",
+        "base_sha256": "4f28db45cae1118ea76c727dc497009a76a6d7f243f9b8deccc8af15892bf6b5",
+        "recipe": "deployment/releases/0.7.5/AFP_Translate_0.3.1.delta.json.gz",
+        "recipe_sha256": "f4273f71c016cc35f3b8853da6e183fbfaedcaa77cc6e1b54c98fce47780a0c8"
+      }
+    }
+  ],
+  "models": [
+    {
+      "name": "AFP_English_Russian_v2.zip",
+      "size": 112527869,
+      "sha256": "ddb334359395e3b52f56aa8a496927d7e3ab5dfa9d41d7b6c5e1747779c39a84"
+    },
+    {
+      "name": "AFP_Chinese_Russian_v1.zip",
+      "size": 227250942,
+      "sha256": "59ce8b6e7579e0135f455310379cbdc1410355bbdecd90b0483f21a58d301f59"
+    },
+    {
+      "name": "AFP_German_Russian_v1.zip",
+      "size": 219944325,
+      "sha256": "e07ff0d5a0adea86620ec15ae94584f03e61568acf8639677c56cfbd9ef8256c"
+    }
+  ]
+}
