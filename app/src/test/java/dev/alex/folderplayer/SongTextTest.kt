@@ -44,7 +44,7 @@ class SongTextTest {
  @Test fun missingSpanishPackageNamesRequiredLanguage(){
   val app=RuntimeEnvironment.getApplication()
   val host=Robolectric.buildActivity(SongTextActivity::class.java,Intent(app,SongTextActivity::class.java).putExtra("source","Te quiero.")).setup()
-  SongTextActivity::class.java.getDeclaredMethod("missingLanguage").apply { isAccessible=true }.invoke(host.get())
+  SongTextActivity::class.java.getDeclaredMethod("missingLanguage",String::class.java).apply { isAccessible=true }.invoke(host.get(),"opus-es-ru-v1")
   assertTrue(views(host.get().window.decorView).filterIsInstance<TextView>().any { it.text.toString().contains("Испанский → русский") })
   host.pause().stop().destroy()
  }
@@ -76,7 +76,7 @@ class SongTextTest {
  @Test fun missingGermanPackageNamesRequiredLanguage(){
   val app=RuntimeEnvironment.getApplication()
   val host=Robolectric.buildActivity(SongTextActivity::class.java,Intent(app,SongTextActivity::class.java).putExtra("source","Ich liebe dich und du liebst mich.")).setup()
-  SongTextActivity::class.java.getDeclaredMethod("missingLanguage").apply { isAccessible=true }.invoke(host.get())
+  SongTextActivity::class.java.getDeclaredMethod("missingLanguage",String::class.java).apply { isAccessible=true }.invoke(host.get(),"opus-de-ru-v1")
   assertTrue(views(host.get().window.decorView).filterIsInstance<TextView>().any { it.text.toString().contains("Немецкий → русский") })
   host.pause().stop().destroy()
  }

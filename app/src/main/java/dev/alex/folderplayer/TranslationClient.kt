@@ -18,6 +18,7 @@ internal class TranslationClient(private val context:Context) {
  val modelTitle:String get()=prefs.getString("modelTitle","Английский → русский") ?: "Английский → русский"
  fun selectModel(id:String,title:String) { prefs.edit().putString("model",id).putString("modelTitle",title).apply() }
  class MissingEngine:Exception("Движок перевода не установлен. Открой расширения и установи AFP Translate")
+ class MissingSongModel(val requiredModel:String):Exception("Для этой песни нужен пакет «${MODELS[requiredModel] ?: requiredModel}». Установи его в расширениях")
  class MissingModel:Exception("Выбери и установи языковой пакет в расширениях")
  fun installed():Boolean = runCatching { context.packageManager.getApplicationInfo(PACKAGE,0).enabled && context.packageManager.checkSignatures(context.packageName,PACKAGE)==PackageManager.SIGNATURE_MATCH }.getOrDefault(false)
  private fun <T> connected(block:(ITranslationService)->T):T {
