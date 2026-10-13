@@ -1,45 +1,102 @@
 #!/usr/bin/env python3
-"""Prepare a durable, content-addressed upload plan. No credentials or signing keys.
+"""Checkpoint pre-signed release uploads without storing signing credentials.
 
-prepare VERSION: hashes every tracked release file; saves the plan in the release
-folder, so the next Git checkpoint carries the recovery information.
-status VERSION: compares planned Git blob SHAs against GitHub; missing blobs alone
-need uploading. Every successfully staged batch must be committed to the staging
-branch before continuing. A missing local session is not a reason to rebuild.
+prepare VERSION: inventory each prepared release file and save upload-plan.json.
+status VERSION: verify files *linked to the staging branch*, not dangling blobs.
+Missing or mismatched files get an UPLOAD marker and nonzero exit status.
 """
-import argparse, hashlib, json, subprocess, urllib.request
+import argparse
+import hashlib
+import json
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
+
 ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY = "MetoteM/aFolderPlayer"
+
 
 def blob_sha(data):
-    return hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+
 
 def prepare(version):
-    folder=ROOT/'deployment/releases'/version
-    rows=[]
+    folder = ROOT / "deployment" / "releases" / version
+    manifest_file = folder / "manifest.json"
+    if not manifest_file.is_file():
+        raise ValueError("Release manifest missing: signed and verified APK required")
+    manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    commit = manifest["source_commit"]
+    if len(commit) != 40 or any(c not in "0123456789abcdef" for c in commit):
+        raise ValueError("Invalid source commit")
+    rows = []
     for file in sorted(folder.iterdir()):
-        if not file.is_file() or file.name=='upload-plan.json': continue
-        data=file.read_bytes()
-        rows.append(dict(path=str(file.relative_to(ROOT)),size=len(data),git_blob=blob_sha(data),sha256=hashlib.sha256(data).hexdigest()))
-    if not rows: raise ValueError('No prepared release files')
-    manifest=json.loads((folder/'manifest.json').read_text())
-    plan=dict(version=version,source_commit=manifest['source_commit'],staging_branch='release/'+version+'-staging',files=rows)
-    temporary=folder/'upload-plan.json.tmp'
-    temporary.write_text(json.dumps(plan,indent=2)+'\n');temporary.replace(folder/'upload-plan.json')
-    print('Saved upload plan:',len(rows),'files')
+        if file.is_file() and file.name not in ("upload-plan.json", "upload-plan.json.tmp"):
+            data = file.read_bytes()
+            rows.append({
+                "path": file.relative_to(ROOT).as_posix(),
+                "size": len(data),
+                "git_blob": blob_sha(data),
+                "sha256": hashlib.sha256(data).hexdigest(),
+            })
+    if not rows:
+        raise ValueError("No prepared release files")
+    plan = {
+        "version": version, "source_commit": commit,
+        "staging_branch": "release/" + version + "-staging", "files": rows,
+    }
+    temporary = folder / "upload-plan.json.tmp"
+    temporary.write_text(json.dumps(plan, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    temporary.replace(folder / "upload-plan.json")
+    print("Saved upload plan:", len(rows), "files")
+
+
+def remote_blob(path, branch):
+    url = ("https://api.github.com/repos/" + REPOSITORY + "/contents/" +
+           urllib.parse.quote(path, safe="/") + "?ref=" + urllib.parse.quote(branch, safe=""))
+    request = urllib.request.Request(url, headers={
+        "User-Agent": "AFP-release-checkpoint",
+        "Accept": "application/vnd.github+json",
+    })
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            item = json.load(response)
+            if item.get("type") != "file":
+                return None
+            return item.get("sha"), item.get("size")
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return None
+        raise
+
 
 def status(version):
-    plan=json.loads((ROOT/'deployment/releases'/version/'upload-plan.json').read_text())
-    for row in plan['files']:
-        request=urllib.request.Request('https://api.github.com/repos/MetoteM/aFolderPlayer/git/blobs/'+row['git_blob'],method='HEAD',headers={'User-Agent':'AFP-release-checkpoint'})
-        try:
-            with urllib.request.urlopen(request,timeout=20) as response: present=response.status==200
-        except urllib.error.HTTPError as error:
-            if error.code!=404: raise
-            present=False
-        print(('present' if present else 'UPLOAD'),row['path'])
+    plan = json.loads((ROOT / "deployment" / "releases" / version /
+                       "upload-plan.json").read_text(encoding="utf-8"))
+    if plan["version"] != version or plan["staging_branch"] != "release/" + version + "-staging":
+        raise ValueError("Plan identity mismatch")
+    missing = 0
+    for row in plan["files"]:
+        present = remote_blob(row["path"], plan["staging_branch"])
+        valid = present == (row["git_blob"], row["size"])
+        print(("present" if valid else "UPLOAD"), row["path"])
+        if not valid:
+            missing += 1
+    if missing:
+        print("Incomplete staging:", missing, "files missing or mismatched", file=sys.stderr)
+    return missing
 
-if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['prepare','status']);parser.add_argument('version');args=parser.parse_args()
-    if not args.version or any(c not in '0123456789.' for c in args.version): parser.error('Expected numeric version')
-    (prepare if args.command=='prepare' else status)(args.version)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("command", choices=["prepare", "status"])
+    parser.add_argument("version")
+    args = parser.parse_args()
+    if not args.version or any(c not in "0123456789." for c in args.version):
+        parser.error("Expected numeric version")
+    if args.command == "prepare":
+        prepare(args.version)
+    else:
+        sys.exit(1 if status(args.version) else 0)
