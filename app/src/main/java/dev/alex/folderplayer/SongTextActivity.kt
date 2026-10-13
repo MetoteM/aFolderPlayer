@@ -58,7 +58,7 @@ class SongTextActivity:Activity(){
      when(val decision=SongTranslation.decide(source,models.map { it.first }.toSet(),SongTranslationChoice(this).read(key,source))) {
       is SongTranslation.Decision.Ready -> launchTranslation(decision.model to TranslationClient.MODELS.getValue(decision.model))
       is SongTranslation.Decision.Missing -> {
-       status.text=TranslationClient.MissingSongModel(decision.model).message
+       missingLanguage(decision.model)
        if(models.isNotEmpty())AlertDialog.Builder(this).setMessage(status.text).setNeutralButton("Выбрать вручную") { _,_ -> chooseInstalledLanguage(models,null) }.setPositiveButton("Закрыть",null).show()
       }
       SongTranslation.Decision.Choose -> if(models.isEmpty())status.text="Нет установленных языковых пакетов. Открой расширения." else chooseInstalledLanguage(models,null)
@@ -77,6 +77,7 @@ class SongTextActivity:Activity(){
     runCatching { SongTranslationChoice(this).save(key,source,ordered[index].first) }.onSuccess { launchTranslation(ordered[index]) }.onFailure { status.text="Не удалось сохранить выбор языка" }
    }.setNegativeButton("Отмена",null).show()
  }
+ private fun missingLanguage(model:String) { status.text=TranslationClient.MissingSongModel(model).message }
  private fun launchTranslation(model:Pair<String,String>){
   getSharedPreferences("extensions",0).edit().putBoolean("enabled",true).apply()
   status.text="Текст сохранён для чтения без интернета"
