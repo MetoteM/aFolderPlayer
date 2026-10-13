@@ -37,15 +37,17 @@ class RecognitionActivity : Activity() {
  private var cacheTitle=""
  private var cacheArtist=""
  private var cachedRead:Button?=null
+ private var localUri=""
  private var alive=true
  private val history by lazy { getSharedPreferences("recognition",0) }
  override fun onCreate(state:Bundle?) {
   super.onCreate(state)
+  localUri=intent.getStringExtra("localUri").orEmpty()
   val panel=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(24,24,24,24) }
   panel.addView(TextView(this).apply { text="Определить песню";textSize=24f })
-  panel.addView(TextView(this).apply { text="Поднеси телефон к музыке. Запись — до 30 секунд. Для определения нужен интернет." })
+  panel.addView(TextView(this).apply { text=if(localUri.isBlank())"Поднеси телефон к музыке. Запись — до 30 секунд. Для определения нужен интернет." else "Определяем текущий файл по звуковому отпечатку. Микрофон не нужен; для определения нужен интернет." })
   status=TextView(this).apply { text="Готово к прослушиванию";textSize=18f };panel.addView(status)
-  start=Button(this).apply { text="Слушать";setOnClickListener { begin() } };panel.addView(start)
+  start=Button(this).apply { text=if(localUri.isBlank())"Слушать" else "Определить текущий трек";setOnClickListener { if(localUri.isBlank())begin() else beginFile() } };panel.addView(start)
   stop=Button(this).apply { text="Отмена";isEnabled=false;setOnClickListener { cancel();status.text="Действие отменено" } };panel.addView(stop)
   results=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL };panel.addView(results)
   panel.addView(Button(this).apply { text="История";setOnClickListener { showHistory() } })
@@ -55,6 +57,7 @@ class RecognitionActivity : Activity() {
     .setPositiveButton("Закрыть",null).show()
   } })
   setContentView(ScrollView(this).apply { addView(panel) })
+  if(localUri.isNotBlank())main.post { if(alive)beginFile() }
  }
  private fun begin() {
   if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO),1);return}
@@ -77,23 +80,37 @@ class RecognitionActivity : Activity() {
      }
     } finally { runCatching { audio.stop() };audio.release();if(recorder===audio)recorder=null }
     ui(token){status.text="Определяем песню…"}
-    var found:JSONObject?=null
-    for(offset in intArrayOf(0,12*16000,24*16000)){
-     checkActive(token)
-     val segment=samples.copyOfRange(offset,minOf(offset+12*16000,samples.size))
-     val signature=MusicFingerprint.encode(segment)
-     val data=identify(signature,segment.size,token)
-     val track=data.optJSONObject("track")
-     if(track!=null && track.optString("title").isNotBlank() && (data.optJSONArray("matches")?.length() ?: 0) > 0){found=track;break}
-    }
-    samples.fill(0);found
+    try { identifySamples(samples,token) }finally{samples.fill(0)}
    }
    ui(token){
     cancelled=true;start.isEnabled=true;stop.isEnabled=false
     outcome.onSuccess { track ->
      if(track==null)status.text="Песню не удалось определить. Попробуй другой фрагмент."
-     else { val title=track.optString("title").take(300);val artist=track.optString("subtitle").take(300);status.text="Песня найдена";save(title,artist);showResult(title,artist) }
+     else { val title=track.optString("title").take(300);val artist=track.optString("subtitle").take(300);status.text="Песня найдена";save(title,artist);if(localUri.isNotBlank())runCatching { SearchIdentity(this).save(localUri,SongQuery(title.take(200),artist.take(200))) };showResult(title,artist) }
     }.onFailure { status.text="Не удалось определить песню. Проверь интернет и попробуй ещё раз." }
+   }
+  }
+ }
+ private fun identifySamples(samples:ShortArray,token:Int):JSONObject? {
+  for(offset in intArrayOf(0,12*16000,24*16000)) {
+   checkActive(token);if(samples.size-offset<3*16000)continue
+   val segment=samples.copyOfRange(offset,minOf(offset+12*16000,samples.size))
+   val signature=try { MusicFingerprint.encode(segment) }finally{segment.fill(0)}
+   val data=identify(signature,minOf(12*16000,samples.size-offset),token);val track=data.optJSONObject("track")
+   if(track!=null && track.optString("title").isNotBlank() && (data.optJSONArray("matches")?.length() ?: 0)>0)return track
+  };return null
+ }
+ private fun beginFile() {
+  cancel();val token=generation;cancelled=false;start.isEnabled=false;stop.isEnabled=true;results.removeAllViews();status.text="Читаем фрагмент файла…"
+  task=worker.submit {
+   val outcome=runCatching {
+    val samples=LocalAudio.decode(this,localUri,intent.getLongExtra("localPosition",0),intent.getLongExtra("localDuration",0)) { checkActive(token) }
+    try { ui(token){status.text="Определяем текущий трек…"};identifySamples(samples,token) }finally{samples.fill(0)}
+   }
+   ui(token){cancelled=true;start.isEnabled=true;stop.isEnabled=false
+    outcome.onSuccess { song -> if(song==null)status.text="Песню не удалось определить. Попробуй другой фрагмент." else {
+     val title=song.optString("title").take(200);val artist=song.optString("subtitle").take(200);save(title,artist);runCatching { SearchIdentity(this).save(localUri,SongQuery(title,artist)) };status.text="Текущий трек определён";showResult(title,artist)
+    } }.onFailure { status.text=it.message?.takeIf { message -> message in setOf("Слишком короткий фрагмент для определения","Звуковая дорожка не найдена","Неподдерживаемый формат аудио","Чтение фрагмента заняло слишком долго") } ?: "Не удалось определить файл. Проверь доступ к нему и интернет." }
    }
   }
  }
@@ -161,17 +178,17 @@ class RecognitionActivity : Activity() {
    val other=LyricsSearch.clean(item.artist)!=LyricsSearch.clean(requestedArtist) && requestedArtist.isNotBlank()
    lyricsChoices.addView(Button(this).apply {
     text="${item.title} — ${item.artist}"+(if(other)"\nДругая версия — проверь слова" else "")
-    setOnClickListener { openText(LyricsDocument(item.text).plain,item.title,item.artist) }
+    setOnClickListener { if(localUri.isNotBlank())runCatching { SearchIdentity(this@RecognitionActivity).save(localUri,SongQuery(item.title,item.artist));LyricsStore(this@RecognitionActivity).save(localUri,item.text) };openText(LyricsDocument(item.text).plain,item.title,item.artist) }
    })
   }
  }
- private val lyricsSearch=LyricsSearch()
+ private val lyricsSearch by lazy { LyricsSearch(SearchConnections(this)) }
  private fun findLyrics(title:String,artist:String){
   cancel();val token=generation;cancelled=false;start.isEnabled=false;stop.isEnabled=true;status.text="Ищем текст…"
   if(::lyricsChoices.isInitialized)lyricsChoices.removeAllViews()
   val signal=LyricsSearch.Cancel();lyricsCancel=signal
   task=worker.submit {
-   val outcome=runCatching { lyricsSearch.searchExpanded(title,artist,0L,signal) }
+   val outcome=runCatching { TrackSearch(this,lyricsSearch).search(Track(localUri,title,artist,intent.getLongExtra("localDuration",0),""),SongQuery(title,artist),signal) }
    ui(token){cancelled=true;start.isEnabled=true;stop.isEnabled=false
     outcome.onSuccess { showLyrics(it,artist) }
      .onFailure { status.text="Не удалось выполнить поиск. Проверь подключение или попробуй позже." }
@@ -185,11 +202,14 @@ class RecognitionActivity : Activity() {
  }
  private fun showHistory(){
   cancel();status.text="История распознавания"
-  val items=runCatching { JSONArray(history.getString("items","[]")) }.getOrDefault(JSONArray())
-  if(items.length()==0){Toast.makeText(this,"История пока пуста",Toast.LENGTH_SHORT).show();return}
-  AlertDialog.Builder(this).setTitle("Определённые песни").setItems(Array(items.length()){ i -> val item=items.getJSONObject(i);"${item.optString("title")} — ${item.optString("artist")}" }) { _,i ->
-   cancel();val item=items.getJSONObject(i);status.text="Из истории";showResult(item.optString("title"),item.optString("artist"))
-  }.setNegativeButton("Закрыть",null).show()
+  fun rows()=runCatching { JSONArray(history.getString("items","[]")) }.getOrDefault(JSONArray())
+  fun id(row:JSONObject)=LyricsDocument.key(row.optString("title")+"\n"+row.optString("artist"))
+  val removed=mutableMapOf<String,Pair<JSONObject,Int>>()
+  HistoryDialog.show(this,"Определённые песни",{
+   val all=rows();(0 until all.length()).map { i -> val r=all.getJSONObject(i);HistoryDialog.Entry(id(r),"${r.optString("title")} — ${r.optString("artist")}") }
+  },{ key -> val all=rows();(0 until all.length()).map { all.getJSONObject(it) }.firstOrNull { id(it)==key }?.let { status.text="Из истории";showResult(it.optString("title"),it.optString("artist")) }
+  },{ key -> val all=rows();val next=JSONArray();for(i in 0 until all.length()){val r=all.getJSONObject(i);if(id(r)==key)removed[key]=r to i else next.put(r)};history.edit().putString("items",next.toString()).commit()
+  },{ key -> removed[key]?.let { (row,index) -> val all=rows();val values=(0 until all.length()).map { all.getJSONObject(it) }.toMutableList();if(values.none { id(it)==key })values.add(index.coerceIn(0,values.size),row);history.edit().putString("items",JSONArray(values).toString()).commit() } ?: false })
  }
  private fun cancel(){generation++;cancelled=true;lyricsCancel?.cancel();lyricsCancel=null;connection?.disconnect();runCatching { recorder?.stop() };task?.cancel(true);task=null;if(::start.isInitialized){start.isEnabled=true;stop.isEnabled=false}}
  override fun onRequestPermissionsResult(code:Int,permissions:Array<out String>,grants:IntArray){super.onRequestPermissionsResult(code,permissions,grants);if(code==1){if(grants.firstOrNull()==PackageManager.PERMISSION_GRANTED)begin() else status.text="Для прослушивания разреши доступ к микрофону"}}

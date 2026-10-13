@@ -85,6 +85,29 @@ internal class Library(private val context: Context) {
   data.put(name,updated);prefs.edit().putString("playlistFolders",data.toString()).apply()
   return added.size
  }
+ data class FolderLink(val folder:MusicFolder,val recursive:Boolean)
+ fun linkedFolders(name:String):List<FolderLink> {
+  val rows=folderLinks().optJSONArray(name) ?: return emptyList()
+  return (0 until rows.length()).mapNotNull { i -> runCatching { val r=rows.getJSONObject(i);FolderLink(MusicFolder(r.getString("root"),r.getString("path")),r.optBoolean("recursive")) }.getOrNull() }
+ }
+ @Synchronized fun configureFolder(name:String,folder:MusicFolder,recursive:Boolean?) {
+  if(name !in playlistNames())return
+  val data=folderLinks();val rows=data.optJSONArray(name) ?: return;val next=JSONArray()
+  for(i in 0 until rows.length()) { val r=rows.getJSONObject(i)
+   if(r.optString("root")==folder.root && r.optString("path")==folder.path) { if(recursive!=null)next.put(r.put("recursive",recursive)) }else next.put(r)
+  }
+  data.put(name,next);prefs.edit().putString("playlistFolders",data.toString()).apply()
+ }
+ data class RemovedTrack(val playlist:String,val uri:String,val index:Int)
+ @Synchronized fun removeTrack(name:String,uri:String):RemovedTrack? {
+  val old=playlist(name).toList();val index=old.indexOf(uri);if(index<0)return null
+  savePlaylist(name,old.filter { it!=uri });return RemovedTrack(name,uri,index)
+ }
+ @Synchronized fun restoreTrack(item:RemovedTrack):Boolean {
+  if(item.playlist !in playlistNames() && item.playlist!="Избранное")return false
+  val current=playlist(item.playlist).toMutableList();if(item.uri !in current)current.add(item.index.coerceIn(0,current.size),item.uri)
+  savePlaylist(item.playlist,current);return true
+ }
  private fun folderLinks()=runCatching { JSONObject(prefs.getString("playlistFolders","{}") ?: "{}") }.getOrDefault(JSONObject())
  /** Append new folder members; manual removals remain excluded and existing order stays intact. */
  @Synchronized internal fun syncFolderPlaylists(all:List<Track>):Int {

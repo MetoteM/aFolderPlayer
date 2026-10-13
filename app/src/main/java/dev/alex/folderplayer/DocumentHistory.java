@@ -16,5 +16,7 @@ public final class DocumentHistory {
   if(!DocumentTranslation.assemble(selected).equals(row.getString("translation")))throw new JSONException("Результат не совпадает с выбором");
  }
  public static JSONArray append(JSONArray previous,JSONObject row)throws JSONException{validate(row);JSONArray next=new JSONArray(previous.toString());next.put(new JSONObject(row.toString()));return load(serialize(next),null);}
+ public static JSONArray remove(JSONArray rows,String id)throws JSONException {JSONArray next=new JSONArray();for(int i=0;i<rows.length();i++)if(!rows.getJSONObject(i).getString("id").equals(id))next.put(rows.getJSONObject(i));return load(serialize(next),null);}
+ public static JSONArray restore(JSONArray rows,JSONObject row,int index)throws JSONException {validate(row);for(int i=0;i<rows.length();i++)if(rows.getJSONObject(i).getString("id").equals(row.getString("id")))return rows;JSONArray next=new JSONArray();int position=Math.max(0,Math.min(index,rows.length()));for(int i=0;i<=rows.length();i++){if(i==position)next.put(row);if(i<rows.length())next.put(rows.getJSONObject(i));}return load(serialize(next),null);}
  public static String serialize(JSONArray rows)throws JSONException{return new JSONObject().put("schema",1).put("documents",rows).toString(2);}
 }

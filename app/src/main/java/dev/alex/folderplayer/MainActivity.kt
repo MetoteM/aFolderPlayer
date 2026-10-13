@@ -106,7 +106,7 @@ class MainActivity : Activity() {
    override fun playlists() { currentTrack()?.let { addToPlaylists(it) } }
    override fun repeat() { repeatDialog() }
    override fun sound() { equalizer() }
-   override fun recognize() { identifySong() }
+   override fun recognize() { recognitionMenu() }
    override fun installTranslationModel() { extensions() }
    override fun documentTranslation() {
     val track=currentTrack()
@@ -293,7 +293,7 @@ class MainActivity : Activity() {
    0 -> addToPlaylists(track)
    1 -> controller?.addMediaItem(track.item())
    2 -> AlertDialog.Builder(this).setTitle(track.title).setMessage("${track.artist}\nФайл: ${track.filename.ifBlank { androidx.documentfile.provider.DocumentFile.fromSingleUri(this,Uri.parse(track.uri))?.name ?: "Неизвестно" }}\nПапка: ${track.folder}\n${clock(track.duration)}").setPositiveButton("Закрыть",null).show()
-   3 -> if(selectedPlaylist==null) manageMedia(track) else selectedPlaylist?.let { name -> library.savePlaylist(name,library.playlist(name)-track.uri); render() }
+   3 -> if(selectedPlaylist==null) manageMedia(track) else selectedPlaylist?.let { name -> library.removeTrack(name,track.uri)?.let { removed -> render();AlertDialog.Builder(this).setMessage("Песня удалена из плейлиста. Файл сохранён.").setPositiveButton("Вернуть") { _,_ -> if(library.restoreTrack(removed))render() else toast("Плейлист уже удалён") }.setNegativeButton("Закрыть",null).show() } }
    4 -> moveTrack(track,-1)
    5 -> moveTrack(track,1)
    else -> manageMedia(track)
@@ -389,17 +389,37 @@ class MainActivity : Activity() {
  private fun playlistMenu() {
   val name=selectedPlaylist ?: return
   val options=mutableListOf("Добавить из папки","Годы альбомов")
-  if(name!="Избранное")options.addAll(listOf("Переименовать","Удалить плейлист"))
+  if(name!="Избранное")options.addAll(listOf("Связанные папки","Переименовать","Удалить плейлист"))
   AlertDialog.Builder(this).setTitle(name).setItems(options.toTypedArray()) { _,i -> when(i) {
    0 -> addFolderToPlaylist(name)
    1 -> albumYears.show(tracks.filter { it.uri in library.playlist(name) })
-   2 -> renamePlaylist()
-   3 -> AlertDialog.Builder(this).setTitle("Удалить «$name»?").setMessage("Песни останутся на телефоне.").setPositiveButton("Удалить") { _,_ -> library.removePlaylist(name);if(prefs.getString("queueSource","")==name)prefs.edit().putString("queueSource","").apply();selectedPlaylist=null;render() }.setNegativeButton("Отмена",null).show()
+   2 -> linkedPlaylistFolders(name)
+   3 -> renamePlaylist()
+   4 -> AlertDialog.Builder(this).setTitle("Удалить «$name»?").setMessage("Песни останутся на телефоне.").setPositiveButton("Удалить") { _,_ -> library.removePlaylist(name);if(prefs.getString("queueSource","")==name)prefs.edit().putString("queueSource","").apply();selectedPlaylist=null;render() }.setNegativeButton("Отмена",null).show()
   } }.show()
+ }
+ private fun linkedPlaylistFolders(name:String) {
+  val links=library.linkedFolders(name)
+  val labels=links.map { it.folder.path+if(it.recursive)" · с подпапками" else " · без подпапок" }+"＋ Добавить папку"
+  AlertDialog.Builder(this).setTitle("Автопополнение «$name»").setItems(labels.toTypedArray()) { _,i ->
+   if(i==links.size)addFolderToPlaylist(name) else {
+    val link=links[i];val recursive=CheckBox(this).apply { text="Включить подпапки";isChecked=link.recursive }
+    AlertDialog.Builder(this).setTitle(link.folder.path).setView(recursive)
+     .setPositiveButton("Сохранить") { _,_ -> library.configureFolder(name,link.folder,recursive.isChecked);library.syncFolderPlaylists(tracks);render();reorderPlayingQueue(name,true) }
+     .setNeutralButton("Отключить") { _,_ -> library.configureFolder(name,link.folder,null);render();toast("Автопополнение отключено. Песни оставлены.") }
+     .setNegativeButton("Отмена",null).show()
+   }
+  }.setNegativeButton("Закрыть",null).show()
+ }
+ private fun recognitionMenu() {
+  val track=currentTrack() ?: run { toast("Сначала включи песню");return }
+  AlertDialog.Builder(this).setTitle("Определить песню").setItems(arrayOf("Текущий трек · по умолчанию","Музыка рядом")) { _,i ->
+   if(i==1)identifySong() else startActivity(Intent(this,RecognitionActivity::class.java).putExtra("localUri",track.uri).putExtra("localPosition",controller?.currentPosition ?: 0L).putExtra("localDuration",track.duration))
+  }.setNegativeButton("Отмена",null).show()
  }
  private fun identifySong() { controller?.pause();startActivity(Intent(this,RecognitionActivity::class.java)) }
  private fun settings() {
-  val names=mutableListOf("Добавить папку","Выбранные папки","Обновить библиотеку","Шаг перемотки","Таймер сна","Расширения","О приложении")
+  val names=mutableListOf("Добавить папку","Выбранные папки","Обновить библиотеку","Шаг перемотки","Таймер сна","Расширения","О приложении","История текстов")
   optionMenu(this,"Настройки",names) { i -> when(i) {
    0 -> startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION),100)
    1 -> folders()
@@ -464,12 +484,13 @@ class MainActivity : Activity() {
  override fun onSaveInstanceState(out:Bundle) { out.putString("soundReturn",soundReturn);out.putString("uiPage",page);out.putString("lyricTarget",lyricTarget); super.onSaveInstanceState(out) }
  private fun currentSongMenu(track:Track) {
   stopDirectLyrics()
-  val choices=arrayOf("Найти текст в интернете","Свой текст","Импорт TXT / LRC","Разметить строки","Экспорт текста","Добавить в плейлист","Год альбома")
+  val choices=arrayOf("Найти текст в интернете","Свой текст","Импорт TXT / LRC","Разметить строки","Экспорт текста","Добавить в плейлист","Год альбома","Исправить поисковое название")
   AlertDialog.Builder(this).setTitle(track.title).setItems(choices) { _,which -> when(which) {
    0 -> { showPage("lyrics");directLyrics(track) }
    2 -> { lyricTarget=track.uri;startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE),101) }
    5 -> addToPlaylists(track)
    6 -> albumYears.show(tracks.filter { it.albumIdentity()==track.albumIdentity() })
+   7 -> editSearchName(track)
    else -> executor.execute {
     val raw=runCatching { loadLyrics(track) }.getOrNull().orEmpty()
     handler.post { if(alive)when(which) {
@@ -554,19 +575,28 @@ class MainActivity : Activity() {
   directId?.let { screens.lyricsSearching(it,false,"Поиск отменён. Можно повторить попытку.") }
   directCancel?.cancel();directTask?.cancel(true);directCancel=null;directTask=null;directId=null;directResults=emptyList()
  }
+ private fun editSearchName(track:Track) {
+  val old=SearchIdentity(this).read(track.uri) ?: SongNames.queries(track).firstOrNull() ?: SongQuery(track.title,track.artist)
+  val panel=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+  val title=EditText(this).apply { hint="Название песни";setText(old.title);isSingleLine=true;filters=arrayOf(android.text.InputFilter.LengthFilter(200)) };val artist=EditText(this).apply { hint="Исполнитель";setText(old.artist);isSingleLine=true;filters=arrayOf(android.text.InputFilter.LengthFilter(200)) };panel.addView(title);panel.addView(artist)
+  val dialog=AlertDialog.Builder(this).setTitle("Поисковое название").setView(panel).setPositiveButton("Искать",null).setNegativeButton("Отмена",null).create()
+  dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { if(title.text.isBlank())title.error="Введи название" else {
+   runCatching { SearchIdentity(this).save(track.uri,SongQuery(title.text.toString().trim(),artist.text.toString().trim())) }.onSuccess { dialog.dismiss();showPage("lyrics");directLyrics(track) }.onFailure { toast("Не удалось сохранить запрос") }
+  } } };dialog.show()
+ }
  private fun directLyrics(track:Track) {
   if(directId==track.uri && directTask?.isDone==false)return
   directCancel?.cancel();directTask?.cancel(true);directResults=emptyList();directId=track.uri
   val cancel=LyricsSearch.Cancel();directCancel=cancel;screens.lyricsSearching(track.uri,true,"Ищем слова песни…")
   directTask=networkExecutor.submit {
-   val result=runCatching { lyricsSearch.searchExpanded(track.title,track.artist,track.duration,cancel) }
+   val result=runCatching { TrackSearch(this,lyricsSearch).search(track,SearchIdentity(this).read(track.uri),cancel) }
    prefs.edit().putLong("lyricsRetryUntil",lyricsSearch.cooldown()).apply()
    handler.post { if(alive && page=="lyrics" && directCancel===cancel && currentTrack()?.uri==track.uri) {
     directTask=null
     result.onFailure { screens.lyricsSearching(track.uri,false,SearchSupport.message(it,"Сервис текста")+". Можно повторить поиск или добавить свой текст через ⋮.") }.onSuccess { found ->
      val matches=found.filter { it.text.isNotBlank() };directResults=matches
      if(matches.isEmpty())screens.lyricsSearching(track.uri,false,"Текст не найден. Добавь свой текст или импортируй TXT / LRC через ⋮.")
-     else { val chosen=LyricsMatch.automatic(matches,track.title,track.artist,track.album,track.duration)
+     else { val identity=SearchIdentity(this).read(track.uri) ?: SongQuery(track.title,track.artist);val chosen=LyricsMatch.automatic(matches,identity.title,identity.artist,track.album,track.duration)
       if(chosen!=null)saveDirectLyrics(track,chosen) else screens.setLyricsResults(track.uri,matches)
      }
     }
@@ -576,7 +606,7 @@ class MainActivity : Activity() {
  private fun saveDirectLyrics(track:Track,item:LyricsSearch.Result) {
   screens.lyricsSearching(track.uri,true,"Сохраняем текст…")
   executor.execute {
-   val result=runCatching { val document=LyricsDocument(item.text);lyricStore.save(track.uri,item.text);prefs.edit().putString("lyricsSource:${track.uri}","Источник: LRCLIB · ${item.title} — ${item.artist}").apply();document }
+   val result=runCatching { val document=LyricsDocument(item.text);lyricStore.save(track.uri,item.text);SearchIdentity(this).save(track.uri,SongQuery(item.title,item.artist));prefs.edit().putString("lyricsSource:${track.uri}","Источник: LRCLIB · ${item.title} — ${item.artist}").apply();document }
    handler.post { if(alive && page=="lyrics" && currentTrack()?.uri==track.uri) {
     result.onSuccess { screens.lyricsSearching(track.uri,false,"");screens.setLyrics(track.uri,it,null);mediaLoadedId=track.uri }.onFailure { screens.lyricsSearching(track.uri,false,"Не удалось сохранить текст. Повтори попытку.") }
    } }

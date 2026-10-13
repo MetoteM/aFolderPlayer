@@ -43,6 +43,17 @@ class PlaylistFeaturesTest {
    assertEquals(2,player.mediaItemCount);assertEquals(one.uri,player.currentMediaItem?.mediaId);assertEquals(1200L,player.currentPosition);assertFalse(player.playWhenReady);assertEquals(Player.REPEAT_MODE_ALL,player.repeatMode)
   }finally{host.destroy()}
  }
+ @Test fun folderConfigurationPreservesManualExclusionsAndDisconnectKeepsSongs() {
+  val one=track("one");val child=track("child",folder="Music/Album/Sub");val library=save(listOf(one,child));val folder=MusicFolder("r","Music/Album")
+  library.addFolder("P",folder,false,true);library.configureFolder("P",folder,true);library.syncFolderPlaylists(listOf(one,child));assertEquals(setOf("one","child"),library.playlist("P"))
+  library.removeTrack("P","one");library.configureFolder("P",folder,false);library.configureFolder("P",folder,true);library.syncFolderPlaylists(listOf(one,child));assertEquals(setOf("child"),library.playlist("P"))
+  library.configureFolder("P",folder,null);assertTrue(library.linkedFolders("P").isEmpty());library.syncFolderPlaylists(listOf(one,child,track("new")));assertEquals(setOf("child"),library.playlist("P"))
+ }
+ @Test fun undoTrackRemovalRestoresOrderKeepsNewSongsAndDoesNotResurrectPlaylist() {
+  val library=save(emptyList());library.savePlaylist("P",listOf("one","two","three"));val removed=library.removeTrack("P","two")!!
+  library.savePlaylist("P",library.playlist("P")+"new");assertTrue(library.restoreTrack(removed));assertEquals(listOf("one","two","three","new"),library.playlist("P").toList());assertTrue(library.restoreTrack(removed));assertEquals(4,library.playlist("P").size)
+  library.removePlaylist("P");assertFalse(library.restoreTrack(removed))
+ }
  private fun track(id:String,title:String=id,folder:String="Music/Album",filename:String="$title.mp3",album:String="",year:Int?=null,number:Int?=null,disc:Int?=null,root:String="r")=Track(id,title,"Artist",30000,folder,filename,album,"",year,number,disc,root)
  private fun save(tracks:List<Track>):Library {
   val app=RuntimeEnvironment.getApplication()

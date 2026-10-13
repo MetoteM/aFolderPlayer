@@ -32,7 +32,9 @@ class DocumentActivityTest {
   val screen=Robolectric.buildActivity(DocumentActivity::class.java,intent).create().start().resume();val activity=screen.get()
   try {
    assertFalse(button(activity,"Сохранить полный результат").isEnabled)
-   button(activity,"История переводов").performClick();shadowOf(ShadowAlertDialog.getLatestAlertDialog()).clickOnItem(0)
+   button(activity,"История переводов").performClick()
+   val list=views(ShadowAlertDialog.getLatestAlertDialog().window!!.decorView).filterIsInstance<android.widget.ListView>().single();list.performItemClick(list.adapter.getView(0,null,list),0,0)
+   shadowOf(ShadowAlertDialog.getLatestAlertDialog()).clickOnItem(0)
    ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_NEUTRAL).performClick();shadowOf(android.os.Looper.getMainLooper()).idle()
    assertTrue(button(activity,"Сохранить полный результат").isEnabled)
    button(activity,"Сохранить полный результат").performClick()

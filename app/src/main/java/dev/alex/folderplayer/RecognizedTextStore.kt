@@ -20,6 +20,8 @@ internal class RecognizedTextStore(context:Context) {
   val value=JSONObject(String(bytes,Charsets.UTF_8));val text=value.getString("text");require(text.isNotBlank())
   Entry(value.optString("displayTitle",title),value.optString("displayArtist",artist),text)
  }.getOrNull()
+ data class Saved(val cacheTitle:String,val cacheArtist:String,val title:String,val artist:String)
+ fun saved():List<Saved> = root.listFiles().orEmpty().filter { it.name.endsWith(".json") }.sortedByDescending { it.lastModified() }.mapNotNull { f -> runCatching { require(f.length()<=600000);val r=JSONObject(f.readText());Saved(r.getString("title"),r.getString("artist"),r.optString("displayTitle",r.getString("title")),r.optString("displayArtist",r.getString("artist"))) }.getOrNull() }
  fun read(title:String,artist:String)=readEntry(title,artist)?.text
  @Synchronized fun save(title:String,artist:String,text:String,displayTitle:String=title,displayArtist:String=artist){
   require(text.isNotBlank() && text.toByteArray(Charsets.UTF_8).size<=LyricsDocument.MAX_BYTES && text.lines().size<=4000)
