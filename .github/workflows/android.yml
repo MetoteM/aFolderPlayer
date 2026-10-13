@@ -6,6 +6,9 @@ on:
       - 'deployment/releases/**'
       - '.github/workflows/release.yml'
       - '.github/workflows/android.yml'
+      - '.github/workflows/release-*.yml'
+      - '.github/workflows/artifact-maintenance.yml'
+      - 'docs/STORAGE_POLICY.md'
       - 'tools/publish-release.py'
       - 'tools/apk-delta.py'
       - 'docs/GITHUB_RELEASES.md'
@@ -74,14 +77,21 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon :app:assembleRelease :translator:assembleRelease :app:testReleaseUnitTest :translator:testReleaseUnitTest :app:lintRelease :translator:lintRelease --max-workers=2
-      - name: Reports and unsigned APKs
+      - name: Unsigned APKs for local signing
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: checks-and-unsigned-apks
           path: |
-            app/build/reports/
-            translator/build/reports/
             app/build/outputs/apk/release/
             translator/build/outputs/apk/release/
+          retention-days: 1
+      - name: Test and lint reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: android-check-reports
+          path: |
+            app/build/reports/
+            translator/build/reports/
           retention-days: 7

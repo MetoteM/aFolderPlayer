@@ -52,7 +52,7 @@ jobs:
         with:
           name: verified-0.7.6
           path: release-output/
-          retention-days: 7
+          retention-days: 1
   publish:
     needs: verify
     runs-on: ubuntu-latest

@@ -1,0 +1,56 @@
+name: Clean temporary build artifacts
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/artifact-maintenance.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Remove temporary artifacts from completed runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import datetime,json,os,subprocess
+          repo=os.environ['GH_REPO']
+          cutoff=datetime.datetime.now(datetime.timezone.utc)
+          def api(path):
+              return json.loads(subprocess.check_output(['gh','api',path],text=True))
+          pages=json.loads(subprocess.check_output(['gh','api','--paginate','--slurp',f'repos/{repo}/actions/artifacts?per_page=100'],text=True))
+          artifacts=[a for page in pages for a in page['artifacts']]
+          runs={}
+          removed=0
+          size=0
+          skipped=0
+          for a in artifacts:
+              if a['expired']:
+                  continue
+              if not (a['name']=='checks-and-unsigned-apks' or a['name'].startswith('verified-')):
+                  skipped+=1
+                  continue
+              created=datetime.datetime.fromisoformat(a['created_at'].replace('Z','+00:00'))
+              if created>cutoff:
+                  skipped+=1
+                  continue
+              run_id=a['workflow_run']['id']
+              if run_id not in runs:
+                  runs[run_id]=api(f'repos/{repo}/actions/runs/{run_id}')['status']
+              if runs[run_id]!='completed':
+                  skipped+=1
+                  continue
+              subprocess.run(['gh','api','--method','DELETE',f'repos/{repo}/actions/artifacts/{a["id"]}'],check=True)
+              removed+=1
+              size+=a['size_in_bytes']
+              print('Removed',a['id'],a['name'],a['size_in_bytes'])
+          summary=f'Removed {removed} temporary artifacts ({size} bytes); skipped {skipped}. Source, Git history, releases and workflow logs preserved.'
+          print(summary)
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as out:
+              out.write(summary+'\n')
+          PY
