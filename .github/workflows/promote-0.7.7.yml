@@ -1,0 +1,50 @@
+name: Promote approved 0.7.7 release
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/promote-0.7.7.yml']
+permissions:
+  contents: write
+  actions: read
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+      - name: Verify immutable published assets before promotion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh api "repos/$GH_REPO/actions/runs/38379911730" > /tmp/source.json
+          gh api "repos/$GH_REPO/actions/runs/38397354058" > /tmp/publication.json
+          python3 -c 'import json;assert json.load(open("/tmp/source.json"))["conclusion"]=="success";assert json.load(open("/tmp/publication.json"))["conclusion"]=="success"'
+          test "$(git rev-parse v0.7.7^{commit})" = '202d6b8aef6d02c690866eca9110e26a4335bca4'
+          test -z "$(git diff --name-only v0.7.7 HEAD -- app translator deployment/french-v1)"
+          gh api "repos/$GH_REPO/releases/tags/v0.7.7" > /tmp/release.json
+          python3 - <<'PY'
+          import hashlib,json,pathlib
+          root=pathlib.Path('deployment/releases/0.7.7')
+          manifest=json.loads((root/'manifest.json').read_text())
+          expected={a['name']:(a['size'],'sha256:'+a['sha256']) for a in manifest['apks']+manifest['models']}
+          for name in ['catalog.json','SHA256SUMS']:
+              data=(root/name).read_bytes()
+              expected[name]=(len(data),'sha256:'+hashlib.sha256(data).hexdigest())
+          release=json.load(open('/tmp/release.json'))
+          assert not release['draft']
+          actual={a['name']:(a['size'],a['digest']) for a in release['assets']}
+          assert actual==expected,'Published asset identities changed'
+          PY
+          mkdir verified-release
+          gh release download v0.7.7 --dir verified-release
+          cd verified-release
+          sha256sum -c SHA256SUMS
+      - name: Promote without replacing signed files or tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release edit v0.7.7 --prerelease=false --latest --title 'aFolderPlayer 0.7.7' --notes-file deployment/releases/0.7.7/release-notes.md

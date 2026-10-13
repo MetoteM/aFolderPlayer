@@ -54,5 +54,5 @@
       "sha256": "083a0526f9aedb0f6d9abc689bd670c2313afc02aeede57e8a97efe2e1d2ca29"
     }
   ],
-  "release_status": "prerelease-awaiting-device-check"
+  "release_status": "stable-device-check-deferred-by-user-2026-10-13"
 }

@@ -77,15 +77,15 @@
     },
     {
       "path": "deployment/releases/0.7.7/manifest.json",
-      "size": 2400,
-      "git_blob": "7bf270ab4646006eda45c7bd247ebb41ae020f34",
-      "sha256": "faed3070637020365af1c5fac04c4d4be6bebe901659cf24a96e3ca694bffb9d"
+      "size": 2415,
+      "git_blob": "3447c51ea888a9585e142e948f69991c3ac87125",
+      "sha256": "de630b7da2c3d56bb683fbb98e32749fa382665618b770dea87a175cdc3fe2dc"
     },
     {
       "path": "deployment/releases/0.7.7/release-notes.md",
-      "size": 1460,
-      "git_blob": "eb47fe411ec4a3b7255233f51c576281bffd282a",
-      "sha256": "c301a03608ef43046b4daa5b424b8027f3e86601bfa0693c8a115af8f4b48530"
+      "size": 1649,
+      "git_blob": "874705a6861f23b7f808a0aaaf3f24eee97a56cf",
+      "sha256": "56aec0e01f2cdcc7611935f001600525e543c9b12f5f436c59bc6a9e304b9c05"
     }
   ]
 }
