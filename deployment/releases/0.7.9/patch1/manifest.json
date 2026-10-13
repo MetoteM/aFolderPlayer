@@ -1,0 +1,26 @@
+{
+  "source_commit": "40404dbaf150a06cbc67f76c46b4a6db781b2eb4",
+  "certificate_sha256": "36efde603967282debd976200c92acf46b68144b2704d61930ebdd9c171302cd",
+  "version_name": "0.7.9",
+  "version_code": 35,
+  "apks": [
+    {
+      "name": "aFolderPlayer_0.7.9_patch1.apk",
+      "size": 3879915,
+      "sha256": "88aa2cae10ae38e233d5266c0cb6ca9c84f2fd5134ab278a7afbaee0c5335e59",
+      "compression": "gzip",
+      "compressed_sha256": "ce38d46cb55821ae03ecc6055704170e60246ede911b79148b198117dd236098",
+      "parts": [
+        "deployment/releases/0.7.9/patch1/aFolderPlayer_0.7.9_patch1.apk.gz.part00",
+        "deployment/releases/0.7.9/patch1/aFolderPlayer_0.7.9_patch1.apk.gz.part01",
+        "deployment/releases/0.7.9/patch1/aFolderPlayer_0.7.9_patch1.apk.gz.part02",
+        "deployment/releases/0.7.9/patch1/aFolderPlayer_0.7.9_patch1.apk.gz.part03",
+        "deployment/releases/0.7.9/patch1/aFolderPlayer_0.7.9_patch1.apk.gz.part04",
+        "deployment/releases/0.7.9/patch1/aFolderPlayer_0.7.9_patch1.apk.gz.part05",
+        "deployment/releases/0.7.9/patch1/aFolderPlayer_0.7.9_patch1.apk.gz.part06",
+        "deployment/releases/0.7.9/patch1/aFolderPlayer_0.7.9_patch1.apk.gz.part07"
+      ]
+    }
+  ],
+  "models": []
+}
