@@ -1,0 +1,91 @@
+{
+  "version": "0.7.7",
+  "source_commit": "0baea21577ea80f91f6552e9a28573d2ac4d9a1e",
+  "staging_branch": "release/0.7.7-staging",
+  "files": [
+    {
+      "path": "deployment/releases/0.7.7/AFP_Translate_0.3.2.delta.json.gz",
+      "size": 687941,
+      "git_blob": "3e14643818ff94a2fed1f06cb6bae565294ea6ad",
+      "sha256": "61618f4fec7e7c7df91879886b299b37d88ac1c17065bddd1109e6fd39b5fecd"
+    },
+    {
+      "path": "deployment/releases/0.7.7/QUALITY.md",
+      "size": 2280,
+      "git_blob": "e68de9172908d597004c6b5760c29cff8094e76b",
+      "sha256": "df859400e69b46ebc3456451bf6f6b462eb14c71820897a6b3864df0f4cac6bc"
+    },
+    {
+      "path": "deployment/releases/0.7.7/SHA256SUMS",
+      "size": 629,
+      "git_blob": "b4cf8e24c5133396fa1fcd078e1e6c8929c44a1f",
+      "sha256": "e7328dca35e55a62c0fb3588f9fc87f01cfd8679b1cabb0c71d7a58637b4d030"
+    },
+    {
+      "path": "deployment/releases/0.7.7/aFolderPlayer_0.7.7.apk.gz.part00",
+      "size": 500000,
+      "git_blob": "ee0f52c88ecc572d7d36b706dc43579841549e7f",
+      "sha256": "cc8166a40f7a332bb795cc23911ab719d65fe2ade8233c1000a6b459719bc3bb"
+    },
+    {
+      "path": "deployment/releases/0.7.7/aFolderPlayer_0.7.7.apk.gz.part01",
+      "size": 500000,
+      "git_blob": "0602a0ef9b4040b2c882951e4639c47417601e0b",
+      "sha256": "df64fe17deaee2b3d9b1e7dda0e53cd77863428ccd41d4ba01efb09ec6a736c8"
+    },
+    {
+      "path": "deployment/releases/0.7.7/aFolderPlayer_0.7.7.apk.gz.part02",
+      "size": 500000,
+      "git_blob": "0ae979dd07924c497e65456e03f2bbaba42fa4bf",
+      "sha256": "392d93ed0dac8c974c5f30d5622710131e3cb92de77a03173ba90796b0253b05"
+    },
+    {
+      "path": "deployment/releases/0.7.7/aFolderPlayer_0.7.7.apk.gz.part03",
+      "size": 500000,
+      "git_blob": "4f7282a1122715943fba31ab251669d5628f985c",
+      "sha256": "81bca1f6a306455e1dc2c25d3d7fd5ef75ebe60862796f205e65451d5abdd99d"
+    },
+    {
+      "path": "deployment/releases/0.7.7/aFolderPlayer_0.7.7.apk.gz.part04",
+      "size": 500000,
+      "git_blob": "4485a64ac1f18e90f1c03ac86198fe8a1844588d",
+      "sha256": "4b017a5af3e09600d6e44d73d19cc7a3ebd0cf28255708bd1e69eb0662cfe7ba"
+    },
+    {
+      "path": "deployment/releases/0.7.7/aFolderPlayer_0.7.7.apk.gz.part05",
+      "size": 500000,
+      "git_blob": "7a7d2138ac61abb80d3d486cbd922dd350ac1c9a",
+      "sha256": "b1eee36ace317c68609814656edc92f09901adc8763e59b9729fc563345d4d6d"
+    },
+    {
+      "path": "deployment/releases/0.7.7/aFolderPlayer_0.7.7.apk.gz.part06",
+      "size": 500000,
+      "git_blob": "8c372efa29440136d7bd2bc0e899319d689c41be",
+      "sha256": "b03ee4dd6481d98660b976fdbbec128591b52e54837e03f454ac39bbc3632908"
+    },
+    {
+      "path": "deployment/releases/0.7.7/aFolderPlayer_0.7.7.apk.gz.part07",
+      "size": 162314,
+      "git_blob": "973eca57d5d75729ce912ae4e87a0add46d0d578",
+      "sha256": "cc7853b99d114f944232c3fc3e81d04ed4f24dfacc3a58e74e89190ab137da13"
+    },
+    {
+      "path": "deployment/releases/0.7.7/catalog.json",
+      "size": 2225,
+      "git_blob": "aff77d076533db11abe0d18b522f6eaccb14689b",
+      "sha256": "fddfffdc43b3c15a17602d708285a3d84e4d80bc99d42a96053fcc0f89cdd40d"
+    },
+    {
+      "path": "deployment/releases/0.7.7/manifest.json",
+      "size": 2400,
+      "git_blob": "7bf270ab4646006eda45c7bd247ebb41ae020f34",
+      "sha256": "faed3070637020365af1c5fac04c4d4be6bebe901659cf24a96e3ca694bffb9d"
+    },
+    {
+      "path": "deployment/releases/0.7.7/release-notes.md",
+      "size": 1460,
+      "git_blob": "eb47fe411ec4a3b7255233f51c576281bffd282a",
+      "sha256": "c301a03608ef43046b4daa5b424b8027f3e86601bfa0693c8a115af8f4b48530"
+    }
+  ]
+}

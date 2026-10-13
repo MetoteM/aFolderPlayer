@@ -1,0 +1,83 @@
+name: Publish verified 0.7.7 release
+on:
+  push:
+    branches: [release/0.7.7-staging]
+    paths: ['deployment/releases/0.7.7/manifest.json']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'build-tools;36.0.0'
+      - name: Require successful source checks without recompilation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RELEASE_SOURCE=$(python3 -c 'import json;print(json.load(open("deployment/releases/0.7.7/manifest.json"))["source_commit"])')
+          gh api "repos/${{ github.repository }}/actions/runs?head_sha=$RELEASE_SOURCE" > /tmp/runs.json
+          python3 -c 'import json;assert any(r["name"]=="Android checks" and r["conclusion"]=="success" for r in json.load(open("/tmp/runs.json"))["workflow_runs"]),"Source checks are not successful"'
+          git diff --name-only "$RELEASE_SOURCE" HEAD -- app translator tools/build-chinese-package.py tools/download-chinese-inputs.py tools/inference-test deployment/chinese-v1 tools/build-german-package.py tools/download-german-inputs.py deployment/german-v1 tools/build-french-package.py tools/download-french-inputs.py deployment/french-v1 > /tmp/source-changes
+          test ! -s /tmp/source-changes
+      - name: Recreate pinned language packages
+        run: |
+          mkdir release-output
+          python3 tools/download-chinese-inputs.py /tmp/models
+          cp /tmp/models/english.zip release-output/AFP_English_Russian_v2.zip
+          python3 tools/build-chinese-package.py /tmp/models /tmp/models/english.zip release-output/AFP_Chinese_Russian_v1.zip
+          python3 tools/download-german-inputs.py /tmp/german
+          python3 tools/build-german-package.py /tmp/german /tmp/models/english.zip release-output/AFP_German_Russian_v1.zip
+          python3 tools/download-french-inputs.py /tmp/french
+          python3 tools/build-french-package.py /tmp/french release-output/AFP_French_Russian_v1.zip
+      - name: Verify signed assets and catalogue
+        run: |
+          python3 tools/publish-release.py release-output "$ANDROID_HOME/build-tools/36.0.0/apksigner" 0.7.7
+          cd release-output
+          sha256sum -c SHA256SUMS
+          python3 -c 'import json,base64;d=json.load(open("catalog.json"));open("payload","wb").write(base64.b64decode(d["payload"]));open("signature","wb").write(base64.b64decode(d["signature"]))'
+          openssl x509 -inform DER -in ../app/src/main/assets/catalog_certificate.der -pubkey -noout > public.pem
+          openssl dgst -sha256 -verify public.pem -signature signature payload
+          rm payload signature public.pem
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verified-0.7.7
+          path: release-output/
+          retention-days: 7
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-0.7.7
+          path: release-output
+      - name: Publish all assets before making the release visible
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          if gh release view v0.7.7 --json isDraft --jq '.isDraft' > /tmp/draft 2>/dev/null; then
+            if [ "$(cat /tmp/draft)" != 'true' ]; then
+              echo 'Published release exists; refusing asset replacement.'
+              exit 0
+            fi
+          else
+            gh release create v0.7.7 --target "$RELEASE_COMMIT" --title 'aFolderPlayer 0.7.7 — тестовая сборка' --notes-file release-output/release-notes.md --draft --prerelease
+          fi
+          gh release upload v0.7.7 release-output/aFolderPlayer_0.7.7.apk release-output/AFP_Translate_0.3.2.apk release-output/AFP_English_Russian_v2.zip release-output/AFP_Chinese_Russian_v1.zip release-output/AFP_German_Russian_v1.zip release-output/AFP_French_Russian_v1.zip release-output/catalog.json release-output/SHA256SUMS --clobber
+          gh release edit v0.7.7 --draft=false --prerelease --latest=false
