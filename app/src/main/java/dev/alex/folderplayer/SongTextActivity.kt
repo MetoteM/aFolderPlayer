@@ -54,21 +54,19 @@ class SongTextActivity:Activity(){
    main.post { if(alive){translate.isEnabled=true
     if(!foreground){status.text="Перевод не запущен. Можно повторить.";return@post}
     outcome.onSuccess { models ->
-     if(models.isEmpty())missingLanguage()
-     else { val expected=sourceModel(source);val suitable=models.filter { it.first==expected }
-      if(suitable.size==1)launchTranslation(suitable.single())
-      else { status.text="Выбери язык исходного текста";AlertDialog.Builder(this).setTitle("Язык текста").setItems(models.map { it.second }.toTypedArray()){_,i->launchTranslation(models[i])}.setNegativeButton("Закрыть",null).show() }
-     }
+     val expected=sourceModel(source)
+     val suitable=models.filter { it.first==expected || expected=="opus-en-ru-v2" && it.first==TranslationClient.MODEL }
+     if(suitable.isEmpty())missingLanguage()
+     else launchTranslation(suitable.firstOrNull { it.first==expected } ?: suitable.first())
     }.onFailure { missingLanguage() }
    } }
   }
  }
- private fun missingLanguage(){status.text="Для перевода установи переводчик и нужный язык в разделе «Расширения». Текст можно читать без них."}
+ private fun missingLanguage(){status.text="Для перевода нужен пакет «${TranslationClient.MODELS[sourceModel(source)]}». Установи его и переводчик в разделе «Расширения». Текст можно читать без них."}
  private fun launchTranslation(model:Pair<String,String>){
-  TranslationClient(this).selectModel(model.first,model.second)
   getSharedPreferences("extensions",0).edit().putBoolean("enabled",true).apply()
   status.text="Текст сохранён для чтения без интернета"
-  startActivity(Intent(this,DocumentActivity::class.java).putExtra("source",source).putExtra("translateNow",true))
+  startActivity(Intent(this,DocumentActivity::class.java).putExtra("source",source).putExtra("translateNow",true).putExtra("translationModel",model.first))
  }
  override fun onResume(){super.onResume();foreground=true}
  override fun onStop(){foreground=false;super.onStop()}

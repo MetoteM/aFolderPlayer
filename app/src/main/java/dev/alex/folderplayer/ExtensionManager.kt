@@ -10,6 +10,10 @@ import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.provider.Settings
 import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TextView
+import android.os.SystemClock
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.Executors
@@ -22,6 +26,8 @@ internal class ExtensionManager(private val host:Activity,private val engine:Tra
  private val folder=File(host.filesDir,"extensions").apply { mkdirs() }
  @Volatile private var closed=false
  private var busy:AlertDialog?=null
+ private var progress:ProgressBar?=null
+ private var progressText:TextView?=null
  @Volatile private var cancelled=false
  @Volatile private var connection:java.net.HttpURLConnection?=null
  fun show() {
@@ -71,14 +77,25 @@ internal class ExtensionManager(private val host:Activity,private val engine:Tra
    runCatching { val value=field.text.toString().trim();if(value.isNotEmpty())ExtensionCatalog.base(value);prefs.edit().putString("server",value).apply();dialog.dismiss() }.onFailure { field.error=it.message }
   } };dialog.show()
  }
- private fun run(title:String,action:()->Unit) {
+ private fun run(title:String,total:Long=0,action:()->Unit) {
   if(busy!=null)return
-  cancelled=false;busy=AlertDialog.Builder(host).setMessage(title).setNegativeButton("Отмена") { _,_ -> cancelled=true;connection?.disconnect() }.create().apply { setOnCancelListener { cancelled=true;connection?.disconnect() };show() }
+  cancelled=false
+  val content=LinearLayout(host).apply { orientation=LinearLayout.VERTICAL;setPadding(32,16,32,16) }
+  progressText=TextView(host).apply { text=title };content.addView(progressText)
+  progress=ProgressBar(host,null,android.R.attr.progressBarStyleHorizontal).apply { max=1000;isIndeterminate=total<=0 };content.addView(progress)
+  busy=AlertDialog.Builder(host).setView(content).setNegativeButton("Отмена") { _,_ -> cancelled=true;connection?.disconnect() }.create().apply { setOnCancelListener { cancelled=true;connection?.disconnect() };show() }
   worker.execute {
    val result=runCatching(action)
-   main.post { busy?.dismiss();busy=null;if(!closed && !cancelled)result.onFailure { message(it.message ?: "Не удалось выполнить действие") } }
+   main.post { busy?.dismiss();busy=null;progress=null;progressText=null;if(!closed && !cancelled)result.onFailure { message(it.message ?: "Не удалось выполнить действие") } }
   }
  }
+ private fun downloadProgress(done:Long,total:Long,title:String) {
+  main.post { if(!closed && !cancelled && busy!=null) {
+   progress?.isIndeterminate=false;progress?.progress=((done*1000)/total).toInt()
+   progressText?.text="Скачиваем $title\n${done*100/total}% · ${String.format(java.util.Locale.ROOT, "%.1f",done/1_000_000.0)} / ${String.format(java.util.Locale.ROOT, "%.1f",total/1_000_000.0)} МБ"
+  } }
+ }
+ private fun phase(title:String) { main.post { if(!closed && !cancelled) { progress?.isIndeterminate=true;progressText?.text=title } } }
  private fun fetchCatalog() {
   val server=prefs.getString("server",DEFAULT_CATALOG).orEmpty().ifBlank { DEFAULT_CATALOG }
   run("Загружаем каталог…") {
@@ -99,16 +116,19 @@ internal class ExtensionManager(private val host:Activity,private val engine:Tra
   if(entry.kind=="model" && !engine.installed()) { message("Сначала установи AFP Translate");return }
   AlertDialog.Builder(host).setTitle(entry.title).setMessage("Скачать ${entry.size/1_000_000} МБ с ${base.host}?"+(if(entry.kind=="engine")" Затем Android попросит подтвердить установку." else " Пакет будет установлен в AFP Translate.")).setPositiveButton("Скачать") { _,_ -> download(base,entry) }.setNegativeButton("Отмена",null).show()
  }
- private fun download(base:java.net.URI,entry:ExtensionCatalog.Entry) = run("Скачиваем ${entry.title}…") {
+ private fun download(base:java.net.URI,entry:ExtensionCatalog.Entry) = run("Подключаемся для загрузки ${entry.title}…",entry.size) {
   val destination=File(folder,if(entry.kind=="engine")"engine.apk" else "model.zip");val part=File(folder,destination.name+".part");val c=ExtensionCatalog.connect(base.resolve(entry.file));connection=c
   try {
    check(c.responseCode==200) { "Сервер загрузки недоступен (${c.responseCode})" }
-   val digest=MessageDigest.getInstance("SHA-256");var size=0L
-   c.inputStream.use { input -> part.outputStream().use { out -> val buffer=ByteArray(65536);while(true) { check(!cancelled && !closed) { "Загрузка отменена" };val n=input.read(buffer);if(n<0)break;size+=n;check(size<=entry.size) { "Размер файла не совпадает" };out.write(buffer,0,n);digest.update(buffer,0,n) } } }
+   val digest=MessageDigest.getInstance("SHA-256");var size=0L;var lastProgress=0L
+   downloadProgress(0,entry.size,entry.title)
+   c.inputStream.use { input -> part.outputStream().use { out -> val buffer=ByteArray(65536);while(true) { check(!cancelled && !closed) { "Загрузка отменена" };val n=input.read(buffer);if(n<0)break;size+=n;check(size<=entry.size) { "Размер файла не совпадает" };out.write(buffer,0,n);digest.update(buffer,0,n);val now=SystemClock.elapsedRealtime();if(now-lastProgress>=200 || size==entry.size){downloadProgress(size,entry.size,entry.title);lastProgress=now} } } }
+   phase("Проверяем скачанный файл…")
    check(size==entry.size && digest.digest().joinToString("") { "%02x".format(it) }==entry.hash) { "Файл повреждён: проверка не пройдена" }
+   check(!cancelled && !closed) { "Загрузка отменена" }
    check(part.renameTo(destination)) { "Не удалось сохранить файл" }
    if(entry.kind=="engine") { validateEngine(destination);main.post { if(!closed && !cancelled)installEngine() } }
-   else { ParcelFileDescriptor.open(destination,ParcelFileDescriptor.MODE_READ_ONLY).use { engine.install(it) };engine.selectModel(entry.model,entry.title);enable();destination.delete();main.post { if(!closed) { changed();message("Языковой пакет установлен") } } }
+   else { phase("Устанавливаем языковой пакет…");ParcelFileDescriptor.open(destination,ParcelFileDescriptor.MODE_READ_ONLY).use { engine.install(it) };engine.selectModel(entry.model,entry.title);enable();destination.delete();main.post { if(!closed) { changed();message("Языковой пакет установлен") } } }
   } finally { connection=null;c.disconnect();part.delete() }
  }
  fun importEngine(uri:Uri) = run("Проверяем переводчик…") {

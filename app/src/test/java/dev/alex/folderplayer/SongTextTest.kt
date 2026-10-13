@@ -40,6 +40,22 @@ class SongTextTest {
   assertEquals("opus-zh-ru-v1",SongTextActivity.sourceModel("我爱你。"))
   assertTrue(SongTextActivity.russian("Моя мать дала мне письмо."))
  }
+ @Test fun songTranslationKeepsGlobalLanguageAndPassesPerTextModel(){
+  val app=RuntimeEnvironment.getApplication();val prefs=app.getSharedPreferences("extensions",0)
+  prefs.edit().putString("model","opus-zh-ru-v1").putString("modelTitle","Chinese").apply()
+  val host=Robolectric.buildActivity(SongTextActivity::class.java,Intent(app,SongTextActivity::class.java).putExtra("source","Ich liebe dich.")).setup()
+  SongTextActivity::class.java.getDeclaredMethod("launchTranslation",Pair::class.java).apply { isAccessible=true }.invoke(host.get(),"opus-de-ru-v1" to "German")
+  val next=org.robolectric.Shadows.shadowOf(host.get()).nextStartedActivity
+  assertEquals("opus-de-ru-v1",next.getStringExtra("translationModel"));assertEquals("opus-zh-ru-v1",prefs.getString("model",null))
+  host.pause().stop().destroy();prefs.edit().clear().apply()
+ }
+ @Test fun missingGermanPackageNamesRequiredLanguage(){
+  val app=RuntimeEnvironment.getApplication()
+  val host=Robolectric.buildActivity(SongTextActivity::class.java,Intent(app,SongTextActivity::class.java).putExtra("source","Ich liebe dich und du liebst mich.")).setup()
+  SongTextActivity::class.java.getDeclaredMethod("missingLanguage").apply { isAccessible=true }.invoke(host.get())
+  assertTrue(views(host.get().window.decorView).filterIsInstance<TextView>().any { it.text.toString().contains("Немецкий → русский") })
+  host.pause().stop().destroy()
+ }
  @Test fun recognitionHasSeparateSearchAndOpensReadingScreen(){
   val host=Robolectric.buildActivity(RecognitionActivity::class.java).setup();val activity=host.get()
   RecognitionActivity::class.java.getDeclaredMethod("showResult",String::class.java,String::class.java).apply { isAccessible=true }.invoke(activity,"Song","Singer")
