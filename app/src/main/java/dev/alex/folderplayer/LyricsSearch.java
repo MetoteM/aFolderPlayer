@@ -19,10 +19,11 @@ public final class LyricsSearch {
  public LyricsSearch() { this(url -> (HttpURLConnection)url.openConnection()); }
  public LyricsSearch(Connections value) { connections=value; }
  public static final class Cancel {
-  private boolean cancelled;private HttpURLConnection active;
+  private boolean cancelled;private HttpURLConnection active;private final long deadline=System.nanoTime()+45_000_000_000L;
+  synchronized int remaining() throws IOException {check();return (int)Math.max(1,Math.min(8000,(deadline-System.nanoTime())/1_000_000L));}
   public synchronized void cancel() { cancelled=true;if(active!=null) active.disconnect(); }
   synchronized void attach(HttpURLConnection c) throws IOException { if(cancelled) { c.disconnect();throw new IOException("Поиск отменён"); };active=c; }
-  synchronized void check() throws IOException { if(cancelled || Thread.currentThread().isInterrupted())throw new IOException("Поиск отменён"); }
+  synchronized void check() throws IOException { if(cancelled || Thread.currentThread().isInterrupted())throw new IOException("Поиск отменён");if(System.nanoTime()>deadline)throw new SocketTimeoutException("Поиск занял слишком долго"); }
   synchronized void clear() { active=null; }
  }
  public static final class Result {
@@ -64,7 +65,7 @@ public final class LyricsSearch {
   beforeRequest();
   cancel.check();HttpURLConnection c=connections.open(url);cancel.attach(c);
   try {
-   c.setConnectTimeout(10000);c.setReadTimeout(30000);c.setInstanceFollowRedirects(false);
+   c.setConnectTimeout(cancel.remaining());c.setReadTimeout(cancel.remaining());c.setInstanceFollowRedirects(false);
    c.setRequestProperty("User-Agent","FolderPlayer/0.5.0 (personal Android music player)");c.setRequestProperty("Accept","application/json");
    int status=c.getResponseCode();cancel.check();
    if(status==429 || status==503) {

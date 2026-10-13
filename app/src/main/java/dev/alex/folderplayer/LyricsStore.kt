@@ -8,11 +8,12 @@ import java.io.File
 internal class LyricsStore(private val context:Context) {
  companion object { private val lock=Any() }
  private fun file(uri:String)=AtomicFile(File(File(context.filesDir,"lyrics").apply { mkdirs() },LyricsDocument.key(uri)+".txt"))
+ fun exists(uri:String)=file(uri).baseFile.exists()
  fun read(uri:String):String? = synchronized(lock) { try { file(uri).openRead().use { String(it.readBytes(),Charsets.UTF_8) } } catch(_:java.io.FileNotFoundException) { null } }
  fun save(uri:String,text:String) = synchronized(lock) {
   LyricsDocument(text) // Validate before changing the last saved version.
   val f=file(uri);val stream=f.startWrite()
-  try { stream.write(text.toByteArray(Charsets.UTF_8));f.finishWrite(stream) } catch(e:Exception) { f.failWrite(stream);throw e }
+  try { stream.write(text.toByteArray(Charsets.UTF_8));f.finishWrite(stream);context.getSharedPreferences("text-history",0).edit().remove("local:"+uri).apply() } catch(e:Exception) { f.failWrite(stream);throw e }
  }
  fun importText(uri:Uri):String = context.contentResolver.openInputStream(uri)?.use { stream ->
   val output=java.io.ByteArrayOutputStream();val buffer=ByteArray(4096)

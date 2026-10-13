@@ -17,7 +17,7 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
   fun seek(progress:Int); fun favorite(); fun playlists(); fun repeat(); fun sound()
   fun lyricsMenu(); fun select(index:Int); fun move(from:Int,to:Int)
   fun installTranslationModel() {};fun retryTranslation() {};fun documentTranslation() {};
-  fun retryLyrics() {};fun chooseLyrics(index:Int) {}
+  fun retryLyrics() {};fun chooseLyrics(index:Int) {};fun recognize() {}
  }
  data class State(val id:String?,val title:String,val artist:String,val album:String,val source:String,
   val playing:Boolean,val favorite:Boolean,val repeat:Int,val position:Long,val duration:Long,val step:Int)
@@ -32,6 +32,8 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
  private var lyricBusy=false
  private var lyricResults=emptyList<LyricsSearch.Result>()
  private var page="player"
+ private var landscape=false;private var compact=false
+ init { view.addOnLayoutChangeListener { _,l,t,r,b,_,_,_,_ -> val wide=r-l>b-t;val small=(b-t)/context.resources.displayMetrics.density<520;if(page=="player" && r>l && b>t && (wide!=landscape || small!=compact)){landscape=wide;compact=small;show(page)} } }
  private var state:State?=null
  private var title:TextView?=null;private var artist:TextView?=null;private var album:TextView?=null
  private var source:TextView?=null;private var cover:ImageView?=null;private var heart:Button?=null
@@ -56,7 +58,8 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
   header.addView(button("⋮","Меню песни") { actions.lyricsMenu() },LinearLayout.LayoutParams(dp(52),dp(52)));view.addView(header)
   scroll=ScrollView(context).apply { isFillViewport=true }
   content=LinearLayout(context).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(16)) }
-  scroll!!.addView(content);view.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
+  if(page=="player") { scroll=null;view.addView(content,LinearLayout.LayoutParams(-1,0,1f)) }
+  else { scroll!!.addView(content);view.addView(scroll,LinearLayout.LayoutParams(-1,0,1f)) }
   if(page=="lyrics" || page=="translation") {
    val tabs=row();tabs.addView(button("Оригинал","Открыть оригинальный текст") { actions.open("lyrics") }.apply { setTextColor(if(page=="lyrics")accent else muted) },weight());tabs.addView(button("Перевод","Открыть машинный перевод") { actions.open("translation") }.apply { setTextColor(if(page=="translation")accent else muted) },weight());content!!.addView(tabs)
   }
@@ -73,7 +76,7 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
     title=text("",18f);content!!.addView(title)
     lyricStatus=text("Читаем локальный текст…",13f);content!!.addView(lyricStatus)
     lyricText=text("",22f).apply { setLineSpacing(dp(12).toFloat(),1f);setTextIsSelectable(true);setTextColor(muted) };content!!.addView(lyricText)
-    val toggle=Switch(context).apply { text="Автопрокрутка";setTextColor(Color.WHITE);isChecked=auto;setPadding(dp(12),dp(8),dp(12),dp(8));setOnCheckedChangeListener { _,yes -> auto=yes;active=Int.MIN_VALUE } }
+    val toggle=Switch(context).apply { text="Автопрокрутка";setTextColor(Color.WHITE);isChecked=auto;setPadding(dp(12),dp(8),dp(12),dp(8));setOnCheckedChangeListener { _,yes -> auto=yes;active=Int.MIN_VALUE;if(!yes && doc!=null)scroll?.let { ReadingPosition.attach(context,it,"lyrics:"+lyricId+"\n"+doc!!.plain,false) }else scroll?.setOnScrollChangeListener(null) } }
     retryButton=button("Найти текст","Найти или повторить поиск текста") { actions.retryLyrics() };content!!.addView(retryButton)
     resultPanel=LinearLayout(context).apply { orientation=LinearLayout.VERTICAL };content!!.addView(resultPanel)
     content!!.setOnClickListener { if(doc==null && !lyricBusy)actions.retryLyrics() }
@@ -82,16 +85,22 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
    "queue" -> { source=text("",14f);content!!.addView(source);mini() }
    "sound" -> { soundPanel(content!!);mini() }
    else -> {
-    cover=SquareArtwork(context).apply { scaleType=ImageView.ScaleType.FIT_CENTER;contentDescription="Локальная обложка целиком";background=shape(surface);clipToOutline=true;setPadding(dp(6),dp(6),dp(6),dp(6)) }
-    content!!.addView(cover,LinearLayout.LayoutParams(-1,-2).apply { setMargins(dp(12),dp(4),dp(12),dp(12)) })
-    val names=row();title=text("",23f).apply { setTypeface(null,Typeface.BOLD) };names.addView(title,weight())
-    heart=button("♡","Добавить в избранное") { actions.favorite() }.apply { setOnLongClickListener { actions.playlists();true } };names.addView(heart,LinearLayout.LayoutParams(dp(56),dp(56)));content!!.addView(names)
-    artist=text("",16f);album=text("",14f);content!!.addView(artist);content!!.addView(album)
-    progress(content!!)
+    val metadata=LinearLayout(context).apply { orientation=LinearLayout.VERTICAL }
+    val playback=LinearLayout(context).apply { orientation=LinearLayout.VERTICAL }
+    val body=content!!;body.setPadding(dp(8),0,dp(8),dp(4))
+    if(landscape) { body.orientation=LinearLayout.HORIZONTAL;body.addView(metadata,LinearLayout.LayoutParams(0,-1,1f));body.addView(playback,LinearLayout.LayoutParams(0,-1,1.5f)) }
+    else { body.addView(metadata,LinearLayout.LayoutParams(-1,0,1f));body.addView(playback) }
+    cover=SquareArtwork(context).apply { scaleType=ImageView.ScaleType.FIT_CENTER;contentDescription="Локальная обложка целиком";background=shape(surface);clipToOutline=true;setPadding(dp(4),dp(4),dp(4),dp(4));visibility=if(compact && !landscape)View.GONE else View.VISIBLE }
+    metadata.addView(cover,LinearLayout.LayoutParams(-1,0,1f).apply { setMargins(dp(8),0,dp(8),dp(4)) })
+    val names=row();title=text("",if(compact)18f else 23f).apply { maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END;setTypeface(null,Typeface.BOLD);setPadding(dp(4),dp(2),dp(4),dp(2));setOnClickListener { val s=state ?: return@setOnClickListener;android.app.AlertDialog.Builder(context).setTitle(s.title).setMessage(s.artist+"\n"+s.album).setPositiveButton("Закрыть",null).show() } };names.addView(title,weight())
+    heart=button("♡","Добавить в избранное") { actions.favorite() }.apply { setOnLongClickListener { actions.playlists();true } };names.addView(heart,LinearLayout.LayoutParams(dp(48),dp(48)));metadata.addView(names)
+    artist=text("",16f).apply { maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END;setPadding(dp(4),0,dp(4),0) };album=text("",14f).apply { maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END;setPadding(dp(4),0,dp(4),0);visibility=if(compact)View.GONE else View.VISIBLE };metadata.addView(artist);metadata.addView(album)
+    progress(playback)
     val controls=row();backward=button("−10","Назад на несколько секунд") { actions.skip(-1) };controls.addView(backward,weight())
-    controls.addView(button("⏮","Предыдущая песня") { actions.previous() },weight());play=button("▶","Воспроизведение / пауза",true) { actions.toggle() };controls.addView(play,LinearLayout.LayoutParams(dp(76),dp(76)))
-    controls.addView(button("⏭","Следующая песня") { actions.next() },weight());forward=button("+10","Вперёд на несколько секунд") { actions.skip(1) };controls.addView(forward,weight());content!!.addView(controls)
-    val links=row();links.addView(button("Текст","Открыть текст песни") { actions.open("lyrics") },weight());links.addView(button("Очередь","Открыть очередь") { actions.open("queue") },weight());links.addView(button("Звук","Эквалайзер") { actions.sound() },weight());repeat=button("Повтор: выкл","Режим повтора") { actions.repeat() };links.addView(repeat,weight());content!!.addView(links)
+    controls.addView(button("⏮","Предыдущая песня") { actions.previous() },weight());play=button("▶","Воспроизведение / пауза",true) { actions.toggle() };controls.addView(play,LinearLayout.LayoutParams(dp(56),dp(56)))
+    controls.addView(button("⏭","Следующая песня") { actions.next() },weight());forward=button("+10","Вперёд на несколько секунд") { actions.skip(1) };controls.addView(forward,weight());playback.addView(controls)
+    val links=row();links.addView(button("Текст","Открыть текст песни") { actions.open("lyrics") },weight());links.addView(button("Очередь","Открыть очередь") { actions.open("queue") },weight());links.addView(button("Звук","Эквалайзер") { actions.sound() },weight());repeat=button("↻","Режим повтора") { actions.repeat() };links.addView(repeat,weight());playback.addView(links)
+    playback.addView(button("Определить песню","Выбрать режим определения песни") { actions.recognize() },LinearLayout.LayoutParams(-1,dp(48)))
 
    }
   }
@@ -104,20 +113,21 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
  }
  private fun progress(parent:LinearLayout) {
   seek=SeekBar(context).apply { max=1000;progressTintList=android.content.res.ColorStateList.valueOf(accent);thumbTintList=android.content.res.ColorStateList.valueOf(accent);contentDescription="Позиция воспроизведения" }
+  if(page=="player")seek!!.layoutParams=LinearLayout.LayoutParams(-1,dp(48))
   seek!!.setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener {
    override fun onStartTrackingTouch(bar:SeekBar) { dragging=true }
    override fun onStopTrackingTouch(bar:SeekBar) { actions.seek(bar.progress);dragging=false }
    override fun onProgressChanged(bar:SeekBar,progress:Int,user:Boolean) {}
-  });parent.addView(seek);val line=row();times=text("",12f);totalTime=text("",12f).apply { gravity=Gravity.END };line.addView(times,weight());line.addView(totalTime,weight());parent.addView(line)
+  });parent.addView(seek);val line=row();times=text("",12f);totalTime=text("",12f).apply { gravity=Gravity.END };if(page=="player"){times?.setPadding(dp(4),0,dp(4),0);totalTime?.setPadding(dp(4),0,dp(4),0)};line.addView(times,weight());line.addView(totalTime,weight());parent.addView(line)
  }
  fun update(s:State) {
   val changed=state?.id!=s.id;state=s
   title?.text=s.title;artist?.text=if(page=="player")s.artist else "${s.title}\n${s.artist}"
-  if(page=="player")headerTitle?.text="Сейчас играет — ${s.source}"
+  if(page=="player") { headerTitle?.text="Сейчас играет — ${s.source}";headerTitle?.maxLines=1;headerTitle?.ellipsize=android.text.TextUtils.TruncateAt.END }
   album?.text=s.album;source?.text=if(page=="queue")"${s.source} · ${queue.size} треков" else "Плейлист · ${s.source}"
   play?.text=if(s.playing)"❚❚" else "▶";heart?.text=if(s.favorite)"♥" else "♡";heart?.setTextColor(if(s.favorite)accent else Color.WHITE)
   backward?.text="−${s.step}";forward?.text="+${s.step}"
-  repeat?.text=when(s.repeat){Player.REPEAT_MODE_ONE->"Повтор: 1";Player.REPEAT_MODE_ALL->"Повтор: все";else->"Повтор: выкл"}
+  repeat?.text=when(s.repeat){Player.REPEAT_MODE_ONE->"↻ 1";Player.REPEAT_MODE_ALL->"↻ ∞";else->"↻"};repeat?.contentDescription=when(s.repeat){Player.REPEAT_MODE_ONE->"Повтор: одна песня";Player.REPEAT_MODE_ALL->"Повтор: все песни";else->"Повтор: выключен"}
   repeat?.setTextColor(if(s.repeat==Player.REPEAT_MODE_OFF)muted else accent)
   times?.text=clock(s.position);totalTime?.text=clock(s.duration)
   if(!dragging)seek?.progress=if(s.duration>0)(s.position*1000/s.duration).toInt().coerceIn(0,1000) else 0
@@ -129,7 +139,9 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
  fun setTranslation(id:String?,value:String,message:String,action:Int=0) {
   translatedId=id;translatedValue=value;translatedMessage=message;translatedAction=action
   if(page!="translation")return
+  val changedText=translationText?.text.toString()!=value
   translationText?.text=if(id==state?.id)value else ""
+  if(changedText && value.isNotBlank() && id==state?.id)scroll?.let { ReadingPosition.attach(context,it,"translation:"+id+"\n"+value) }
   translationStatus?.text=if(id==state?.id)message else "Готовим перевод…"
   translationButton?.visibility=if(id==state?.id && action!=0)View.VISIBLE else View.GONE
   translationButton?.text=if(action==1)"Расширения перевода" else "Повторить перевод"
@@ -141,7 +153,7 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
   lyricId=id;doc=document;lyricError=error;active=Int.MIN_VALUE
   offsets=buildList { var count=0;document?.cues?.forEach { add(count);count+=it.text.length+1 } }
   lyricStatus?.text=when { error!=null->error;document==null->"Текста пока нет. Нажми, чтобы найти, или добавь свой через ⋮.";document.cues.isEmpty()->"Сохранён на устройстве · обычный текст";else->"Сохранён на устройстве · LRC" }
-  lyricText?.text=document?.plain.orEmpty();retryButton?.visibility=if(document==null)View.VISIBLE else View.GONE;retryButton?.isEnabled=!lyricBusy;renderLyricsResults();state?.let { updateLyrics(it) }
+  lyricText?.text=document?.plain.orEmpty();if(document!=null && (document.cues.isEmpty() || !auto))scroll?.let { ReadingPosition.attach(context,it,"lyrics:"+id+"\n"+document.plain) };retryButton?.visibility=if(document==null)View.VISIBLE else View.GONE;retryButton?.isEnabled=!lyricBusy;renderLyricsResults();state?.let { updateLyrics(it) }
  }
  fun lyricsSearching(id:String,busy:Boolean,message:String) {
   lyricBusy=busy;setLyrics(id,null,message);retryButton?.text=if(busy)"Ищем…" else "Повторить поиск";retryButton?.isEnabled=!busy
@@ -171,7 +183,7 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
   panel.addView(button("Сбросить в ноль","Сбросить эквалайзер") { val edit=prefs.edit().putInt("eqPreamp",0);for(i in 0 until 10)edit.putInt("eqBand$i",0);edit.apply();sliders.forEach { it.progress=12 } },LinearLayout.LayoutParams(-1,dp(52)))
  }
  internal class SquareArtwork(context:Context):ImageView(context) {
-  override fun onMeasure(widthMeasureSpec:Int,heightMeasureSpec:Int) { val side=View.MeasureSpec.getSize(widthMeasureSpec);super.onMeasure(View.MeasureSpec.makeMeasureSpec(side,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(side,View.MeasureSpec.EXACTLY)) }
+  override fun onMeasure(widthMeasureSpec:Int,heightMeasureSpec:Int) { val width=View.MeasureSpec.getSize(widthMeasureSpec);val height=View.MeasureSpec.getSize(heightMeasureSpec);val side=if(View.MeasureSpec.getMode(heightMeasureSpec)==View.MeasureSpec.UNSPECIFIED)width else minOf(width,height);super.onMeasure(View.MeasureSpec.makeMeasureSpec(side,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(side,View.MeasureSpec.EXACTLY)) }
  }
  private fun updateLyrics(s:State) {
   autoToggle?.visibility=if(page=="lyrics" && lyricId==s.id && doc?.cues?.isNotEmpty()==true)View.VISIBLE else View.GONE

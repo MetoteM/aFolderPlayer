@@ -138,9 +138,9 @@ class PlaybackService : MediaSessionService() {
       val source=args.getString("source").orEmpty()
       if(prefs.getString("queueSource","")!=source || player.mediaItemCount==0) SessionResult.RESULT_SUCCESS else {
        val library=Library(this);val old=(0 until player.mediaItemCount).map { player.getMediaItemAt(it) }
-       val byId=old.groupBy { it.mediaId };val known=library.tracks().filter { it.uri in byId }.associateBy { it.uri }
+       val byId=old.groupBy { it.mediaId };val refresh=args.getBoolean("refreshSource",false);val known=library.tracks().filter { refresh || it.uri in byId }.associateBy { it.uri }
        val sourceIds=library.ordered(known.values.toList(),source,prefs.getInt("librarySort",0)).map { it.uri };val extraIds=old.map { it.mediaId }.filter { it !in sourceIds && it in known }
-       val ordered=(sourceIds+extraIds).distinct().flatMap { byId[it].orEmpty() }+old.filter { it.mediaId !in known }
+       val ordered=(sourceIds+extraIds).distinct().flatMap { byId[it] ?: listOf(known.getValue(it).item()) }+old.filter { it.mediaId !in known }
        val current=player.currentMediaItem?.mediaId;val occurrence=old.take(player.currentMediaItemIndex.coerceAtLeast(0)).count { it.mediaId==current }
        val index=ordered.indices.filter { ordered[it].mediaId==current }.getOrNull(occurrence) ?: -1
        if(index>=0 && player.playbackState!=Player.STATE_ENDED) {

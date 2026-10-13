@@ -41,8 +41,8 @@ class SongTextActivity:Activity(){
   } })
   box.addView(TextView(this).apply { text=source.ifBlank { "Сохранённый текст не найден" };textSize=19f;setTextIsSelectable(true);setPadding(0,20,0,20) })
   box.addView(Button(this).apply { text="Назад";setOnClickListener { finish() } })
-  setContentView(ScrollView(this).apply { addView(box) })
-  if(source.isNotBlank())worker.execute {
+  val reader=ScrollView(this).apply { addView(box) };setContentView(reader);ReadingPosition.attach(this,reader,"original:"+cacheTitle+"\n"+cacheArtist+"\n"+source)
+  if(source.isNotBlank() && !intent.hasExtra("localUri"))worker.execute {
    val result=runCatching { RecognizedTextStore(this).save(cacheTitle,cacheArtist,source,title,artist) }
    main.post { if(alive)status.text=if(result.isSuccess)"Сохранено для чтения без интернета" else "Текст открыт. Сохранить для офлайн-чтения не удалось." }
   }
@@ -78,7 +78,7 @@ class SongTextActivity:Activity(){
  private fun launchTranslation(model:Pair<String,String>){
   getSharedPreferences("extensions",0).edit().putBoolean("enabled",true).apply()
   status.text="Текст сохранён для чтения без интернета"
-  startActivity(Intent(this,DocumentActivity::class.java).putExtra("source",source).putExtra("translateNow",true).putExtra("translationModel",model.first))
+  startActivity(Intent(this,DocumentActivity::class.java).putExtra("source",source).putExtra("translateNow",true).putExtra("translationModel",model.first).putExtra("track",intent.getStringExtra("localUri")))
  }
  override fun onResume(){super.onResume();foreground=true}
  override fun onStop(){foreground=false;super.onStop()}

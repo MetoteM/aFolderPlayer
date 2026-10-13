@@ -11,6 +11,7 @@ public final class DocumentHistoryTest {
   JSONObject legacy=row("old","I came home.","Я пришёл домой.");legacy.remove("id");JSONArray migrated=DocumentHistory.load(null,legacy.toString());check(migrated.length()==1);check(migrated.getJSONObject(0).getString("id").equals("legacy-full-document"));
   JSONArray next=DocumentHistory.append(migrated,row("new","Go home.","Иди домой."));check(migrated.length()==1);check(next.length()==2);
   JSONArray reloaded=DocumentHistory.load(DocumentHistory.serialize(next),legacy.toString());check(reloaded.length()==2);check(reloaded.getJSONObject(0).getString("translation").equals("Я пришёл домой."));check(reloaded.getJSONObject(1).getString("translation").equals("Иди домой."));
+  JSONArray removed=DocumentHistory.remove(reloaded,"legacy-full-document");check(removed.length()==1);JSONArray restored=DocumentHistory.restore(removed,reloaded.getJSONObject(0),0);check(restored.length()==2);check(restored.getJSONObject(0).getString("id").equals("legacy-full-document"));check(DocumentHistory.restore(restored,reloaded.getJSONObject(0),0).length()==2);
   next.getJSONObject(1).put("translation","bad");check(reloaded.getJSONObject(1).getString("translation").equals("Иди домой."));fails(DocumentHistory.serialize(next));
   fails("broken");fails("{\"schema\":2,\"documents\":[]}");fails("{\"schema\":1,\"documents\":[null]}");
   JSONObject bad=row("bad","A.","A");bad.put("choices",new JSONArray());fails(DocumentHistory.serialize(new JSONArray().put(bad)));
