@@ -1,0 +1,17 @@
+{
+  "result": "passed",
+  "verified_at": "2026-10-13T21:32:03.231226+00:00",
+  "source_commit": "40404dbaf150a06cbc67f76c46b4a6db781b2eb4",
+  "source_checks_run": 38469674765,
+  "publication_run": 38471140654,
+  "version_name": "0.7.9",
+  "version_code": 35,
+  "original_assets_unchanged": 9,
+  "certificate_match": true,
+  "asset": {
+    "name": "aFolderPlayer_0.7.9_patch1.apk",
+    "sha256": "88aa2cae10ae38e233d5266c0cb6ca9c84f2fd5134ab278a7afbaee0c5335e59",
+    "size": 3879915
+  },
+  "device_install_test": "pending"
+}
