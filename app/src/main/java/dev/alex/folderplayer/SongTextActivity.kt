@@ -55,12 +55,24 @@ class SongTextActivity:Activity(){
     if(!foreground){status.text="Перевод не запущен. Можно повторить.";return@post}
     outcome.onSuccess { models ->
      val expected=sourceModel(source)
-     val suitable=models.filter { it.first==expected || expected=="opus-en-ru-v2" && it.first==TranslationClient.MODEL }
-     if(suitable.isEmpty())missingLanguage()
-     else launchTranslation(suitable.firstOrNull { it.first==expected } ?: suitable.first())
+     val preferred=models.firstOrNull { it.first==expected }
+      ?: if(expected=="opus-en-ru-v2")models.firstOrNull { it.first==TranslationClient.MODEL } else null
+     if(preferred==null)missingLanguage()
+     if(models.isNotEmpty()) {
+      if(preferred!=null && models.size==1)launchTranslation(preferred)
+      else chooseInstalledLanguage(models,preferred)
+     }
     }.onFailure { missingLanguage() }
    } }
   }
+ }
+ private fun chooseInstalledLanguage(models:List<Pair<String,String>>,preferred:Pair<String,String>?) {
+  val ordered=if(preferred==null)models else listOf(preferred)+models.filterNot { it.first==preferred.first }
+  status.text=if(preferred==null)"Для текста нет подходящего языкового пакета. Можно вручную выбрать установленный язык." else "Проверь определённый язык оригинала"
+  AlertDialog.Builder(this).setTitle("Язык оригинала")
+   .setItems(ordered.map { it.second+(if(it.first==preferred?.first)" · предложен" else "") }.toTypedArray()) { _,index ->
+    launchTranslation(ordered[index])
+   }.setNegativeButton("Отмена",null).show()
  }
  private fun missingLanguage(){status.text="Для перевода нужен пакет «${TranslationClient.MODELS[sourceModel(source)]}». Установи его и переводчик в разделе «Расширения». Текст можно читать без них."}
  private fun launchTranslation(model:Pair<String,String>){
@@ -76,7 +88,10 @@ class SongTextActivity:Activity(){
   internal fun sourceModel(value:String):String {
    if(value.any { it in '\u4e00'..'\u9fff' })return "opus-zh-ru-v1"
    val words=value.lowercase().split(Regex("[^\\p{L}]+"));val german=setOf("ich","du","nicht","und","mein","dein","mich","dich","wir","der","die","das","ist","ein","eine","mit","auf","für","hast","bist","habe","wenn","liebe","alle","zwei","drei","vier","fünf")
-   return if(value.any { it in "äöüÄÖÜß" } || words.toSet().count { it in german }>=3)"opus-de-ru-v1" else "opus-en-ru-v2"
+   val unique=words.toSet()
+   val strong=setOf("sonne","mutter","herz","augen","träume","mädchen","schwarz","feuer","himmel","liebst","liebt","liebe")
+   return if(value.any { it in "äöüÄÖÜß" } || unique.count { it in german }>=3 ||
+    ("du" in unique && "hast" in unique) || unique.any { it in strong })"opus-de-ru-v1" else "opus-en-ru-v2"
   }
  }
 }

@@ -38,6 +38,9 @@ class SongTextTest {
   assertEquals("opus-de-ru-v1",SongTextActivity.sourceModel("Du hast mich gefragt. Ich liebe dich."))
   assertEquals("opus-en-ru-v2",SongTextActivity.sourceModel("Die, die, die. I will remember you."))
   assertEquals("opus-zh-ru-v1",SongTextActivity.sourceModel("我爱你。"))
+  assertEquals("opus-de-ru-v1",SongTextActivity.sourceModel("Du hast."))
+  assertEquals("opus-de-ru-v1",SongTextActivity.sourceModel("Sonne"))
+  assertEquals("opus-de-ru-v1",SongTextActivity.sourceModel("Mutter"))
   assertTrue(SongTextActivity.russian("Моя мать дала мне письмо."))
  }
  @Test fun songTranslationKeepsGlobalLanguageAndPassesPerTextModel(){
