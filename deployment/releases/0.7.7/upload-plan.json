@@ -83,9 +83,9 @@
     },
     {
       "path": "deployment/releases/0.7.7/release-notes.md",
-      "size": 1649,
-      "git_blob": "874705a6861f23b7f808a0aaaf3f24eee97a56cf",
-      "sha256": "56aec0e01f2cdcc7611935f001600525e543c9b12f5f436c59bc6a9e304b9c05"
+      "size": 886,
+      "git_blob": "47ef22fc26820196495157daf431d32f912c28d3",
+      "sha256": "f6c1078cb9f7182eaaca4c2f94a693de229bc3517c2bb49b628ca5150a185758"
     }
   ]
 }

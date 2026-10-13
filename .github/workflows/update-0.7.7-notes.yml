@@ -1,0 +1,33 @@
+name: Update user-facing 0.7.7 release notes
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/update-0.7.7-notes.yml'
+      - 'deployment/releases/0.7.7/release-notes.md'
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Update description and preserve release files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh api "repos/$GH_REPO/releases/tags/v0.7.7" > /tmp/before.json
+          gh release edit v0.7.7 --notes-file deployment/releases/0.7.7/release-notes.md
+          gh api "repos/$GH_REPO/releases/tags/v0.7.7" > /tmp/after.json
+          python3 - <<'PY'
+          import json,pathlib
+          before=json.load(open('/tmp/before.json'))
+          after=json.load(open('/tmp/after.json'))
+          assert after['body'].strip()==pathlib.Path('deployment/releases/0.7.7/release-notes.md').read_text().strip()
+          for key in ['tag_name','draft','prerelease']:
+              assert before[key]==after[key],key+' changed unexpectedly'
+          identity=lambda r:sorted((a['id'],a['name'],a['size'],a.get('digest')) for a in r['assets'])
+          assert identity(before)==identity(after),'Release files changed unexpectedly'
+          print('User-facing release description updated; release files preserved')
+          PY

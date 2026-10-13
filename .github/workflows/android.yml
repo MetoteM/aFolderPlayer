@@ -9,6 +9,8 @@ on:
       - '.github/workflows/release-*.yml'
       - '.github/workflows/artifact-maintenance.yml'
       - 'docs/STORAGE_POLICY.md'
+      - 'docs/RELEASE_NOTES_POLICY.md'
+      - '.github/workflows/update-0.7.7-notes.yml'
       - 'tools/publish-release.py'
       - 'tools/apk-delta.py'
       - 'docs/GITHUB_RELEASES.md'
