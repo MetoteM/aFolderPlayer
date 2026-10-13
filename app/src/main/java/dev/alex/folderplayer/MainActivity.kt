@@ -269,7 +269,7 @@ class MainActivity : Activity() {
   position.text=getString(dev.alex.folderplayer.R.string.duration_format,clock(c.currentPosition),clock(d))
   if(!dragging) seek.progress=if(d>0) (c.currentPosition*1000/d).toInt().coerceIn(0,1000) else 0
   val track=currentTrack();val id=c.currentMediaItem?.mediaId
-  if(directId!=null && directId!=id)stopDirectLyrics()
+  if(directId!=null && directId!=id)stopDirectLyrics(true)
   screens.update(PlayerScreens.State(id,now.text.toString(),track?.artist ?: c.mediaMetadata.artist?.toString().orEmpty(),
    listOfNotNull(track?.album?.takeIf { it.isNotBlank() },track?.year?.toString()).joinToString(" · "),
    prefs.getString("queueSource","").orEmpty().ifBlank { "Библиотека" },c.isPlaying,
@@ -540,7 +540,7 @@ class MainActivity : Activity() {
    val lyrics=runCatching { loadLyrics(track)?.let { LyricsDocument(it) } }
    handler.post { if(alive && generation==mediaGeneration && controller?.currentMediaItem?.mediaId==track.uri) {
     screens.setArtwork(track.uri,bitmap);screens.setLyrics(track.uri,lyrics.getOrNull(),if(lyrics.isFailure)"Не удалось прочитать локальный текст. Можно найти слова или добавить свой через ⋮." else null)
-    if(page=="lyrics" && lyricsRequestedId==track.uri) { lyricsRequestedId=null;if(lyrics.getOrNull()==null)directLyrics(track) }
+    if(page=="lyrics" && lyricsRequestedId==track.uri) { lyricsRequestedId=null;if(lyrics.getOrNull()==null)directLyrics(track,false) }
    } }
   }
  }
@@ -571,9 +571,11 @@ class MainActivity : Activity() {
    } }
   }
  }
- private fun stopDirectLyrics() {
-  directId?.let { screens.lyricsSearching(it,false,"Поиск отменён. Можно повторить попытку.") }
-  directCancel?.cancel();directTask?.cancel(true);directCancel=null;directTask=null;directId=null;directResults=emptyList()
+ private fun stopDirectLyrics(clear:Boolean=false) {
+  val busy=directTask!=null
+  if(busy && !clear)directId?.let { screens.lyricsSearching(it,false,"Поиск отменён. Можно повторить попытку.") }
+  directCancel?.cancel();directTask?.cancel(true);directCancel=null;directTask=null
+  if(clear || busy){directId=null;directResults=emptyList()}
  }
  private fun editSearchName(track:Track) {
   val old=SearchIdentity(this).read(track.uri) ?: SongNames.queries(track).firstOrNull() ?: SongQuery(track.title,track.artist)
@@ -584,17 +586,20 @@ class MainActivity : Activity() {
    runCatching { SearchIdentity(this).save(track.uri,SongQuery(title.text.toString().trim(),artist.text.toString().trim())) }.onSuccess { dialog.dismiss();showPage("lyrics");directLyrics(track) }.onFailure { toast("Не удалось сохранить запрос") }
   } } };dialog.show()
  }
- private fun directLyrics(track:Track) {
+ private fun directLyrics(track:Track,force:Boolean=true) {
+  val identity=SearchIdentity(this).read(track.uri)
+  val miss="lyricsMiss:"+LyricsDocument.key(track.uri+"\n"+track.duration+"\n"+SongNames.queries(track,identity).joinToString())
+  if(!force && System.currentTimeMillis()-prefs.getLong(miss,0) in 0..600000) { screens.lyricsSearching(track.uri,false,"Недавно текст не был найден. Можно повторить поиск вручную.");return }
   if(directId==track.uri && directTask?.isDone==false)return
   directCancel?.cancel();directTask?.cancel(true);directResults=emptyList();directId=track.uri
   val cancel=LyricsSearch.Cancel();directCancel=cancel;screens.lyricsSearching(track.uri,true,"Ищем слова песни…")
   directTask=networkExecutor.submit {
-   val result=runCatching { TrackSearch(this,lyricsSearch).search(track,SearchIdentity(this).read(track.uri),cancel) }
+   val result=runCatching { TrackSearch(this,lyricsSearch).search(track,identity,cancel) }
    prefs.edit().putLong("lyricsRetryUntil",lyricsSearch.cooldown()).apply()
    handler.post { if(alive && page=="lyrics" && directCancel===cancel && currentTrack()?.uri==track.uri) {
     directTask=null
     result.onFailure { screens.lyricsSearching(track.uri,false,SearchSupport.message(it,"Сервис текста")+". Можно повторить поиск или добавить свой текст через ⋮.") }.onSuccess { found ->
-     val matches=found.filter { it.text.isNotBlank() };directResults=matches
+     val matches=found.filter { it.text.isNotBlank() };directResults=matches;if(matches.isEmpty())prefs.edit().putLong(miss,System.currentTimeMillis()).apply() else prefs.edit().remove(miss).apply()
      if(matches.isEmpty())screens.lyricsSearching(track.uri,false,"Текст не найден. Добавь свой текст или импортируй TXT / LRC через ⋮.")
      else { val identity=SearchIdentity(this).read(track.uri) ?: SongQuery(track.title,track.artist);val chosen=LyricsMatch.automatic(matches,identity.title,identity.artist,track.album,track.duration)
       if(chosen!=null)saveDirectLyrics(track,chosen) else screens.setLyricsResults(track.uri,matches)

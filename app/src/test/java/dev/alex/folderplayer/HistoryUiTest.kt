@@ -25,7 +25,7 @@ class HistoryUiTest {
   val history=ShadowAlertDialog.getLatestAlertDialog();val views=views(history.window!!.decorView);views.filterIsInstance<EditText>().single().setText("Second")
   val list=views.filterIsInstance<ListView>().single();assertEquals(1,list.adapter.count);list.performItemClick(list.adapter.getView(0,null,list),0,0)
   shadowOf(ShadowAlertDialog.getLatestAlertDialog()).clickOnItem(1);assertEquals(setOf("b"),removed);assertEquals(0,list.adapter.count)
-  ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();assertTrue(removed.isEmpty());assertEquals(1,list.adapter.count)
+  ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();shadowOf(android.os.Looper.getMainLooper()).idle();assertTrue(removed.isEmpty());assertEquals(1,list.adapter.count)
   host.pause().stop().destroy()
  }
  @Test fun readingPositionRestoresAfterReaderRecreation() {
