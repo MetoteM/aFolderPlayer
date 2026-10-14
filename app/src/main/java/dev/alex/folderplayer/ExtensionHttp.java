@@ -35,7 +35,8 @@ public final class ExtensionHttp {
     String host = original.getHost();
     if (host == null
         || !host.equalsIgnoreCase("github.com")
-        || !original.getPath().matches("/[^/]+/[^/]+/releases/download/[^/]+/[^/]+")
+        || !(original.getPath().matches("/[^/]+/[^/]+/releases/download/[^/]+/[^/]+")
+            || original.getPath().matches("/[^/]+/[^/]+/releases/latest/download/[^/]+"))
         || !GITHUB_HOSTS.contains(target.getHost().toLowerCase(java.util.Locale.ROOT)))
       throw new IOException("Перенаправление загрузки не разрешено");
     return target;
