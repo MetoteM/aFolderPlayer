@@ -94,7 +94,7 @@ internal class TranslationClient(private val context: Context) {
                 "Не удалось подключиться к движку перевода"
             }
             val service = remote.get() ?: error("Движок перевода отключился")
-            check(service.apiVersion() == 1) { "Нужна совместимая версия AFP Translate" }
+            check(service.apiVersion() in 1..2) { "Нужна совместимая версия AFP Translate" }
             return block(service)
         } finally {
             if (bound) runCatching { context.unbindService(connection) }
@@ -126,6 +126,35 @@ internal class TranslationClient(private val context: Context) {
         awaitResult(service, cancel, progress) { id, callback ->
             service.translate(id, model, text, callback)
         }
+    }
+
+    data class Recovered(val text: String, val failedLines: Set<Int>)
+
+    fun translateRecovering(
+        text: String,
+        cancel: AtomicBoolean,
+        model: String,
+        progress: (Int, Int) -> Unit,
+    ): Recovered = connected { service ->
+        if (!service.modelReady(model)) throw MissingModel()
+        if (service.apiVersion() < 2) {
+            return@connected Recovered(
+                awaitResult(service, cancel, progress) { id, callback ->
+                    service.translate(id, model, text, callback)
+                },
+                emptySet(),
+            )
+        }
+        val raw =
+            awaitResult(service, cancel, progress) { id, callback ->
+                service.translateRecovering(id, model, text, callback)
+            }
+        val payload = org.json.JSONObject(raw)
+        val failures = payload.getJSONArray("failedLines")
+        val count = text.split("\n").size
+        val indices = (0 until failures.length()).map { failures.getInt(it) }.toSet()
+        check(indices.all { it in 0 until count }) { "Движок вернул неверный результат" }
+        Recovered(payload.getString("text"), indices)
     }
 
     private fun awaitResult(

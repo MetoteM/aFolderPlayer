@@ -1,21 +1,170 @@
 package dev.alex.folderplayer;
-import org.junit.Test;import static org.junit.Assert.*;import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.junit.Assert.*;
+
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.Test;
+
 public class AdaptiveTranslationTest {
- @Test public void retryRetainsAllWordsAndIsBounded()throws Exception {
-  AtomicInteger calls=new AtomicInteger();String source="first second third fourth fifth sixth";
-  String result=OfflineTranslator.adaptiveRetry(source,()->false,0,text->{if(calls.getAndIncrement()==0)throw new OfflineTranslator.IncompleteTranslation("incomplete");return text;});
-  assertEquals(source,result);assertEquals(3,calls.get());
- }
- @Test public void failedRetryDoesNotReturnPartialText()throws Exception {
-  AtomicInteger calls=new AtomicInteger();
-  try {OfflineTranslator.adaptiveRetry("first second third fourth",()->false,0,text->{calls.incrementAndGet();throw new OfflineTranslator.IncompleteTranslation("incomplete");});fail();}
-  catch(OfflineTranslator.IncompleteTranslation expected){}
-  assertEquals(2,calls.get());
- }
- @Test public void cancellationPreventsRetry()throws Exception {
-  AtomicInteger calls=new AtomicInteger();
-  try {OfflineTranslator.adaptiveRetry("first second third fourth",()->true,0,text->{calls.incrementAndGet();throw new OfflineTranslator.IncompleteTranslation("incomplete");});fail();}
-  catch(InterruptedException expected){}
-  assertEquals(1,calls.get());
- }
+  @Test
+  public void retryRetainsAllWords() throws Exception {
+    AtomicInteger calls = new AtomicInteger();
+    String source = "first second third fourth fifth sixth";
+    assertEquals(
+        source,
+        OfflineTranslator.adaptiveRetry(
+            source,
+            () -> false,
+            0,
+            text -> {
+              if (calls.getAndIncrement() == 0)
+                throw new OfflineTranslator.IncompleteTranslation("incomplete");
+              return text;
+            }));
+    assertEquals(3, calls.get());
+  }
+
+  @Test
+  public void decomposesAgainAndNeverRepeatsSuccessfulPiece() throws Exception {
+    java.util.Map<String, Integer> calls = new java.util.HashMap<>();
+    String source = "one two three four five six seven eight";
+    assertEquals(
+        source,
+        OfflineTranslator.adaptiveRetry(
+            source,
+            () -> false,
+            0,
+            text -> {
+              calls.merge(text, 1, Integer::sum);
+              if (text.split(" ").length > 2)
+                throw new OfflineTranslator.IncompleteTranslation("incomplete");
+              return text;
+            }));
+    assertEquals(7, calls.size());
+    assertTrue(calls.values().stream().allMatch(n -> n == 1));
+  }
+
+  @Test
+  public void thirdLevelRecoversTwoWordFragment() throws Exception {
+    assertEquals(
+        "one two",
+        OfflineTranslator.adaptiveRetry(
+            "one two",
+            () -> false,
+            0,
+            text -> {
+              if (text.contains(" "))
+                throw new OfflineTranslator.IncompleteTranslation("incomplete");
+              return text;
+            }));
+  }
+
+  @Test
+  public void failedRetryDoesNotReturnPartialDecoderOutput() throws Exception {
+    AtomicInteger calls = new AtomicInteger();
+    try {
+      OfflineTranslator.adaptiveRetry(
+          "one two three four five six seven eight nine ten",
+          () -> false,
+          0,
+          text -> {
+            calls.incrementAndGet();
+            throw new OfflineTranslator.IncompleteTranslation("incomplete");
+          });
+      fail();
+    } catch (OfflineTranslator.IncompleteTranslation expected) {
+    }
+    assertTrue(calls.get() <= 4);
+  }
+
+  @Test
+  public void cancellationPreventsAnyDecode() throws Exception {
+    AtomicInteger calls = new AtomicInteger();
+    try {
+      OfflineTranslator.adaptiveRetry(
+          "one two",
+          () -> true,
+          0,
+          text -> {
+            calls.incrementAndGet();
+            return text;
+          });
+      fail();
+    } catch (InterruptedException expected) {
+    }
+    assertEquals(0, calls.get());
+  }
+
+  @Test
+  public void cancellationBetweenPiecesStopsImmediately() throws Exception {
+    AtomicInteger calls = new AtomicInteger();
+    try {
+      OfflineTranslator.adaptiveRetry(
+          "one two three four",
+          () -> calls.get() >= 2,
+          0,
+          text -> {
+            if (calls.incrementAndGet() == 1)
+              throw new OfflineTranslator.IncompleteTranslation("incomplete");
+            return text;
+          });
+      fail();
+    } catch (InterruptedException expected) {
+    }
+    assertEquals(2, calls.get());
+  }
+
+  @Test
+  public void resourceErrorsAreNotRetried() throws Exception {
+    AtomicInteger calls = new AtomicInteger();
+    try {
+      OfflineTranslator.adaptiveRetry(
+          "one two three four",
+          () -> false,
+          0,
+          text -> {
+            calls.incrementAndGet();
+            throw new IOException("missing model");
+          });
+      fail();
+    } catch (IOException expected) {
+      assertEquals("missing model", expected.getMessage());
+    }
+    assertEquals(1, calls.get());
+  }
+
+  @Test
+  public void splitPrefersPunctuationAndPreservesUnicode() {
+    assertEquals(
+        Arrays.asList("First sentence.", "Another sentence"),
+        OfflineTranslator.splitRecovery("First sentence. Another sentence"));
+    assertEquals(Arrays.asList("你好", "世界"), OfflineTranslator.splitRecovery("你好世界"));
+    assertEquals(Arrays.asList("word"), OfflineTranslator.splitRecovery("word"));
+  }
+
+  @Test
+  public void depthLimitAndAttemptBudgetAreFinite() throws Exception {
+    AtomicInteger calls = new AtomicInteger();
+    try {
+      OfflineTranslator.adaptiveRetry(
+          "one two",
+          () -> false,
+          3,
+          text -> {
+            calls.incrementAndGet();
+            throw new OfflineTranslator.IncompleteTranslation("incomplete");
+          });
+      fail();
+    } catch (OfflineTranslator.IncompleteTranslation expected) {
+    }
+    assertEquals(1, calls.get());
+    OfflineTranslator.RetryBudget budget = new OfflineTranslator.RetryBudget();
+    for (int i = 0; i < 14; i++) {
+      assertTrue(budget.available());
+      budget.use();
+    }
+    assertFalse(budget.available());
+  }
 }

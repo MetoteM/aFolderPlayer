@@ -342,7 +342,7 @@ public final class DocumentActivity extends Activity {
       row.put("choices", choices);
       JSONArray next = DocumentHistory.append(documents, row);
       writeDocuments(next);
-      if (track != null && source.equals(initialSource)) {
+      if (track != null && source.equals(initialSource) && !result().contains("⟦Не переведено⟧")) {
         try {
           new TranslationStore(this).save(track, source, result(), model);
         } catch (Exception e) {

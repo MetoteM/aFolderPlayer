@@ -17,6 +17,7 @@ class TranslationClientTest {
   override fun apiVersion()=1;override fun modelReady(id:String)=true;override fun modelBytes(id:String)=1L
   override fun installModel(id:String,file:ParcelFileDescriptor,callback:ITranslationCallback){}
   override fun translate(id:String,model:String,text:String,callback:ITranslationCallback){}
+  override fun translateRecovering(id:String,model:String,text:String,callback:ITranslationCallback){}
   override fun cancel(id:String){cancelled=true};override fun removeModel(id:String){}
  }
  @Test fun callbackResultAndProgressCrossTheLocalProtocol() {
