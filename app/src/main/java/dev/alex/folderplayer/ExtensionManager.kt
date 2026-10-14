@@ -27,7 +27,7 @@ internal class ExtensionManager(
 ) {
     companion object {
         const val DEFAULT_CATALOG =
-            "https://github.com/MetoteM/aFolderPlayer/releases/download/v0.7.8/"
+            "https://github.com/MetoteM/aFolderPlayer/releases/download/v0.8.0/"
     }
 
     private val worker = Executors.newSingleThreadExecutor()

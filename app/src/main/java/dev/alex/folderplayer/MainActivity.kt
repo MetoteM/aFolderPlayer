@@ -703,6 +703,7 @@ class MainActivity : Activity() {
     }
 
     private fun updatePlayer() {
+        if (!screenStarted) return
         val c = controller ?: return
         highlightTrack(false)
         now.text = c.mediaMetadata.title?.toString() ?: "Выбери песню"
