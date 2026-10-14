@@ -1,0 +1,65 @@
+{
+  "source_commit": "72e49f380c673b395b0b48156b232f2cbe880d86",
+  "certificate_sha256": "36efde603967282debd976200c92acf46b68144b2704d61930ebdd9c171302cd",
+  "apks": [
+    {
+      "name": "aFolderPlayer_0.8.2.apk",
+      "size": 3900395,
+      "sha256": "228f4f9879eb688b9b61548d87af2ae5f63bf82986b0294381ef2258fb61cd83",
+      "delta": {
+        "base_name": "aFolderPlayer_0.8.1.base.apk",
+        "base_url": "https://github.com/MetoteM/aFolderPlayer/releases/download/v0.8.1/aFolderPlayer_0.8.1.apk",
+        "base_sha256": "46c3b94aa0ba56321e1ee594f2cc2b47719b3267423672443c3cdd6a9c2c5116",
+        "recipe": "deployment/releases/0.8.2/aFolderPlayer_0.8.2.delta.json.gz",
+        "recipe_sha256": "25f81475faa339688abe8999af75f5ed5a280bbb3d9299ed9919e44f8dbcc934"
+      }
+    },
+    {
+      "name": "AFP_Translate_0.3.5.apk",
+      "size": 19216004,
+      "sha256": "b8d59ec2978854c782e1e008116096b2d7662b8735bddb5f62f25fdbde9c2eeb",
+      "delta": {
+        "base_name": "AFP_Translate_0.3.5.base.apk",
+        "base_url": "https://github.com/MetoteM/aFolderPlayer/releases/download/v0.8.1/AFP_Translate_0.3.5.apk",
+        "base_sha256": "b8d59ec2978854c782e1e008116096b2d7662b8735bddb5f62f25fdbde9c2eeb",
+        "recipe": "deployment/releases/0.8.2/AFP_Translate_0.3.5.delta.json.gz",
+        "recipe_sha256": "70d3a81729861821497115ced6ab505536dbc7610452663e0be6c1f93ec4007c"
+      }
+    }
+  ],
+  "models": [
+    {
+      "name": "AFP_English_Russian_v2.zip",
+      "size": 112527869,
+      "sha256": "ddb334359395e3b52f56aa8a496927d7e3ab5dfa9d41d7b6c5e1747779c39a84",
+      "source_url": "https://github.com/MetoteM/aFolderPlayer/releases/download/v0.8.0/AFP_English_Russian_v2.zip"
+    },
+    {
+      "name": "AFP_Chinese_Russian_v1.zip",
+      "size": 227250942,
+      "sha256": "59ce8b6e7579e0135f455310379cbdc1410355bbdecd90b0483f21a58d301f59",
+      "source_url": "https://github.com/MetoteM/aFolderPlayer/releases/download/v0.8.0/AFP_Chinese_Russian_v1.zip"
+    },
+    {
+      "name": "AFP_German_Russian_v1.zip",
+      "size": 219944325,
+      "sha256": "e07ff0d5a0adea86620ec15ae94584f03e61568acf8639677c56cfbd9ef8256c",
+      "source_url": "https://github.com/MetoteM/aFolderPlayer/releases/download/v0.8.0/AFP_German_Russian_v1.zip"
+    },
+    {
+      "name": "AFP_French_Russian_v1.zip",
+      "size": 114369554,
+      "sha256": "083a0526f9aedb0f6d9abc689bd670c2313afc02aeede57e8a97efe2e1d2ca29",
+      "source_url": "https://github.com/MetoteM/aFolderPlayer/releases/download/v0.8.0/AFP_French_Russian_v1.zip"
+    },
+    {
+      "name": "AFP_Spanish_Russian_v1.zip",
+      "size": 113373854,
+      "sha256": "9dbb7457b206fb2e168c3d51867de3418f7499eca7e293b46e82f5da821110e6",
+      "source_url": "https://github.com/MetoteM/aFolderPlayer/releases/download/v0.8.0/AFP_Spanish_Russian_v1.zip"
+    }
+  ],
+  "release_status": "stable",
+  "validation": "source-CI-and-live-production-catalogue-download",
+  "battery_measurement": "pending-physical-device"
+}
