@@ -61,5 +61,6 @@
   ],
   "release_status": "stable",
   "validation": "source-CI-and-signed-emulator-upgrade-required",
-  "battery_measurement": "pending-physical-device"
+  "battery_measurement": "pending-physical-device",
+  "emulator_smoke_revision": 2
 }

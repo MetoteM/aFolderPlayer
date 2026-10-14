@@ -15,6 +15,7 @@ def ui():
   try:
    adb('shell','uiautomator','dump','/sdcard/afp-smoke.xml')
    raw=adb('shell','cat','/sdcard/afp-smoke.xml')
+   (OUT/'last-ui.xml').write_text(raw)
    return ET.fromstring(raw)
   except (subprocess.SubprocessError,ET.ParseError):time.sleep(1)
  raise RuntimeError('Cannot read Android UI')
@@ -29,6 +30,10 @@ def tap(value):
  raise AssertionError('UI action missing: '+value)
 
 def launch():
+ adb('shell','svc','power','stayon','true')
+ adb('shell','input','keyevent','224')
+ adb('shell','wm','dismiss-keyguard')
+ adb('shell','settings','put','system','screen_off_timeout','1800000')
  adb('shell','am','start','-W','-n',PACKAGE+'/.MainActivity')
  assert adb('shell','pidof',PACKAGE).strip()
  tap('Плейлисты')
@@ -71,4 +76,9 @@ try:
  (OUT/'verification.json').write_text(json.dumps({'result':'passed','clean_install':True,'upgrade_from':'0.7.9_patch1','to':'0.8.0','version_code':36,'playlist_preserved':True,'rotation':True,'scope':'emulator UI/installation; ARM64 audio, models and battery require separate device measurement'},indent=2)+'\n')
  print('Signed APK upgrade, clean install and UI smoke checks passed')
 finally:
+ try:
+  (OUT/'AndroidRuntime.log').write_text(adb('logcat','-d','-v','brief','-s','AndroidRuntime'))
+  (OUT/'activity.txt').write_text(adb('shell','dumpsys','activity','activities'))
+  (OUT/'screen.png').write_bytes(subprocess.check_output(['adb','exec-out','screencap','-p'],timeout=30))
+ except Exception:pass
  OLD.unlink(missing_ok=True)
