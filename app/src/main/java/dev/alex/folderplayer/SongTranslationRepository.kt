@@ -3,7 +3,12 @@ package dev.alex.folderplayer
 import android.content.Context
 import java.util.concurrent.atomic.AtomicBoolean
 
-internal data class SongTranslationResult(val source: String, val text: String, val model: String)
+internal data class SongTranslationResult(
+    val source: String,
+    val text: String,
+    val model: String,
+    val incomplete: Int = 0,
+)
 
 internal class ChooseSongLanguage(val source: String, val models: List<Pair<String, String>>) :
     Exception()
@@ -30,12 +35,15 @@ internal class SongTranslationRepository(context: Context) {
         if (expected == SongLanguage.RUSSIAN)
             return SongTranslationResult(source, source, SongLanguage.RUSSIAN)
         val store = TranslationStore(context)
-        if (!renew)
-            for (model in SongTranslation.cachedModels(expected)) store
-                .read(track.uri, source, model)
-                ?.let {
+        if (!renew) {
+            for (model in SongTranslation.cachedModels(expected)) {
+                val checkpoint = recovery(store, track.uri, source, model)
+                if (checkpoint?.optBoolean("incomplete", false) == true) continue
+                store.read(track.uri, source, model)?.let {
                     return SongTranslationResult(source, it, model)
                 }
+            }
+        }
         val installed = TranslationClient(context).availableModels()
         val model =
             when (val choice = SongTranslation.decide(source, installed.keys, manual)) {
@@ -48,12 +56,41 @@ internal class SongTranslationRepository(context: Context) {
                     return SongTranslationResult(source, source, SongLanguage.RUSSIAN)
             }
         if (cancel.get() || Thread.currentThread().isInterrupted) throw InterruptedException()
+        val engine = DocumentEngine(context, model)
+        if (!renew)
+            recovery(store, track.uri, source, model)?.let { data ->
+                runCatching {
+                    val units = data.getJSONObject("units")
+                    engine.recoveredUnits =
+                        units.keys().asSequence().associateWith { units.getString(it) }
+                }
+            }
         val text =
-            DocumentEngine(context, model).translateSentences(source, cancel) { done, total ->
+            engine.translateSentences(source, cancel) { done, total ->
                 progress.update("Перевод: $done / $total")
             }
         if (cancel.get() || Thread.currentThread().isInterrupted) throw InterruptedException()
-        store.save(track.uri, source, text, model)
-        return SongTranslationResult(source, text, model)
+        store.save(
+            track.uri,
+            source,
+            org.json
+                .JSONObject()
+                .put("units", org.json.JSONObject(engine.completedUnits as Map<*, *>))
+                .put("incomplete", engine.incompleteUnits.isNotEmpty())
+                .toString(),
+            "$model.recovery",
+        )
+        if (engine.incompleteUnits.isEmpty()) store.save(track.uri, source, text, model)
+        return SongTranslationResult(source, text, model, engine.incompleteUnits.size)
     }
+
+    private fun recovery(
+        store: TranslationStore,
+        uri: String,
+        source: String,
+        model: String,
+    ): org.json.JSONObject? =
+        store.read(uri, source, "$model.recovery")?.let {
+            runCatching { org.json.JSONObject(it) }.getOrNull()
+        }
 }

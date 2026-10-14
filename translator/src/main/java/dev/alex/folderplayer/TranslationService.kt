@@ -21,6 +21,8 @@ class TranslationService : Service() {
         object : ITranslationService.Stub() {
             override fun apiVersion() = 1
 
+            override fun recoveryVersion() = 1
+
             override fun modelReady(id: String) = TranslationStore.supported(id) && store.ready(id)
 
             override fun modelBytes(id: String) =
@@ -55,6 +57,25 @@ class TranslationService : Service() {
                 text: String,
                 callback: ITranslationCallback,
             ) {
+                startTranslation(id, model, text, callback, false)
+            }
+
+            override fun translateRecovering(
+                id: String,
+                model: String,
+                text: String,
+                callback: ITranslationCallback,
+            ) {
+                startTranslation(id, model, text, callback, true)
+            }
+
+            private fun startTranslation(
+                id: String,
+                model: String,
+                text: String,
+                callback: ITranslationCallback,
+                partial: Boolean,
+            ) {
                 require(
                     id.length <= 128 && TranslationStore.supported(model) && text.length <= 20000
                 )
@@ -65,6 +86,8 @@ class TranslationService : Service() {
                         if (cancel.get() || Thread.currentThread().isInterrupted) return@execute
                         check(store.ready(model)) { "Языковой пакет не установлен" }
                         var result = text
+                        val failed = sortedSetOf<Int>()
+                        val original = text.replace("\r", "").split("\n")
                         val stages = ModelPackages.find(model)!!.stages
                         for ((index, stage) in stages.withIndex()) {
                             check(!cancel.get()) { "Отменено" }
@@ -74,20 +97,48 @@ class TranslationService : Service() {
                                         stage.padding,
                                     )
                                     .use { engine ->
-                                        engine.translate(result, { cancel.get() }) { done, total ->
-                                            if (!cancel.get())
-                                                runCatching {
-                                                    callback.progress(
-                                                        id,
-                                                        index * total + done,
-                                                        stages.size * total,
-                                                    )
+                                        val input =
+                                            result
+                                                .split("\n")
+                                                .mapIndexed { line, value ->
+                                                    if (line in failed) "" else value
                                                 }
-                                        }
+                                                .joinToString("\n")
+                                        val outcome =
+                                            engine.translateResult(
+                                                input,
+                                                { cancel.get() },
+                                                { done, total ->
+                                                    if (!cancel.get())
+                                                        runCatching {
+                                                            callback.progress(
+                                                                id,
+                                                                index * total + done,
+                                                                stages.size * total,
+                                                            )
+                                                        }
+                                                },
+                                                partial,
+                                            )
+                                        failed.addAll(outcome.failedLines)
+                                        outcome.text
                                     }
                         }
                         check(result.length <= 200000) { "Перевод слишком большой" }
-                        if (!cancel.get()) callback.complete(id, result)
+                        if (!cancel.get()) {
+                            if (partial) {
+                                val lines =
+                                    result.split("\n").mapIndexed { line, value ->
+                                        if (line in failed) original[line] else value
+                                    }
+                                val payload =
+                                    org.json
+                                        .JSONObject()
+                                        .put("text", lines.joinToString("\n"))
+                                        .put("failedLines", org.json.JSONArray(failed.toList()))
+                                callback.complete(id, payload.toString())
+                            } else callback.complete(id, result)
+                        }
                     } catch (e: Throwable) {
                         if (!cancel.get())
                             runCatching {

@@ -128,13 +128,14 @@ public final class OfflineTranslator implements AutoCloseable {
     return result;
   }
 
-  private void check(BooleanSupplier cancelled) throws InterruptedException {
+  private static void check(BooleanSupplier cancelled) throws InterruptedException {
     if (Thread.currentThread().isInterrupted() || cancelled.getAsBoolean())
       throw new InterruptedException("Translation cancelled");
   }
 
   public String sentence(String text, BooleanSupplier cancelled) throws Exception {
     check(cancelled);
+    long started = System.nanoTime();
     long[] input = encode(text);
     if (input.length > 100)
       throw new IllegalArgumentException("Строка слишком длинная для перевода");
@@ -150,6 +151,8 @@ public final class OfflineTranslator implements AutoCloseable {
       boolean completed = false;
       for (int step = 0; step < Math.min(160, input.length * 3 + 24); step++) {
         check(cancelled);
+        if (System.nanoTime() - started > java.util.concurrent.TimeUnit.SECONDS.toNanos(45))
+          throw new IncompleteTranslation("Превышено время перевода фрагмента");
         long[][] target = new long[1][output.size()];
         for (int i = 0; i < output.size(); i++) target[0][i] = output.get(i);
         try (OnnxTensor targetIds = OnnxTensor.createTensor(environment, target);
@@ -183,9 +186,7 @@ public final class OfflineTranslator implements AutoCloseable {
           output.add((long) best);
         }
       }
-      if (!completed)
-        throw new IncompleteTranslation(
-            "Перевод строки не завершён. Попробуй сократить исходный текст");
+      if (!completed) throw new IncompleteTranslation("Не удалось завершить перевод фрагмента");
       StringBuilder result = new StringBuilder();
       for (int i = 1; i < output.size(); i++) result.append(vocabulary[output.get(i).intValue()]);
       return result.toString().replace('▁', ' ').trim();
@@ -202,27 +203,94 @@ public final class OfflineTranslator implements AutoCloseable {
     String decode(String text) throws Exception;
   }
 
-  /** One bounded split retry; never force EOS or return a partial decoder output. */
-  private String adaptive(String text, BooleanSupplier cancelled, int depth) throws Exception {
-    return adaptiveRetry(text, cancelled, depth, value -> sentence(value, cancelled));
+  /** Recover only unfinished generation; never retry cancellation or resource failures. */
+  static final class RetryBudget {
+    int attempts;
+    long started;
+    final long[] extraTime;
+
+    RetryBudget() {
+      this(new long[1]);
+    }
+
+    RetryBudget(long[] extraTime) {
+      this.extraTime = extraTime;
+    }
+
+    boolean available() {
+      return extraTime[0] < java.util.concurrent.TimeUnit.SECONDS.toNanos(120)
+          && attempts < 14
+          && (started == 0
+              || System.nanoTime() - started < java.util.concurrent.TimeUnit.SECONDS.toNanos(90));
+    }
+
+    void use() {
+      if (started == 0) started = System.nanoTime();
+      attempts++;
+    }
   }
 
   static String adaptiveRetry(
       String text, BooleanSupplier cancelled, int depth, SentenceDecoder decode) throws Exception {
+    return adaptiveRetry(text, cancelled, depth, decode, new RetryBudget());
+  }
+
+  private static String adaptiveRetry(
+      String text, BooleanSupplier cancelled, int depth, SentenceDecoder decode, RetryBudget budget)
+      throws Exception {
+    if (Thread.currentThread().isInterrupted() || cancelled.getAsBoolean())
+      throw new InterruptedException("Translation cancelled");
     try {
-      return decode.decode(text);
+      long before = System.nanoTime();
+      try {
+        return decode.decode(text);
+      } finally {
+        if (depth > 0) budget.extraTime[0] += System.nanoTime() - before;
+      }
     } catch (IncompleteTranslation failure) {
       if (Thread.currentThread().isInterrupted() || cancelled.getAsBoolean())
         throw new InterruptedException("Translation cancelled");
-      String[] words = text.trim().split("\\s+");
-      if (depth >= 1 || words.length < 4) throw failure;
-      int middle = words.length / 2;
-      String first = String.join(" ", Arrays.copyOfRange(words, 0, middle)),
-          second = String.join(" ", Arrays.copyOfRange(words, middle, words.length));
-      return adaptiveRetry(first, cancelled, depth + 1, decode)
-          + " "
-          + adaptiveRetry(second, cancelled, depth + 1, decode);
+      List<String> pieces = splitRecovery(text);
+      if (depth >= 3 || pieces.size() < 2 || !budget.available()) throw failure;
+      List<String> result = new ArrayList<>();
+      for (String piece : pieces) {
+        if (!budget.available()) throw failure;
+        budget.use();
+        result.add(adaptiveRetry(piece, cancelled, depth + 1, decode, budget));
+      }
+      return String.join(" ", result);
     }
+  }
+
+  static List<String> splitRecovery(String text) {
+    text = text.trim();
+    // Prefer sentence/clause boundaries near the middle; preserve all source characters.
+    int middle = text.length() / 2, best = -1, distance = Integer.MAX_VALUE;
+    for (int i = 1; i < text.length() - 1; i++) {
+      if (".!?;,:。！？；，：".indexOf(text.charAt(i)) >= 0 && Math.abs(i + 1 - middle) < distance) {
+        best = i + 1;
+        distance = Math.abs(best - middle);
+      }
+    }
+    if (best < 0) {
+      for (int i = 1; i < text.length() - 1; i++) {
+        if (Character.isWhitespace(text.charAt(i)) && Math.abs(i - middle) < distance) {
+          best = i;
+          distance = Math.abs(i - middle);
+        }
+      }
+    }
+    // CJK has no spaces; split safely between Unicode code points.
+    if (best < 0
+        && text.codePoints()
+            .anyMatch(cp -> Character.UnicodeScript.of(cp) == Character.UnicodeScript.HAN)) {
+      int count = text.codePointCount(0, text.length());
+      if (count > 1) best = text.offsetByCodePoints(0, count / 2);
+    }
+    if (best < 1 || best >= text.length()) return Collections.singletonList(text);
+    String left = text.substring(0, best).trim(), right = text.substring(best).trim();
+    if (left.isEmpty() || right.isEmpty()) return Collections.singletonList(text);
+    return Arrays.asList(left, right);
   }
 
   public interface Progress {
@@ -231,31 +299,75 @@ public final class OfflineTranslator implements AutoCloseable {
 
   public String translate(String text, BooleanSupplier cancelled, Progress progress)
       throws Exception {
+    return translateResult(text, cancelled, progress, false).text;
+  }
+
+  public static final class TranslationResult {
+    public final String text;
+    public final List<Integer> failedLines;
+
+    TranslationResult(String text, List<Integer> failedLines) {
+      this.text = text;
+      this.failedLines = failedLines;
+    }
+  }
+
+  public TranslationResult translateResult(
+      String text, BooleanSupplier cancelled, Progress progress, boolean allowPartial)
+      throws Exception {
+    return translateUnits(
+        text, cancelled, progress, allowPartial, this::chunks, value -> sentence(value, cancelled));
+  }
+
+  static TranslationResult translateUnits(
+      String text,
+      BooleanSupplier cancelled,
+      Progress progress,
+      boolean allowPartial,
+      java.util.function.Function<String, List<String>> chunks,
+      SentenceDecoder decode)
+      throws Exception {
     String[] lines = text.replace("\r", "").split("\n", -1);
     if (lines.length > 500 || text.length() > 20000)
       throw new IllegalArgumentException("Перевод поддерживает до 20 000 символов и 500 строк");
     StringBuilder result = new StringBuilder();
     Map<String, String> repeated = new HashMap<>();
+    List<Integer> failed = new ArrayList<>();
+    Set<String> failedSources = new HashSet<>();
+    long[] extraTime = new long[1];
     for (int i = 0; i < lines.length; i++) {
       check(cancelled);
       String line = lines[i].trim();
       if (i > 0) result.append('\n');
       if (!line.isEmpty()) {
         String translated = repeated.get(line);
+        if (failedSources.contains(line)) {
+          failed.add(i);
+          translated = line;
+        }
         if (translated == null) {
-          StringBuilder value = new StringBuilder();
-          for (String chunk : chunks(line)) {
-            if (value.length() > 0) value.append(' ');
-            value.append(adaptive(chunk, cancelled, 0));
+          try {
+            RetryBudget budget = new RetryBudget(extraTime);
+            StringBuilder value = new StringBuilder();
+            for (String chunk : chunks.apply(line)) {
+              if (value.length() > 0) value.append(' ');
+              value.append(adaptiveRetry(chunk, cancelled, 0, decode, budget));
+            }
+            translated = value.toString();
+            repeated.put(line, translated);
+          } catch (IncompleteTranslation failure) {
+            if (!allowPartial) throw failure;
+            failed.add(i);
+            failedSources.add(line);
+            translated = line;
           }
-          translated = value.toString();
-          repeated.put(line, translated);
         }
         result.append(translated);
       }
       progress.update(i + 1, lines.length);
     }
-    return result.toString();
+    check(cancelled);
+    return new TranslationResult(result.toString(), failed);
   }
 
   public List<String> chunks(String line) {

@@ -101,7 +101,10 @@ class MainActivity : Activity() {
                 updatePlayer()
                 lyricUpdate?.invoke()
                 if (controller?.isPlaying == true)
-                    handler.postDelayed(this, if (page == "lyrics" || lyricUpdate != null) 500 else 1000)
+                    handler.postDelayed(
+                        this,
+                        if (page == "lyrics" || lyricUpdate != null) 500 else 1000,
+                    )
             }
         }
 
@@ -1641,14 +1644,21 @@ class MainActivity : Activity() {
         val track = currentTrack() ?: return
         if (!alive || page != "translation" || state.key != track.uri) return
         if (state.busy) {
-            screens.setTranslation(track.uri, "", state.message)
+            screens.setTranslationProgress(track.uri, state.message)
             return
         }
         state.value?.let { result ->
             val message =
-                if (result.model == SongLanguage.RUSSIAN) "Оригинал уже на русском"
+                if (result.incomplete > 0)
+                    "Не удалось перевести фрагментов: ${result.incomplete}. Они отмечены в тексте; готовая часть сохранена на экране."
+                else if (result.model == SongLanguage.RUSSIAN) "Оригинал уже на русском"
                 else "Сохранено · " + TranslationClient.MODELS[result.model].orEmpty()
-            screens.setTranslation(track.uri, result.text, message)
+            screens.setTranslation(
+                track.uri,
+                result.text,
+                message,
+                if (result.incomplete > 0) 2 else 0,
+            )
             return
         }
         state.failure?.let { failure ->
@@ -1661,7 +1671,11 @@ class MainActivity : Activity() {
                 )
                 if (translationForeground) chooseSongLanguage(track, failure.source, failure.models)
             } else
-                screens.setTranslation(track.uri, "", failure.message ?: "Не удалось перевести", 2)
+                screens.setTranslationProgress(
+                    track.uri,
+                    failure.message ?: "Не удалось перевести",
+                    2,
+                )
         }
     }
 

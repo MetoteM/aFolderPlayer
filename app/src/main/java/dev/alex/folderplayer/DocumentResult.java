@@ -40,7 +40,11 @@ final class DocumentResult {
       for (String unit : units) translated.add(cache.get(unit));
       blocks.add(block);
       parts.add(String.join("\n", translated));
-      notices.add(CompletenessRules.warning(block, translated, units));
+      notices.add(
+          units.stream().anyMatch(engine.getIncompleteUnits()::contains)
+                  || engine.getIncompleteUnits().contains(CompletenessRules.block(paragraph))
+              ? "Не все фрагменты переведены. Оригинал отмечен в результате."
+              : CompletenessRules.warning(block, translated, units));
     }
     return new DocumentResult(source, engine.getModel(), blocks, parts, notices);
   }

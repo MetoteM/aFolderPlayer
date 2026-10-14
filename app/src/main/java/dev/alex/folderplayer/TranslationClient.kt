@@ -128,6 +128,47 @@ internal class TranslationClient(private val context: Context) {
         }
     }
 
+    data class Recovered(val text: String, val failedLines: Set<Int>)
+
+    fun translateRecovering(
+        text: String,
+        cancel: AtomicBoolean,
+        model: String,
+        progress: (Int, Int) -> Unit,
+    ): Recovered = connected { service ->
+        if (!service.modelReady(model)) throw MissingModel()
+        val recovery =
+            try {
+                service.recoveryVersion()
+            } catch (_: RemoteException) {
+                0
+            }
+        if (recovery < 1) {
+            return@connected Recovered(
+                awaitResult(service, cancel, progress) { id, callback ->
+                    service.translate(id, model, text, callback)
+                },
+                emptySet(),
+            )
+        }
+        val raw =
+            awaitResult(service, cancel, progress) { id, callback ->
+                service.translateRecovering(id, model, text, callback)
+            }
+        decodeRecovered(raw, text)
+    }
+
+    internal fun decodeRecovered(raw: String, text: String): Recovered {
+        val payload = org.json.JSONObject(raw)
+        val failures = payload.getJSONArray("failedLines")
+        val count = text.split("\n").size
+        val indices = (0 until failures.length()).map { failures.getInt(it) }.toSet()
+        check(indices.all { it in 0 until count }) { "Движок вернул неверный результат" }
+        val translated = payload.getString("text")
+        check(translated.split("\n").size == count) { "Движок вернул неполный результат" }
+        return Recovered(translated, indices)
+    }
+
     private fun awaitResult(
         service: ITranslationService,
         cancel: AtomicBoolean,

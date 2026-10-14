@@ -7,6 +7,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class DocumentEngine
 @JvmOverloads
 constructor(private val context: Context, val model: String = TranslationClient(context).modelId) {
+    val incompleteUnits = linkedSetOf<String>()
+    var recoveredUnits: Map<String, String> = emptyMap()
+    val completedUnits = linkedMapOf<String, String>()
+
     fun interface Progress {
         fun update(done: Int, total: Int)
     }
@@ -50,15 +54,38 @@ constructor(private val context: Context, val model: String = TranslationClient(
         require(source.length <= 20000 && units.size <= 500) {
             "Слишком большой текст для перевода: выбери более короткий оригинал"
         }
+        completedUnits.clear()
+        completedUnits.putAll(
+            recoveredUnits.filter { (unit, value) ->
+                unit in units && value.isNotBlank() && !value.contains("\n")
+            }
+        )
+        val pending = units.filter { it !in completedUnits }
+        incompleteUnits.clear()
+        if (pending.isEmpty()) return completedUnits + ("" to "")
         val client = TranslationClient(context)
-        val translated =
-            client
-                .translate(source, cancel, model) { done, total -> progress.update(done, total) }
-                .split("\n")
+        val outcome =
+            client.translateRecovering(pending.joinToString("\n"), cancel, model) { done, total ->
+                progress.update(done, total)
+            }
+        val translated = outcome.text.split("\n")
+        val originals = pending
+        outcome.failedLines.forEach { incompleteUnits.add(originals[it]) }
         if (cancel.get() || Thread.currentThread().isInterrupted) throw InterruptedException()
-        check(translated.size == units.size && translated.all { it.isNotBlank() }) {
+        check(translated.size == pending.size && translated.all { it.isNotBlank() }) {
             "Движок вернул неполный результат"
         }
-        return units.zip(translated).toMap() + ("" to "")
+        pending.forEachIndexed { index, unit ->
+            if (index !in outcome.failedLines) completedUnits[unit] = translated[index]
+        }
+        return completedUnits +
+            pending
+                .zip(
+                    translated.mapIndexed { index, value ->
+                        if (index in outcome.failedLines) "⟦Не переведено⟧ $value" else value
+                    }
+                )
+                .toMap() +
+            ("" to "")
     }
 }

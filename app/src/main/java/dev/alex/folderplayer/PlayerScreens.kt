@@ -572,6 +572,10 @@ internal class PlayerScreens(private val context: Context, private val actions: 
         updateLyrics(s)
     }
 
+    fun setTranslationProgress(id: String?, message: String, action: Int = 0) {
+        setTranslation(id, if (translatedId == id) translatedValue else "", message, action)
+    }
+
     fun setTranslation(id: String?, value: String, message: String, action: Int = 0) {
         translatedId = id
         translatedValue = value
