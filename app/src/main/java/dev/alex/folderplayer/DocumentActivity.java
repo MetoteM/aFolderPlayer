@@ -15,6 +15,7 @@ import org.json.*;
 
 public final class DocumentActivity extends Activity {
   private RetainedOperation<DocumentResult> operation;
+  private String appliedOperationId;
   private ScrollView reader;
   private String source, initialSource, track, model;
   private List<String> original;
@@ -116,6 +117,7 @@ public final class DocumentActivity extends Activity {
           status.setText("Не удалось восстановить результат");
         }
     }
+    if (state != null) appliedOperationId = state.getString("appliedOperationId");
     operation.attach(this::showOperation);
     String savedId = getIntent().getStringExtra("historyId");
     if (savedId != null) {
@@ -212,8 +214,9 @@ public final class DocumentActivity extends Activity {
       status.setText(state.message);
       return;
     }
-    if (state.value != null && (!complete || busy)) {
+    if (state.value != null && !state.value.id.equals(appliedOperationId)) {
       DocumentResult value = state.value;
+      appliedOperationId = value.id;
       source = value.source;
       model = value.model;
       original = DocumentTranslation.paragraphs(source);
@@ -456,6 +459,7 @@ public final class DocumentActivity extends Activity {
       for (int i = 0; i < useBlock.length; i++) useBlock[i] = choices.getString(i).equals("block");
       if (original.size() != blocks.size()) throw new JSONException("Части не совпадают");
       complete = true;
+      appliedOperationId = operation.state().value == null ? null : operation.state().value.id;
       refresh();
       active(false);
     } catch (Exception e) {
@@ -478,6 +482,7 @@ public final class DocumentActivity extends Activity {
 
   @Override
   protected void onSaveInstanceState(Bundle out) {
+    out.putString("appliedOperationId", appliedOperationId);
     out.putString("documentSource", source);
     out.putString("documentModel", model);
     if (complete)

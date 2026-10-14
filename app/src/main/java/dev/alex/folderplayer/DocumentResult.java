@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Full comparison data without Activity references; no partial result is published. */
 final class DocumentResult {
+  final String id = UUID.randomUUID().toString();
   final String source, model;
   final List<String> blocks, parts, notices;
 
