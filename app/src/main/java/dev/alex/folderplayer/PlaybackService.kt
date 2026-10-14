@@ -28,6 +28,8 @@ class PlaybackService : MediaSessionService() {
     private val handler = Handler(Looper.getMainLooper())
     private val equalizer = SoftwareEqProcessor()
     private val prefs by lazy { getSharedPreferences("playback", MODE_PRIVATE) }
+    private val positionPrefs by lazy { getSharedPreferences("playback-position", MODE_PRIVATE) }
+    private var savedPositionState: Triple<Int, String, Long>? = null
     private val applyEq = Runnable { updateEq() }
     private val changeListener =
         android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -42,8 +44,8 @@ class PlaybackService : MediaSessionService() {
     private val checkpoint =
         object : Runnable {
             override fun run() {
-                saveState(false)
-                if (player.isPlaying) handler.postDelayed(this, 15000)
+                savePosition()
+                if (player.isPlaying) handler.postDelayed(this, 2000)
             }
         }
     private var scheduledSleepDeadline = 0L
@@ -65,7 +67,7 @@ class PlaybackService : MediaSessionService() {
 
     private fun scheduleCheckpoint() {
         handler.removeCallbacks(checkpoint)
-        if (player.isPlaying) handler.postDelayed(checkpoint, 15000)
+        if (player.isPlaying) handler.postDelayed(checkpoint, 2000)
     }
 
     override fun onCreate() {
@@ -228,8 +230,8 @@ class PlaybackService : MediaSessionService() {
             }
         )
         val tracks = Library(this).tracks().associateBy { it.uri }
-        val savedIndex = prefs.getInt("index", 0)
-        val savedPosition = prefs.getLong("position", 0)
+        var savedIndex = prefs.getInt("index", 0)
+        var savedPosition = prefs.getLong("position", 0)
         val savedRepeat =
             prefs
                 .getInt("requestedRepeat", prefs.getInt("repeat", Player.REPEAT_MODE_OFF))
@@ -237,6 +239,14 @@ class PlaybackService : MediaSessionService() {
         val savedShuffle = prefs.getBoolean("shuffle", false)
         val saved =
             Library.strings(prefs.getString("queue", "[]")!!).mapNotNull { tracks[it]?.item() }
+        val positionIndex = positionPrefs.getInt("index", -1)
+        if (
+            positionIndex in saved.indices &&
+                saved[positionIndex].mediaId == positionPrefs.getString("uri", null)
+        ) {
+            savedIndex = positionIndex
+            savedPosition = positionPrefs.getLong("position", savedPosition).coerceAtLeast(0)
+        }
         player.repeatMode = savedRepeat
         player.shuffleModeEnabled = savedShuffle
         player.setPauseAtEndOfMediaItems(false)
@@ -338,6 +348,26 @@ class PlaybackService : MediaSessionService() {
         )
     }
 
+    /** Only these tiny preferences are written on the active playback timer. */
+    private fun savePosition() {
+        if (!::player.isInitialized) return
+        val next =
+            Triple(
+                player.currentMediaItemIndex.coerceAtLeast(0),
+                player.currentMediaItem?.mediaId.orEmpty(),
+                player.currentPosition.coerceAtLeast(0),
+            )
+        if (next != savedPositionState) {
+            positionPrefs
+                .edit()
+                .putInt("index", next.first)
+                .putString("uri", next.second)
+                .putLong("position", next.third)
+                .apply()
+            savedPositionState = next
+        }
+    }
+
     private fun saveState(queueChanged: Boolean = true) {
         if (!::player.isInitialized) return
         val edit = prefs.edit()
@@ -367,6 +397,7 @@ class PlaybackService : MediaSessionService() {
             changed = true
         }
         if (changed) edit.apply()
+        savePosition()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session

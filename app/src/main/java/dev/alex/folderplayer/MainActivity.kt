@@ -100,7 +100,7 @@ class MainActivity : Activity() {
                 if (!screenStarted) return
                 updatePlayer()
                 if (page == "lyrics") lyricUpdate?.invoke()
-                if (controller?.isPlaying == true && page !in setOf("queue", "sound"))
+                if (controller?.isPlaying == true)
                     handler.postDelayed(this, if (page == "lyrics") 500 else 1000)
             }
         }
