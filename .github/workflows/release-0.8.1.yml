@@ -35,6 +35,7 @@ jobs:
         run: mkdir release-output
       - name: Verify signed assets and catalogue
         run: |
+          python3 tools/test_shared_models.py
           python3 tools/publish-release.py release-output "$ANDROID_HOME/build-tools/36.0.0/apksigner" 0.8.1
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging release-output/aFolderPlayer_0.8.1.apk > /tmp/player-badging
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging release-output/AFP_Translate_0.3.5.apk > /tmp/engine-badging
