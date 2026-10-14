@@ -35,12 +35,15 @@ internal class SongTranslationRepository(context: Context) {
         if (expected == SongLanguage.RUSSIAN)
             return SongTranslationResult(source, source, SongLanguage.RUSSIAN)
         val store = TranslationStore(context)
-        if (!renew)
-            for (model in SongTranslation.cachedModels(expected)) store
-                .read(track.uri, source, model)
-                ?.let {
+        if (!renew) {
+            for (model in SongTranslation.cachedModels(expected)) {
+                val checkpoint = recovery(store, track.uri, source, model)
+                if (checkpoint?.optBoolean("incomplete", false) == true) continue
+                store.read(track.uri, source, model)?.let {
                     return SongTranslationResult(source, it, model)
                 }
+            }
+        }
         val installed = TranslationClient(context).availableModels()
         val model =
             when (val choice = SongTranslation.decide(source, installed.keys, manual)) {
@@ -55,11 +58,11 @@ internal class SongTranslationRepository(context: Context) {
         if (cancel.get() || Thread.currentThread().isInterrupted) throw InterruptedException()
         val engine = DocumentEngine(context, model)
         if (!renew)
-            store.read(track.uri, source, "$model.recovery")?.let { saved ->
+            recovery(store, track.uri, source, model)?.let { data ->
                 runCatching {
-                    val data = org.json.JSONObject(saved)
+                    val units = data.getJSONObject("units")
                     engine.recoveredUnits =
-                        data.keys().asSequence().associateWith { data.getString(it) }
+                        units.keys().asSequence().associateWith { units.getString(it) }
                 }
             }
         val text =
@@ -70,10 +73,24 @@ internal class SongTranslationRepository(context: Context) {
         store.save(
             track.uri,
             source,
-            org.json.JSONObject(engine.completedUnits as Map<*, *>).toString(),
+            org.json
+                .JSONObject()
+                .put("units", org.json.JSONObject(engine.completedUnits as Map<*, *>))
+                .put("incomplete", engine.incompleteUnits.isNotEmpty())
+                .toString(),
             "$model.recovery",
         )
         if (engine.incompleteUnits.isEmpty()) store.save(track.uri, source, text, model)
         return SongTranslationResult(source, text, model, engine.incompleteUnits.size)
     }
+
+    private fun recovery(
+        store: TranslationStore,
+        uri: String,
+        source: String,
+        model: String,
+    ): org.json.JSONObject? =
+        store.read(uri, source, "$model.recovery")?.let {
+            runCatching { org.json.JSONObject(it) }.getOrNull()
+        }
 }
