@@ -11,8 +11,8 @@ with zipfile.ZipFile(english) as z:
  for name in ['encoder.onnx','decoder.onnx','tokenizer.json']:data['en-ru/'+name]=z.read(name)
  data['LICENSE.txt']=b'Chinese to English: CC BY 4.0. Full license: https://creativecommons.org/licenses/by/4.0/legalcode.en\nSee NOTICE.txt for authors, source and modifications.\n\nEnglish to Russian: Apache License 2.0 follows.\n\n'+z.read('LICENSE.txt')
 registry=(ROOT/'translator/src/main/java/dev/alex/folderplayer/ModelPackages.kt').read_text()
-expected=dict(re.findall(r'"(zh-en/[^\"]+)" to "([0-9a-f]{64})"',registry))
-weights=dict(re.findall(r'"(encoder.onnx|decoder.onnx)" to "([0-9a-f]{64})"',registry));expected.update({'en-ru/'+k:v for k,v in weights.items()})
+expected=dict(re.findall(r'"(zh-en/[^\"]+)"\s+to\s+"([0-9a-f]{64})"',registry))
+weights=dict(re.findall(r'"(encoder.onnx|decoder.onnx)"\s+to\s+"([0-9a-f]{64})"',registry));expected.update({'en-ru/'+k:v for k,v in weights.items()})
 expected['en-ru/tokenizer.json']='ab59614552269971b70f0bd5e966fe5adacf472cf9e08baf6841d41def76da35'
 if len(expected)!=6:raise ValueError('Incomplete audited registry')
 for name,h in expected.items():

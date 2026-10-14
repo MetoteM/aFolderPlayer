@@ -5,7 +5,7 @@ android {
  namespace = "dev.alex.afptranslate"
  compileSdk = 36
  buildToolsVersion = "36.0.0"
- defaultConfig { applicationId = "dev.alex.afptranslate"; minSdk = 26; targetSdk = 36; versionCode = 6; versionName = "0.3.3"; ndk { abiFilters += "arm64-v8a" } }
+ defaultConfig { applicationId = "dev.alex.afptranslate"; minSdk = 26; targetSdk = 36; versionCode = 7; versionName = "0.3.4"; ndk { abiFilters += "arm64-v8a" } }
  signingConfigs { create("personalRelease") {
   storeFile = rootProject.file("signing/folder-player.p12")
   storePassword = signingProps.getProperty("storePassword")
