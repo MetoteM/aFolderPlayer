@@ -1,0 +1,21 @@
+name: Pause superseded 0.8.0 publication
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/release-cancel-080.yml']
+permissions:
+  contents: read
+  actions: write
+jobs:
+  pause:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Stop obsolete staging run before source correction
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          for run in 38514053234; do
+            status=$(gh api "repos/$GH_REPO/actions/runs/$run" --jq '.status')
+            if [ "$status" != 'completed' ]; then gh api --method POST "repos/$GH_REPO/actions/runs/$run/cancel"; fi
+          done
