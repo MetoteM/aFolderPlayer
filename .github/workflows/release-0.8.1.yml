@@ -70,13 +70,23 @@ jobs:
         with:
           name: signed-player-081
           path: signed-player
-      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - id: emulator_sdk
+        continue-on-error: true
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
         with:
-          packages: 'platform-tools emulator system-images;android-35;google_apis;x86_64'
+          packages: 'platform-tools emulator system-images;android-35;default;x86_64'
+      - name: Retry emulator image installation if download failed
+        if: steps.emulator_sdk.outcome != 'success'
+        run: |
+          for attempt in 1 2; do
+            rm -rf "$ANDROID_HOME/.temp" "$ANDROID_HOME/system-images/android-35/default/x86_64"
+            if sdkmanager 'platform-tools' 'emulator' 'system-images;android-35;default;x86_64'; then exit 0; fi
+          done
+          exit 1
       - name: Boot Android emulator
         run: |
           sudo chmod 666 /dev/kvm
-          echo no | avdmanager create avd -n afp-smoke -k 'system-images;android-35;google_apis;x86_64' --device pixel_2 --force
+          echo no | avdmanager create avd -n afp-smoke -k 'system-images;android-35;default;x86_64' --device pixel_2 --force
           "$ANDROID_HOME/emulator/emulator" -avd afp-smoke -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect > /tmp/emulator.log 2>&1 &
           adb wait-for-device
           for n in $(seq 1 60); do
