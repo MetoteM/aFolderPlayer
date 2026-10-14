@@ -149,12 +149,18 @@ internal class TranslationClient(private val context: Context) {
             awaitResult(service, cancel, progress) { id, callback ->
                 service.translateRecovering(id, model, text, callback)
             }
+        decodeRecovered(raw, text)
+    }
+
+    internal fun decodeRecovered(raw: String, text: String): Recovered {
         val payload = org.json.JSONObject(raw)
         val failures = payload.getJSONArray("failedLines")
         val count = text.split("\n").size
         val indices = (0 until failures.length()).map { failures.getInt(it) }.toSet()
         check(indices.all { it in 0 until count }) { "Движок вернул неверный результат" }
-        Recovered(payload.getString("text"), indices)
+        val translated = payload.getString("text")
+        check(translated.split("\n").size == count) { "Движок вернул неполный результат" }
+        return Recovered(translated, indices)
     }
 
     private fun awaitResult(

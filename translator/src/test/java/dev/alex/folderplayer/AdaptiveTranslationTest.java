@@ -167,4 +167,68 @@ public class AdaptiveTranslationTest {
     }
     assertFalse(budget.available());
   }
+
+  @Test
+  public void partialResultRetainsOtherUnitsBlankLinesAndRepeatedFailures() throws Exception {
+    AtomicInteger failedCalls = new AtomicInteger();
+    OfflineTranslator.TranslationResult result =
+        OfflineTranslator.translateUnits(
+            "Good.\nBad.\n\nGood.\nBad.\nLast.",
+            () -> false,
+            (done, total) -> {},
+            true,
+            text -> java.util.Collections.singletonList(text),
+            text -> {
+              if (text.equals("Bad.")) {
+                failedCalls.incrementAndGet();
+                throw new OfflineTranslator.IncompleteTranslation("incomplete");
+              }
+              return "RU " + text;
+            });
+    assertEquals("RU Good.\nBad.\n\nRU Good.\nBad.\nRU Last.", result.text);
+    assertEquals(Arrays.asList(1, 4), result.failedLines);
+    assertEquals(1, failedCalls.get());
+  }
+
+  @Test
+  public void strictProtocolStillRejectsPartialResult() throws Exception {
+    try {
+      OfflineTranslator.translateUnits(
+          "Good.\nBad.",
+          () -> false,
+          (done, total) -> {},
+          false,
+          text -> java.util.Collections.singletonList(text),
+          text -> {
+            if (text.equals("Bad."))
+              throw new OfflineTranslator.IncompleteTranslation("incomplete");
+            return "RU " + text;
+          });
+      fail();
+    } catch (OfflineTranslator.IncompleteTranslation expected) {
+    }
+  }
+
+  @Test
+  public void cancelledPartialJobNeverPublishesSuccess() throws Exception {
+    java.util.concurrent.atomic.AtomicBoolean cancel =
+        new java.util.concurrent.atomic.AtomicBoolean();
+    try {
+      OfflineTranslator.translateUnits(
+          "Good.\nLast.",
+          cancel::get,
+          (done, total) -> cancel.set(true),
+          true,
+          text -> java.util.Collections.singletonList(text),
+          text -> "RU " + text);
+      fail();
+    } catch (InterruptedException expected) {
+    }
+  }
+
+  @Test
+  public void sharedExtraWorkBudgetStopsFurtherDecomposition() throws Exception {
+    long[] spent = {java.util.concurrent.TimeUnit.SECONDS.toNanos(120)};
+    assertFalse(new OfflineTranslator.RetryBudget(spent).available());
+  }
 }

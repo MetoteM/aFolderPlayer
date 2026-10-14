@@ -128,7 +128,7 @@ public final class OfflineTranslator implements AutoCloseable {
     return result;
   }
 
-  private void check(BooleanSupplier cancelled) throws InterruptedException {
+  private static void check(BooleanSupplier cancelled) throws InterruptedException {
     if (Thread.currentThread().isInterrupted() || cancelled.getAsBoolean())
       throw new InterruptedException("Translation cancelled");
   }
@@ -204,11 +204,6 @@ public final class OfflineTranslator implements AutoCloseable {
   }
 
   /** Recover only unfinished generation; never retry cancellation or resource failures. */
-  private String adaptive(String text, BooleanSupplier cancelled, RetryBudget budget)
-      throws Exception {
-    return adaptiveRetry(text, cancelled, 0, value -> sentence(value, cancelled), budget);
-  }
-
   static final class RetryBudget {
     int attempts;
     long started;
@@ -320,6 +315,18 @@ public final class OfflineTranslator implements AutoCloseable {
   public TranslationResult translateResult(
       String text, BooleanSupplier cancelled, Progress progress, boolean allowPartial)
       throws Exception {
+    return translateUnits(
+        text, cancelled, progress, allowPartial, this::chunks, value -> sentence(value, cancelled));
+  }
+
+  static TranslationResult translateUnits(
+      String text,
+      BooleanSupplier cancelled,
+      Progress progress,
+      boolean allowPartial,
+      java.util.function.Function<String, List<String>> chunks,
+      SentenceDecoder decode)
+      throws Exception {
     String[] lines = text.replace("\r", "").split("\n", -1);
     if (lines.length > 500 || text.length() > 20000)
       throw new IllegalArgumentException("Перевод поддерживает до 20 000 символов и 500 строк");
@@ -342,9 +349,9 @@ public final class OfflineTranslator implements AutoCloseable {
           try {
             RetryBudget budget = new RetryBudget(extraTime);
             StringBuilder value = new StringBuilder();
-            for (String chunk : chunks(line)) {
+            for (String chunk : chunks.apply(line)) {
               if (value.length() > 0) value.append(' ');
-              value.append(adaptive(chunk, cancelled, budget));
+              value.append(adaptiveRetry(chunk, cancelled, 0, decode, budget));
             }
             translated = value.toString();
             repeated.put(line, translated);
@@ -359,6 +366,7 @@ public final class OfflineTranslator implements AutoCloseable {
       }
       progress.update(i + 1, lines.length);
     }
+    check(cancelled);
     return new TranslationResult(result.toString(), failed);
   }
 
