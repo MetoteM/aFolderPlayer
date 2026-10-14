@@ -62,15 +62,15 @@ try:
  assert hashlib.sha256(data).hexdigest()=='88aa2cae10ae38e233d5266c0cb6ca9c84f2fd5134ab278a7afbaee0c5335e59'
  OLD.write_bytes(data)
  assert 'Success' in adb('install',str(OLD))
- launch();create();adb('shell','am','force-stop',PACKAGE)
+ launch();create();print('Previous signed app and test playlist prepared',flush=True);adb('shell','am','force-stop',PACKAGE)
  assert 'Success' in adb('install','-r',str(APK))
- launch();assert_saved()
+ launch();assert_saved();print('Signed upgrade preserves playlist across rotation',flush=True)
  assert 'versionCode=36' in adb('shell','dumpsys','package',PACKAGE)
  adb('shell','am','force-stop',PACKAGE)
  assert 'Success' in adb('uninstall',PACKAGE)
  assert 'Success' in adb('install',str(APK))
  launch();assert not any(n.get('text')==NAME for n in ui().iter('node')),'Clean install retained removed data'
- create();tap('Плейлисты');assert_saved()
+ create();tap('Плейлисты');assert_saved();print('Clean signed installation and rotation passed',flush=True)
  log=adb('logcat','-d','-v','brief','-s','AndroidRuntime');(OUT/'AndroidRuntime.log').write_text(log)
  assert not ('FATAL EXCEPTION' in log and PACKAGE in log),'Application crash in smoke run'
  (OUT/'verification.json').write_text(json.dumps({'result':'passed','clean_install':True,'upgrade_from':'0.7.9_patch1','to':'0.8.0','version_code':36,'playlist_preserved':True,'rotation':True,'scope':'emulator UI/installation; ARM64 audio, models and battery require separate device measurement'},indent=2)+'\n')

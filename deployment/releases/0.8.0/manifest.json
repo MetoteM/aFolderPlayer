@@ -1,34 +1,29 @@
 {
-  "source_commit": "efc4b78442d4a62162a0eff34311a3fa9ec7cacb",
+  "source_commit": "6b85f85c1add4d9ebcf70bee9af09a45d71952cf",
   "certificate_sha256": "36efde603967282debd976200c92acf46b68144b2704d61930ebdd9c171302cd",
   "apks": [
     {
       "name": "aFolderPlayer_0.8.0.apk",
       "size": 3896299,
-      "sha256": "1d2833b3eafef2df430d1fe5e1cf69b43a377fcdcfed4a51d86fd41a5cdb1149",
-      "compression": "gzip",
-      "compressed_sha256": "dd23675f80d5ab8a370406585052e05847afdaa1afdd71a07fc7145acac79b6d",
-      "parts": [
-        "deployment/releases/0.8.0/aFolderPlayer_0.8.0.apk.gz.part00",
-        "deployment/releases/0.8.0/aFolderPlayer_0.8.0.apk.gz.part01",
-        "deployment/releases/0.8.0/aFolderPlayer_0.8.0.apk.gz.part02",
-        "deployment/releases/0.8.0/aFolderPlayer_0.8.0.apk.gz.part03",
-        "deployment/releases/0.8.0/aFolderPlayer_0.8.0.apk.gz.part04",
-        "deployment/releases/0.8.0/aFolderPlayer_0.8.0.apk.gz.part05",
-        "deployment/releases/0.8.0/aFolderPlayer_0.8.0.apk.gz.part06",
-        "deployment/releases/0.8.0/aFolderPlayer_0.8.0.apk.gz.part07"
-      ]
+      "sha256": "4ff2a747225dcc6a33145023e0e9192d1b6bd273f94ea180d34d62a449dfee11",
+      "delta": {
+        "base_name": "aFolderPlayer_0.7.9_patch1.base.apk",
+        "base_url": "https://github.com/MetoteM/aFolderPlayer/releases/download/v0.7.9/aFolderPlayer_0.7.9_patch1.apk",
+        "base_sha256": "88aa2cae10ae38e233d5266c0cb6ca9c84f2fd5134ab278a7afbaee0c5335e59",
+        "recipe": "deployment/releases/0.8.0/aFolderPlayer_0.8.0.delta.json.gz",
+        "recipe_sha256": "940d6a02c1d2adf456bb31b9936ab70848279e82bab7eb6b33fa81259f138e57"
+      }
     },
     {
       "name": "AFP_Translate_0.3.4.apk",
       "size": 19216004,
-      "sha256": "60d7fa0217f84e582483853489f2f08b61a9d2c321453387a626de1ff01924a5",
+      "sha256": "565d06a83476cdb22f08e2ece7e522eccabff808423dd0325065ac9c494f3692",
       "delta": {
         "base_name": "AFP_Translate_0.3.3.base.apk",
         "base_url": "https://github.com/MetoteM/aFolderPlayer/releases/download/v0.7.9/AFP_Translate_0.3.3.apk",
         "base_sha256": "47b539ac4ed4a9f770d3aafcdac07014b1f3d68a3dbca2738534bc0d35473609",
         "recipe": "deployment/releases/0.8.0/AFP_Translate_0.3.4.delta.json.gz",
-        "recipe_sha256": "5b234301088c4fe112e28e824f7e9404c92730807bf4c32e515184bfb88b63ce"
+        "recipe_sha256": "37b4c613c033ee5659fbe5a4974a2dd51c0c0bf1fc194fafc140fd8d67261b50"
       }
     }
   ],
@@ -61,6 +56,5 @@
   ],
   "release_status": "stable",
   "validation": "source-CI-and-signed-emulator-upgrade-required",
-  "battery_measurement": "pending-physical-device",
-  "emulator_smoke_revision": 2
+  "battery_measurement": "pending-physical-device"
 }
