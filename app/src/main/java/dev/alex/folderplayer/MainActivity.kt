@@ -99,9 +99,9 @@ class MainActivity : Activity() {
             override fun run() {
                 if (!screenStarted) return
                 updatePlayer()
-                if (page == "lyrics") lyricUpdate?.invoke()
+                lyricUpdate?.invoke()
                 if (controller?.isPlaying == true)
-                    handler.postDelayed(this, if (page == "lyrics") 500 else 1000)
+                    handler.postDelayed(this, if (page == "lyrics" || lyricUpdate != null) 500 else 1000)
             }
         }
 
