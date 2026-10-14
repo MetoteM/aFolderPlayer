@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
 """Exercise real signed player APK clean install, upgrade and UI on an emulator."""
-import hashlib,json,pathlib,re,subprocess,sys,time,urllib.request,xml.etree.ElementTree as ET
+import argparse,hashlib,json,pathlib,re,subprocess,sys,time,urllib.request,xml.etree.ElementTree as ET
 PACKAGE='dev.alex.folderplayer'
 OUT=pathlib.Path('smoke-output');OUT.mkdir(exist_ok=True)
-APK=pathlib.Path(sys.argv[1]).resolve()
+parser=argparse.ArgumentParser()
+parser.add_argument('apk')
+parser.add_argument('--old-url',default='https://github.com/MetoteM/aFolderPlayer/releases/download/v0.7.9/aFolderPlayer_0.7.9_patch1.apk')
+parser.add_argument('--old-sha256',default='88aa2cae10ae38e233d5266c0cb6ca9c84f2fd5134ab278a7afbaee0c5335e59')
+parser.add_argument('--old-version',default='0.7.9_patch1')
+parser.add_argument('--version',default='0.8.0')
+parser.add_argument('--code',type=int,default=36)
+args=parser.parse_args()
+assert args.old_url.startswith('https://github.com/MetoteM/aFolderPlayer/releases/download/')
+APK=pathlib.Path(args.apk).resolve()
 OLD=OUT/'previous.apk'
-NAME='AFP_080_smoke'
+NAME='AFP_'+args.version.replace('.','')+'_smoke'
 
 def adb(*args):
  return subprocess.check_output(['adb',*args],text=True,stderr=subprocess.STDOUT,timeout=45)
@@ -58,14 +67,14 @@ def assert_saved():
 
 try:
  adb('logcat','-c')
- data=urllib.request.urlopen('https://github.com/MetoteM/aFolderPlayer/releases/download/v0.7.9/aFolderPlayer_0.7.9_patch1.apk',timeout=45).read()
- assert hashlib.sha256(data).hexdigest()=='88aa2cae10ae38e233d5266c0cb6ca9c84f2fd5134ab278a7afbaee0c5335e59'
+ data=urllib.request.urlopen(args.old_url,timeout=45).read()
+ assert hashlib.sha256(data).hexdigest()==args.old_sha256
  OLD.write_bytes(data)
  assert 'Success' in adb('install',str(OLD))
  launch();create();print('Previous signed app and test playlist prepared',flush=True);adb('shell','am','force-stop',PACKAGE)
  assert 'Success' in adb('install','-r',str(APK))
  launch();assert_saved();print('Signed upgrade preserves playlist across rotation',flush=True)
- assert 'versionCode=36' in adb('shell','dumpsys','package',PACKAGE)
+ assert ('versionCode='+str(args.code)) in adb('shell','dumpsys','package',PACKAGE)
  adb('shell','am','force-stop',PACKAGE)
  assert 'Success' in adb('uninstall',PACKAGE)
  assert 'Success' in adb('install',str(APK))
@@ -73,7 +82,7 @@ try:
  create();tap('Плейлисты');assert_saved();print('Clean signed installation and rotation passed',flush=True)
  log=adb('logcat','-d','-v','brief','-s','AndroidRuntime');(OUT/'AndroidRuntime.log').write_text(log)
  assert not ('FATAL EXCEPTION' in log and PACKAGE in log),'Application crash in smoke run'
- (OUT/'verification.json').write_text(json.dumps({'result':'passed','clean_install':True,'upgrade_from':'0.7.9_patch1','to':'0.8.0','version_code':36,'playlist_preserved':True,'rotation':True,'scope':'emulator UI/installation; ARM64 audio, models and battery require separate device measurement'},indent=2)+'\n')
+ (OUT/'verification.json').write_text(json.dumps({'result':'passed','clean_install':True,'upgrade_from':args.old_version,'to':args.version,'version_code':args.code,'playlist_preserved':True,'rotation':True,'scope':'emulator UI/installation; ARM64 audio, models and battery require separate device measurement'},indent=2)+'\n')
  print('Signed APK upgrade, clean install and UI smoke checks passed')
 finally:
  try:
