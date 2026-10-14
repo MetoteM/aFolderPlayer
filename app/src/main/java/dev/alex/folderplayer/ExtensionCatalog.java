@@ -10,7 +10,7 @@ import org.json.*;
 /** Signed data only. Executable code is installed by Android as a separately signed APK. */
 public final class ExtensionCatalog {
   public static final class Entry {
-    public final String id, kind, title, file, hash, model;
+    public final String id, kind, title, file, hash, model, url;
     public final long size, minimumEngine;
 
     Entry(JSONObject item) throws Exception {
@@ -21,6 +21,8 @@ public final class ExtensionCatalog {
       hash = item.getString("sha256");
       size = item.getLong("size");
       model = item.optString("model", "");
+      url = item.optString("url", "");
+      if (!url.isEmpty()) validateModelUrl(url, kind, file);
       minimumEngine = item.optLong("minimumEngine", 0);
       if (minimumEngine < 0
           || minimumEngine > 100000
@@ -33,6 +35,28 @@ public final class ExtensionCatalog {
       if (kind.equals("engine") && !id.equals("engine")
           || kind.equals("model") && !model.matches("[a-z0-9][a-z0-9_-]{1,63}"))
         throw new IOException("Пакет пока не поддерживается этой версией");
+    }
+
+    public URI address(URI base) throws Exception {
+      return url.isEmpty() ? base.resolve(file) : validateModelUrl(url, kind, file);
+    }
+
+    static URI validateModelUrl(String value, String kind, String file) throws Exception {
+      URI uri = new URI(value);
+      if (!kind.equals("model")
+          || value.length() > 500
+          || !"https".equals(uri.getScheme())
+          || !"github.com".equals(uri.getHost())
+          || uri.getPort() != -1
+          || uri.getUserInfo() != null
+          || uri.getQuery() != null
+          || uri.getFragment() != null
+          || !uri.getRawPath()
+              .matches(
+                  "/MetoteM/aFolderPlayer/releases/download/v[0-9]+(?:\\.[0-9]+){1,2}/"
+                      + java.util.regex.Pattern.quote(file)))
+        throw new IOException("Некорректная ссылка на языковой пакет");
+      return uri;
     }
   }
 

@@ -27,12 +27,20 @@ internal class ExtensionManager(
 ) {
     companion object {
         const val DEFAULT_CATALOG =
-            "https://github.com/MetoteM/aFolderPlayer/releases/download/v0.8.0/"
+            "https://github.com/MetoteM/aFolderPlayer/releases/latest/download/"
     }
 
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
-    private val prefs = host.getSharedPreferences("extensions", 0)
+    private val prefs =
+        host.getSharedPreferences("extensions", 0).also { preferences ->
+            if (
+                preferences.getString("server", null) ==
+                    "https://github.com/MetoteM/aFolderPlayer/releases/download/v0.8.0/"
+            ) {
+                preferences.edit().putString("server", DEFAULT_CATALOG).apply()
+            }
+        }
     private val folder = File(host.filesDir, "extensions").apply { mkdirs() }
     @Volatile private var closed = false
     private var busy: AlertDialog? = null
@@ -367,7 +375,7 @@ internal class ExtensionManager(
             val destination =
                 File(folder, if (entry.kind == "engine") "engine.apk" else "model.zip")
             val part = File(folder, destination.name + ".part")
-            val c = ExtensionCatalog.connect(base.resolve(entry.file))
+            val c = ExtensionCatalog.connect(entry.address(base))
             connection = c
             try {
                 check(c.responseCode == 200) { "Сервер загрузки недоступен (${c.responseCode})" }

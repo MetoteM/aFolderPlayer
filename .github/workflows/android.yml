@@ -12,6 +12,7 @@ on:
       - 'docs/RELEASE_NOTES_POLICY.md'
       - '.github/workflows/update-0.7.7-notes.yml'
       - 'tools/publish-release.py'
+      - 'tools/android-release-smoke.py'
       - 'tools/apk-delta.py'
       - 'docs/GITHUB_RELEASES.md'
   pull_request:
@@ -24,6 +25,20 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+      - name: Determine whether translation models need rechecking
+        id: model_changes
+        env:
+          BASE_COMMIT: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BASE_COMMIT" ] || ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BASE_COMMIT" HEAD -- translator app/src/main/assets/catalog_certificate.der tools/build-chinese-package.py tools/download-chinese-inputs.py tools/build-german-package.py tools/download-german-inputs.py tools/build-french-package.py tools/download-french-inputs.py tools/build-spanish-package.py tools/download-spanish-inputs.py tools/inference-test deployment/chinese-v1 deployment/german-v1 deployment/french-v1 deployment/spanish-v1; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin
@@ -42,6 +57,7 @@ jobs:
         with:
           packages: 'platforms;android-36 build-tools;36.0.0'
       - name: Chinese package and CPU inference
+        if: steps.model_changes.outputs.changed == 'true'
         run: |
           mkdir /tmp/models /tmp/chinese-model /tmp/inference-test
           python3 tools/download-chinese-inputs.py /tmp/models
@@ -54,6 +70,7 @@ jobs:
           javac -cp /tmp/ort.jar:/tmp/json.jar -d /tmp/inference-test translator/src/main/java/dev/alex/folderplayer/OfflineTranslator.java tools/inference-test/dev/alex/folderplayer/ChineseCheck.java
           java -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar dev.alex.folderplayer.ChineseCheck /tmp/chinese-model
       - name: German package and CPU inference
+        if: steps.model_changes.outputs.changed == 'true'
         run: |
           mkdir /tmp/german /tmp/german-model
           python3 tools/download-german-inputs.py /tmp/german
@@ -62,6 +79,7 @@ jobs:
           javac -cp /tmp/ort.jar:/tmp/json.jar -d /tmp/inference-test translator/src/main/java/dev/alex/folderplayer/OfflineTranslator.java tools/inference-test/dev/alex/folderplayer/GermanCheck.java
           java -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar dev.alex.folderplayer.GermanCheck /tmp/german-model
       - name: French direct package and CPU inference
+        if: steps.model_changes.outputs.changed == 'true'
         run: |
           mkdir /tmp/french /tmp/french-model
           python3 tools/download-french-inputs.py /tmp/french
@@ -70,6 +88,7 @@ jobs:
           javac -cp /tmp/ort.jar:/tmp/json.jar -d /tmp/inference-test translator/src/main/java/dev/alex/folderplayer/OfflineTranslator.java tools/inference-test/dev/alex/folderplayer/FrenchCheck.java
           /usr/bin/time -v java -Xmx768m -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar dev.alex.folderplayer.FrenchCheck /tmp/french-model
       - name: Spanish direct package and CPU inference
+        if: steps.model_changes.outputs.changed == 'true'
         run: |
           mkdir /tmp/spanish /tmp/spanish-model
           python3 tools/download-spanish-inputs.py /tmp/spanish
@@ -80,11 +99,11 @@ jobs:
       - name: Build and test
         # Direct French package uses the same production Java decoder, one stage.
         env:
-          AFP_MODEL_V2_PACKAGE: /tmp/models/english.zip
-          AFP_CHINESE_PACKAGE: /tmp/models/chinese.zip
-          AFP_GERMAN_PACKAGE: /tmp/models/german.zip
-          AFP_FRENCH_PACKAGE: /tmp/models/french.zip
-          AFP_SPANISH_PACKAGE: /tmp/models/spanish.zip
+          AFP_MODEL_V2_PACKAGE: ${{ steps.model_changes.outputs.changed == 'true' && '/tmp/models/english.zip' || '' }}
+          AFP_CHINESE_PACKAGE: ${{ steps.model_changes.outputs.changed == 'true' && '/tmp/models/chinese.zip' || '' }}
+          AFP_GERMAN_PACKAGE: ${{ steps.model_changes.outputs.changed == 'true' && '/tmp/models/german.zip' || '' }}
+          AFP_FRENCH_PACKAGE: ${{ steps.model_changes.outputs.changed == 'true' && '/tmp/models/french.zip' || '' }}
+          AFP_SPANISH_PACKAGE: ${{ steps.model_changes.outputs.changed == 'true' && '/tmp/models/spanish.zip' || '' }}
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon :app:assembleRelease :translator:assembleRelease :app:testReleaseUnitTest :translator:testReleaseUnitTest :app:lintRelease :translator:lintRelease --max-workers=2

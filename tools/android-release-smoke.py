@@ -34,7 +34,7 @@ def tap(value):
   for n in ui().iter('node'):
    if value in (n.get('text'),n.get('content-desc')):
     x1,y1,x2,y2=map(int,re.findall(r'\d+',n.get('bounds')))
-    adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2));return
+    adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2));time.sleep(.5);return
   time.sleep(1)
  raise AssertionError('UI action missing: '+value)
 
@@ -47,22 +47,29 @@ def launch():
  assert adb('shell','pidof',PACKAGE).strip()
  tap('Плейлисты')
 
+def wait_node(predicate, description):
+ for attempt in range(12):
+  for node in ui().iter('node'):
+   if predicate(node):return node
+  time.sleep(.5)
+ raise AssertionError('Timed out waiting for '+description)
+
 def create():
  tap('＋ Создать плейлист')
- edit=next(n for n in ui().iter('node') if n.get('class')=='android.widget.EditText')
+ edit=wait_node(lambda n:n.get('class')=='android.widget.EditText','playlist name dialog')
  bounds=list(map(int,re.findall(r'\d+',edit.get('bounds'))))
  adb('shell','input','tap',str((bounds[0]+bounds[2])//2),str((bounds[1]+bounds[3])//2))
  adb('shell','input','text',NAME);tap('Создать')
 
 def assert_saved():
- assert any(n.get('text')==NAME for n in ui().iter('node')),'Playlist lost after upgrade/recreation'
+ wait_node(lambda n:n.get('text')==NAME,'playlist after upgrade')
  tap(NAME)
  adb('shell','settings','put','system','accelerometer_rotation','0')
  adb('shell','settings','put','system','user_rotation','1')
  time.sleep(1);ui()
  adb('shell','settings','put','system','user_rotation','0')
  time.sleep(1);tap('Плейлисты')
- assert any(n.get('text')==NAME for n in ui().iter('node')),'Playlist lost after rotation'
+ wait_node(lambda n:n.get('text')==NAME,'playlist after rotation')
  tap(NAME)
 
 try:

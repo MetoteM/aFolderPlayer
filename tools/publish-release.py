@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Restore and verify pre-signed public release assets; never handles signing secrets."""
-import hashlib, json, subprocess, sys, gzip, base64, urllib.request
+import hashlib, json, subprocess, sys, gzip, base64, urllib.request, re
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 version=sys.argv[3] if len(sys.argv)>3 else '0.7.0'
@@ -38,9 +38,21 @@ for asset in manifest['apks']:
  if target.stat().st_size!=asset['size'] or hashlib.sha256(target.read_bytes()).hexdigest()!=asset['sha256']:raise ValueError('APK integrity mismatch')
  result=subprocess.check_output([sys.argv[2], 'verify','--print-certs',str(target)],text=True)
  if 'Signer #1 certificate SHA-256 digest: '+manifest['certificate_sha256'] not in result:raise ValueError('APK certificate mismatch')
+remote_releases={}
 for entry in manifest.get('models',[manifest.get('model')]):
- model=out/entry['name']
- if model.stat().st_size!=entry['size'] or hashlib.sha256(model.read_bytes()).hexdigest()!=entry['sha256']:raise ValueError('Model archive mismatch')
+ if 'source_url' in entry:
+  match=re.fullmatch(r'https://github\.com/MetoteM/aFolderPlayer/releases/download/(v[0-9]+(?:\.[0-9]+){1,2})/'+re.escape(entry['name']),entry['source_url'])
+  if not match:raise ValueError('Invalid shared model URL')
+  tag=match.group(1)
+  if tag not in remote_releases:
+   with urllib.request.urlopen('https://api.github.com/repos/MetoteM/aFolderPlayer/releases/tags/'+tag,timeout=45) as response:remote_releases[tag]=json.load(response)
+  release_data=remote_releases[tag]
+  if release_data['draft'] or release_data['prerelease']:raise ValueError('Model source is not a stable release')
+  asset=next((a for a in release_data['assets'] if a['name']==entry['name']),None)
+  if not asset or asset['size']!=entry['size'] or asset.get('digest')!='sha256:'+entry['sha256']:raise ValueError('Shared model archive mismatch')
+ else:
+  model=out/entry['name']
+  if model.stat().st_size!=entry['size'] or hashlib.sha256(model.read_bytes()).hexdigest()!=entry['sha256']:raise ValueError('Model archive mismatch')
 for name in ['catalog.json','SHA256SUMS','release-notes.md']:
  (out/name).write_bytes((release/name).read_bytes())
 print('Verified release assets:', ', '.join(a['name'] for a in manifest['apks']))
