@@ -13,7 +13,7 @@ REVISION = "268ccd60bde3cabde17068d482ca6930512f1a85"
 
 def build(source, output):
     registry = (ROOT / "translator/src/main/java/dev/alex/folderplayer/ModelPackages.kt").read_text()
-    expected = dict(re.findall(r'"(es-ru/[^\"]+)" to "([0-9a-f]{64})"', registry))
+    expected = dict(re.findall(r'"(es-ru/[^\"]+)"\s+to\s+"([0-9a-f]{64})"', registry))
     if set(expected) != {"es-ru/encoder.onnx", "es-ru/decoder.onnx", "es-ru/tokenizer.json"}:
         raise ValueError("Incomplete audited Spanish registry")
     data = {"es-ru/" + name: (source / name).read_bytes() for name in ("encoder.onnx", "decoder.onnx")}
