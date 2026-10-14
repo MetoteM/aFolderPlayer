@@ -32,7 +32,7 @@ class HistoryUiTest {
   val host=Robolectric.buildActivity(Activity::class.java).setup();val activity=host.get();activity.getSharedPreferences("reading",0).edit().clear().commit()
   fun reader():android.widget.ScrollView = android.widget.ScrollView(activity).apply { addView(android.widget.TextView(activity).apply { text="Line\n".repeat(200) }) }
   fun layout(view:View) { view.measure(View.MeasureSpec.makeMeasureSpec(360,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(400,View.MeasureSpec.EXACTLY));view.layout(0,0,360,400) }
-  val first=reader();activity.setContentView(first);layout(first);ReadingPosition.attach(activity,first,"original");shadowOf(android.os.Looper.getMainLooper()).idle();first.scrollTo(0,200)
+  val first=reader();activity.setContentView(first);layout(first);ReadingPosition.attach(activity,first,"original");shadowOf(android.os.Looper.getMainLooper()).idle();first.scrollTo(0,200);shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(300))
   assertEquals(200,activity.getSharedPreferences("reading",0).getInt(LyricsDocument.key("original"),0))
   val second=reader();activity.setContentView(second);layout(second);ReadingPosition.attach(activity,second,"original");shadowOf(android.os.Looper.getMainLooper()).idle();assertEquals(200,second.scrollY)
   host.pause().stop().destroy()

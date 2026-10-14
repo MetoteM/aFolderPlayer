@@ -31,6 +31,7 @@ class TranslationService:Service() {
    val cancel=AtomicBoolean(false);jobs.put(id,cancel)?.set(true)
    worker.execute {
     try {
+     if(cancel.get() || Thread.currentThread().isInterrupted)return@execute
      check(store.ready(model)) { "Языковой пакет не установлен" }
      var result=text
      val stages=ModelPackages.find(model)!!.stages

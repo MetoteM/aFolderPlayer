@@ -68,7 +68,8 @@ class SongTextActivity:Activity(){
    } }
   }
  }
- private fun chooseInstalledLanguage(models:List<Pair<String,String>>,preferred:Pair<String,String>?) {
+ private fun chooseInstalledLanguage(available:List<Pair<String,String>>,preferred:Pair<String,String>?) {
+  val models=TranslationLanguages.choices(available)
   val ordered=if(preferred==null)models else listOf(preferred)+models.filterNot { it.first==preferred.first }
   status.text="Выбери язык оригинала только для этого текста"
   AlertDialog.Builder(this).setTitle("Язык оригинала")

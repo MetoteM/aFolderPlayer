@@ -16,7 +16,7 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
   fun back(); fun open(page:String); fun toggle(); fun previous(); fun next(); fun skip(direction:Int)
   fun seek(progress:Int); fun favorite(); fun playlists(); fun repeat(); fun sound()
   fun lyricsMenu(); fun select(index:Int); fun move(from:Int,to:Int)
-  fun installTranslationModel() {};fun retryTranslation() {};fun documentTranslation() {};
+  fun renewTranslation() {};fun songLanguage() {};fun installTranslationModel() {};fun retryTranslation() {};fun documentTranslation() {};
   fun retryLyrics() {};fun chooseLyrics(index:Int) {};fun recognize() {}
  }
  data class State(val id:String?,val title:String,val artist:String,val album:String,val source:String,
@@ -66,7 +66,9 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
   when(page) {
    "translation" -> {
     title=text("",18f);content!!.addView(title)
-    content!!.addView(button("Полный текст · сравнение и история","Проверить и сохранить полный перевод") { actions.documentTranslation() })
+    content!!.addView(button("Дополнительно","Действия с переводом этой песни") {
+     android.app.AlertDialog.Builder(context).setTitle("Перевод этой песни").setItems(arrayOf("Перевести заново","Язык оригинала","Сравнение и история","Расширения перевода")) { _,index -> when(index){0->actions.renewTranslation();1->actions.songLanguage();2->actions.documentTranslation();3->actions.installTranslationModel()} }.setNegativeButton("Закрыть",null).show()
+    })
     translationStatus=text("Готовим перевод…",13f).apply { setTextColor(muted) };content!!.addView(translationStatus)
     translationText=text("",22f).apply { setLineSpacing(dp(12).toFloat(),1f);setTextIsSelectable(true) };content!!.addView(translationText)
     translationButton=button("Расширения перевода","Установить офлайн-пакет английский → русский") { if(translatedAction==1)actions.installTranslationModel() else actions.retryTranslation() };content!!.addView(translationButton)
@@ -104,7 +106,7 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
 
    }
   }
-  state?.let { update(it) };setArtwork(artworkId,artwork)
+  state?.let { val current=it;state=null;update(current) };setArtwork(artworkId,artwork)
  }
  private fun mini() {
   val panel=LinearLayout(context).apply { orientation=LinearLayout.VERTICAL;background=shape(surface);setPadding(dp(8),dp(4),dp(8),dp(4)) }
@@ -121,7 +123,9 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
   });parent.addView(seek);val line=row();times=text("",12f);totalTime=text("",12f).apply { gravity=Gravity.END };if(page=="player"){times?.setPadding(dp(4),0,dp(4),0);totalTime?.setPadding(dp(4),0,dp(4),0)};line.addView(times,weight());line.addView(totalTime,weight());parent.addView(line)
  }
  fun update(s:State) {
-  val changed=state?.id!=s.id;state=s
+  val before=state;val changed=before?.id!=s.id;state=s
+  val metadataChanged=before?.copy(position=s.position)!=s
+  if(metadataChanged) {
   title?.text=s.title;artist?.text=if(page=="player")s.artist else "${s.title}\n${s.artist}"
   if(page=="player") { headerTitle?.text="Сейчас играет — ${s.source}";headerTitle?.maxLines=1;headerTitle?.ellipsize=android.text.TextUtils.TruncateAt.END }
   album?.text=s.album;source?.text=if(page=="queue")"${s.source} · ${queue.size} треков" else "Плейлист · ${s.source}"
@@ -129,9 +133,11 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
   backward?.text="−${s.step}";forward?.text="+${s.step}"
   repeat?.text=when(s.repeat){Player.REPEAT_MODE_ONE->"↻ 1";Player.REPEAT_MODE_ALL->"↻ ∞";else->"↻"};repeat?.contentDescription=when(s.repeat){Player.REPEAT_MODE_ONE->"Повтор: одна песня";Player.REPEAT_MODE_ALL->"Повтор: все песни";else->"Повтор: выключен"}
   repeat?.setTextColor(if(s.repeat==Player.REPEAT_MODE_OFF)muted else accent)
-  times?.text=clock(s.position);totalTime?.text=clock(s.duration)
+  }
+  if(times?.text.toString()!=clock(s.position))times?.text=clock(s.position)
+  if(totalTime?.text.toString()!=clock(s.duration))totalTime?.text=clock(s.duration)
   if(!dragging)seek?.progress=if(s.duration>0)(s.position*1000/s.duration).toInt().coerceIn(0,1000) else 0
-  queueRows.forEach { (id,label) -> label.setTextColor(if(id==s.id)accent else Color.WHITE);label.setTypeface(null,if(id==s.id)Typeface.BOLD else Typeface.NORMAL);(label.parent as View).background=shape(if(id==s.id)Color.rgb(20,52,53) else bg) }
+  if(changed)queueRows.forEach { (id,label) -> label.setTextColor(if(id==s.id)accent else Color.WHITE);label.setTypeface(null,if(id==s.id)Typeface.BOLD else Typeface.NORMAL);(label.parent as View).background=shape(if(id==s.id)Color.rgb(20,52,53) else bg) }
   if(changed && page=="translation") { translationText?.text="";translationStatus?.text="Готовим перевод…";translationButton?.visibility=View.GONE }
   if(changed && artworkId!=s.id)cover?.setImageDrawable(NoteArtwork())
   updateLyrics(s)
@@ -210,7 +216,7 @@ internal class PlayerScreens(private val context:Context, private val actions:Ac
    r.addView(handle,LinearLayout.LayoutParams(dp(52),dp(64)));panel.addView(r)
   }
   if(entries.isEmpty())panel.addView(text("Очередь пуста. Включи песню из библиотеки или плейлиста.",16f))
-  state?.let { update(it) }
+  state?.let { val current=it;state=null;update(current) }
  }
  private fun dp(n:Int)=(n*context.resources.displayMetrics.density).toInt()
  private fun weight()=LinearLayout.LayoutParams(0,-2,1f).apply { setMargins(dp(3),dp(4),dp(3),dp(4)) }

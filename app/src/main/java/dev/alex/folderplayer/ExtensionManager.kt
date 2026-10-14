@@ -36,7 +36,7 @@ internal class ExtensionManager(private val host:Activity,private val engine:Tra
   choices.add("Скачать расширения")
   choices.add("Источник загрузки")
   choices.add("Установить переводчик из файла")
-  if(installed) { choices.add("Выбрать язык перевода");choices.add("Добавить язык из файла");choices.add("Установленный язык");choices.add("Удалить движок AFP Translate");if(File(host.filesDir,"translation/opus-en-ru-v1/verified").isFile)choices.add("Перенести модель из 0.4.0") }
+  if(installed) { choices.add("Пакет для отдельных документов");choices.add("Добавить язык из файла");choices.add("Установленный язык");choices.add("Удалить движок AFP Translate");if(File(host.filesDir,"translation/opus-en-ru-v1/verified").isFile)choices.add("Перенести модель из 0.4.0") }
   if(File(host.filesDir,"translation/opus-en-ru-v1").exists())choices.add("Удалить оставшуюся модель из 0.4.0")
   optionMenu(host,"Расширения",choices) { index ->
    when(choices[index]) {
@@ -44,11 +44,11 @@ internal class ExtensionManager(private val host:Activity,private val engine:Tra
     "Скачать расширения" -> fetchCatalog()
     "Источник загрузки" -> address()
     "Установить переводчик из файла" -> host.startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/vnd.android.package-archive").addCategory(Intent.CATEGORY_OPENABLE),104)
-    "Выбрать язык перевода" -> run("Проверяем установленные языки…") {
+    "Пакет для отдельных документов" -> run("Проверяем установленные языки…") {
      val models=engine.availableModels().toList()
      main.post { if(!closed && !cancelled) {
       if(models.isEmpty())message("Сначала установи языковой пакет")
-      else AlertDialog.Builder(host).setTitle("Язык перевода").setSingleChoiceItems(models.map { it.second }.toTypedArray(),models.indexOfFirst { it.first==engine.modelId }) { dialog,index -> engine.selectModel(models[index].first,models[index].second);changed();dialog.dismiss() }.setNegativeButton("Отмена",null).show()
+      else AlertDialog.Builder(host).setTitle("Пакет для отдельных документов").setMessage("Для песен язык определяется автоматически. Этот выбор используется только для документов без выбранного языка.").setSingleChoiceItems(models.map { it.second }.toTypedArray(),models.indexOfFirst { it.first==engine.modelId }) { dialog,index -> engine.selectModel(models[index].first,models[index].second);changed();dialog.dismiss() }.setNegativeButton("Отмена",null).show()
      } }
     }
     "Добавить язык из файла" -> importModel()

@@ -43,6 +43,7 @@ internal class SongTranslationChoice(context:Context) {
  fun clear(uri:String,source:String) { check(prefs.edit().remove(key(uri,source)).commit()) }
 }
 internal object SongTranslation {
+ fun cachedModels(expected:String?):List<String> = if(expected=="opus-en-ru-v2")listOf(expected,TranslationClient.MODEL) else listOfNotNull(expected).filter { it in TranslationClient.MODELS }
  sealed class Decision {
   data class Ready(val model:String):Decision()
   data class Missing(val model:String):Decision()

@@ -8,8 +8,16 @@ import android.net.Uri
 import android.provider.DocumentsContract
 
 internal object LocalArtwork {
- private const val MAX_BYTES=12*1024*1024
+ private val cache=object:android.util.LruCache<String,Bitmap>(8*1024*1024) {
+  override fun sizeOf(key:String,value:Bitmap)=value.allocationByteCount
+ }
+ fun clear() { cache.evictAll() }
  fun read(context:Context,id:String):Bitmap? {
+  cache.get(id)?.takeUnless { it.isRecycled }?.let { return it }
+  return load(context,id)?.also { cache.put(id,it) }
+ }
+ private const val MAX_BYTES=12*1024*1024
+ private fun load(context:Context,id:String):Bitmap? {
   val uri=Uri.parse(id)
   val embedded=runCatching { val r=MediaMetadataRetriever();try { r.setDataSource(context,uri);r.embeddedPicture } finally { r.release() } }.getOrNull()
   if(embedded!=null && embedded.size<=MAX_BYTES)decode(embedded)?.let { return it }

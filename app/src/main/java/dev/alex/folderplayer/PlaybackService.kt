@@ -31,15 +31,27 @@ class PlaybackService : MediaSessionService() {
  private val prefs by lazy { getSharedPreferences("playback",MODE_PRIVATE) }
  private val applyEq=Runnable { updateEq() }
  private val changeListener=android.content.SharedPreferences.OnSharedPreferenceChangeListener { _,key ->
+  if(key=="sleepDeadline" && ::player.isInitialized)scheduleSleep()
   if(key=="eqEnabled" || key=="eqPreamp" || key?.startsWith("eqBand")==true) { handler.removeCallbacks(applyEq);handler.post(applyEq) }
  }
- private val checkpoint=object: Runnable {
-  override fun run() {
-   saveState()
-   val deadline=prefs.getLong("sleepDeadline",0)
-   if(deadline>0 && System.currentTimeMillis()>=deadline) { player.pause(); prefs.edit().remove("sleepDeadline").apply() }
-   handler.postDelayed(this,2000)
-  }
+ private var savedQueue:List<String>?=null
+ private var savedState:PlaybackSnapshot?=null
+ private val checkpoint=object:Runnable {
+  override fun run() { saveState(false);if(player.isPlaying)handler.postDelayed(this,15000) }
+ }
+ private val sleep=Runnable {
+  val deadline=prefs.getLong("sleepDeadline",0)
+  if(deadline>0 && System.currentTimeMillis()>=deadline) { player.pause();prefs.edit().remove("sleepDeadline").apply() }
+  else scheduleSleep()
+ }
+ private fun scheduleSleep() {
+  handler.removeCallbacks(sleep)
+  val deadline=prefs.getLong("sleepDeadline",0)
+  if(deadline>0)handler.postDelayed(sleep,(deadline-System.currentTimeMillis()).coerceAtLeast(0))
+ }
+ private fun scheduleCheckpoint() {
+  handler.removeCallbacks(checkpoint)
+  if(player.isPlaying)handler.postDelayed(checkpoint,15000)
  }
  override fun onCreate() {
   super.onCreate()
@@ -100,7 +112,9 @@ class PlaybackService : MediaSessionService() {
    }
   }).build()
   player.addListener(object: Player.Listener {
-   override fun onEvents(player: Player, events: Player.Events) { saveState() }
+   override fun onEvents(player: Player, events: Player.Events) {
+    saveState(events.contains(Player.EVENT_TIMELINE_CHANGED));scheduleCheckpoint()
+   }
   })
   val tracks=Library(this).tracks().associateBy { it.uri }
   val savedIndex=prefs.getInt("index",0)
@@ -116,7 +130,7 @@ class PlaybackService : MediaSessionService() {
    player.prepare()
   }
   prefs.edit().remove("sleepDeadline").apply()
-  handler.post(checkpoint)
+  saveState();scheduleCheckpoint();scheduleSleep()
  }
  internal fun applyPlaybackCommand(action:String,args:Bundle):Int {
   return when(action) {
@@ -165,10 +179,19 @@ class PlaybackService : MediaSessionService() {
   val bands=DoubleArray(10) { prefs.getInt("eqBand$it",0).toDouble() }
   equalizer.setSettings(DspEqualizer.Settings(prefs.getBoolean("eqEnabled",false),prefs.getInt("eqPreamp",0).toDouble(),bands))
  }
- private fun saveState() {
-  val queue=(0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
-  prefs.edit().putString("queue",JSONArray(queue).toString()).putInt("index",player.currentMediaItemIndex.coerceAtLeast(0))
-   .putLong("position",player.currentPosition.coerceAtLeast(0)).putInt("repeat",player.repeatMode).putBoolean("shuffle",player.shuffleModeEnabled).apply()
+ private fun saveState(queueChanged:Boolean=true) {
+  if(!::player.isInitialized)return
+  val edit=prefs.edit();var changed=false
+  if(queueChanged || savedQueue==null) {
+   val queue=(0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
+   if(queue!=savedQueue) { edit.putString("queue",JSONArray(queue).toString());savedQueue=queue;changed=true }
+  }
+  val next=PlaybackSnapshot(player.currentMediaItemIndex.coerceAtLeast(0),player.currentPosition.coerceAtLeast(0),player.repeatMode,player.shuffleModeEnabled)
+  if(next!=savedState) {
+   edit.putInt("index",next.index).putLong("position",next.position).putInt("repeat",next.repeat).putBoolean("shuffle",next.shuffle)
+   savedState=next;changed=true
+  }
+  if(changed)edit.apply()
  }
  override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
  override fun onDestroy() {
