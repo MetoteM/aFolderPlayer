@@ -94,7 +94,7 @@ internal class TranslationClient(private val context: Context) {
                 "Не удалось подключиться к движку перевода"
             }
             val service = remote.get() ?: error("Движок перевода отключился")
-            check(service.apiVersion() in 1..2) { "Нужна совместимая версия AFP Translate" }
+            check(service.apiVersion() == 1) { "Нужна совместимая версия AFP Translate" }
             return block(service)
         } finally {
             if (bound) runCatching { context.unbindService(connection) }
@@ -137,7 +137,13 @@ internal class TranslationClient(private val context: Context) {
         progress: (Int, Int) -> Unit,
     ): Recovered = connected { service ->
         if (!service.modelReady(model)) throw MissingModel()
-        if (service.apiVersion() < 2) {
+        val recovery =
+            try {
+                service.recoveryVersion()
+            } catch (_: RemoteException) {
+                0
+            }
+        if (recovery < 1) {
             return@connected Recovered(
                 awaitResult(service, cancel, progress) { id, callback ->
                     service.translate(id, model, text, callback)

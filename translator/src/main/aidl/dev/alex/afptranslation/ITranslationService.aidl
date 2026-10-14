@@ -10,4 +10,5 @@ interface ITranslationService {
  void cancel(String requestId);
  void removeModel(String modelId);
  void translateRecovering(String requestId, String modelId, String text, ITranslationCallback callback);
+ int recoveryVersion();
 }

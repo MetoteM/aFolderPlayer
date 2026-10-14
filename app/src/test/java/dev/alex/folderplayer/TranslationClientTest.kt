@@ -14,6 +14,7 @@ class TranslationClientTest {
  @Test fun noEngineIsAValidOptionalConfiguration() { val client=TranslationClient(RuntimeEnvironment.getApplication());assertFalse(client.installed());try { client.translate("Hello",AtomicBoolean(false)) { _,_ -> };fail() } catch(_:TranslationClient.MissingEngine){} }
  private class Fake:ITranslationService.Stub() {
   var cancelled=false
+  override fun recoveryVersion()=0
   override fun apiVersion()=1;override fun modelReady(id:String)=true;override fun modelBytes(id:String)=1L
   override fun installModel(id:String,file:ParcelFileDescriptor,callback:ITranslationCallback){}
   override fun translate(id:String,model:String,text:String,callback:ITranslationCallback){}

@@ -19,7 +19,9 @@ class TranslationService : Service() {
     private val store by lazy { TranslationStore(this) }
     private val binder =
         object : ITranslationService.Stub() {
-            override fun apiVersion() = 2
+            override fun apiVersion() = 1
+
+            override fun recoveryVersion() = 1
 
             override fun modelReady(id: String) = TranslationStore.supported(id) && store.ready(id)
 

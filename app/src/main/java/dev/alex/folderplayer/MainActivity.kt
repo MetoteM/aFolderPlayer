@@ -1644,7 +1644,7 @@ class MainActivity : Activity() {
         val track = currentTrack() ?: return
         if (!alive || page != "translation" || state.key != track.uri) return
         if (state.busy) {
-            screens.setTranslation(track.uri, "", state.message)
+            screens.setTranslationProgress(track.uri, state.message)
             return
         }
         state.value?.let { result ->
@@ -1671,7 +1671,11 @@ class MainActivity : Activity() {
                 )
                 if (translationForeground) chooseSongLanguage(track, failure.source, failure.models)
             } else
-                screens.setTranslation(track.uri, "", failure.message ?: "Не удалось перевести", 2)
+                screens.setTranslationProgress(
+                    track.uri,
+                    failure.message ?: "Не удалось перевести",
+                    2,
+                )
         }
     }
 
