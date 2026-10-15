@@ -1,0 +1,64 @@
+name: Publish Online architecture preview
+on:
+  push:
+    branches: [development/0.8.3]
+    paths: ['deployment/releases/0.8.3-preview.1/manifest.json']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'build-tools;36.0.0'
+      - name: Require successful source checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SOURCE=$(python3 -c 'import json;print(json.load(open("deployment/releases/0.8.3-preview.1/manifest.json"))["source_commit"])')
+          gh api "repos/${{ github.repository }}/actions/runs?head_sha=$SOURCE" > /tmp/checks.json
+          python3 -c 'import json;assert any(r["name"]=="Android checks" and r["conclusion"]=="success" for r in json.load(open("/tmp/checks.json"))["workflow_runs"])'
+          git diff --exit-code "$SOURCE" HEAD -- app translator online settings.gradle.kts
+      - name: Verify original signatures and APK identities
+        run: |
+          python3 tools/publish-release.py /tmp/preview "$ANDROID_HOME/build-tools/36.0.0/apksigner" 0.8.3-preview.1
+          python3 - <<'PY'
+          import json,subprocess,os
+          from pathlib import Path
+          m=json.loads(Path('deployment/releases/0.8.3-preview.1/manifest.json').read_text())
+          for a in m['apks']:
+              path='/tmp/preview/'+a['name']
+              text=subprocess.check_output([os.environ['ANDROID_HOME']+'/build-tools/36.0.0/aapt','dump','badging',path],text=True)
+              expected="package: name='%s' versionCode='%s' versionName='%s'"%(a['package'],a['version_code'],a['version_name'])
+              assert expected in text
+              subprocess.run([os.environ['ANDROID_HOME']+'/build-tools/36.0.0/zipalign','-c','-P','16','4',path],check=True)
+          PY
+          cd /tmp/preview
+          sha256sum -c SHA256SUMS
+      - name: Publish explicit prerelease without replacing stable
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          TAG=v0.8.3-preview.1
+          if gh release view "$TAG" --json isDraft --jq .isDraft > /tmp/draft 2>/dev/null; then
+            test "$(cat /tmp/draft)" = true || exit 0
+          else
+            gh release create "$TAG" --target "$GITHUB_SHA" --title 'aFolderPlayer 0.8.3 — предварительная версия' --notes-file /tmp/preview/release-notes.md --draft --prerelease --latest=false
+          fi
+          gh release upload "$TAG" /tmp/preview/aFolderPlayer_0.8.3.apk /tmp/preview/AFP_Online_0.1.0.apk /tmp/preview/SHA256SUMS --clobber
+          gh release edit "$TAG" --draft=false --prerelease --latest=false
+          gh release view "$TAG" --json isPrerelease,isDraft | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["isPrerelease"] and not d["isDraft"]'
