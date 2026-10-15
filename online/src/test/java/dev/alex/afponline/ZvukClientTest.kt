@@ -6,6 +6,33 @@ import org.junit.Test
 
 class ZvukClientTest {
     @Test
+    fun musicApiCheckDoesNotDependOnProfileOrClaimIdentity() {
+        var requests = 0
+        val client =
+            ZvukClient("local-session") { path, raw, _ ->
+                requests++
+                assertEquals("/api/v1/graphql", path)
+                assertEquals("userCollection", JSONObject(raw!!).getString("operationName"))
+                "{\"data\":{\"collection\":{\"tracks\":[]}}}"
+            }
+        client.checkMusicApi()
+        assertEquals(1, requests)
+    }
+
+    @Test
+    fun deniedMusicApiIsNotRetriedOrReportedAsSuccess() {
+        var requests = 0
+        val client =
+            ZvukClient("local-session") { _, _, _ ->
+                requests++
+                "{\"errors\":[{\"message\":\"private-error\"}]}"
+            }
+        val error = assertThrows(ZvukClient.Problem::class.java) { client.checkMusicApi() }
+        assertEquals(1, requests)
+        assertFalse(error.message.orEmpty().contains("private-error"))
+    }
+
+    @Test
     fun anonymousAndMissingIdentityNeverConfirmSession() {
         for (response in
             listOf(

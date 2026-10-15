@@ -43,6 +43,7 @@ class ZvukLabActivity : Activity() {
     private val evidence =
         linkedMapOf(
             "session" to "not_run",
+            "music_api" to "not_run",
             "collection" to "not_run",
             "search" to "not_run",
             "stream" to "not_run",
@@ -145,6 +146,34 @@ class ZvukLabActivity : Activity() {
                 }
             }
         }
+        button("Проверить музыкальный API отдельно") {
+            if (!busy) {
+                if (token.text.isNotBlank() || client == null) {
+                    disconnect()
+                    evidence.keys.toList().forEach { evidence[it] = "not_run" }
+                    try {
+                        client = ZvukClient(token.text.toString().trim())
+                    } catch (e: ZvukClient.Problem) {
+                        status.text = e.reason
+                        return@button
+                    }
+                    token.text.clear()
+                }
+                execute(
+                    "Проверяем музыкальный API…",
+                    "music_api",
+                    {
+                        client!!.checkMusicApi()
+                        true
+                    },
+                ) {
+                    connected = true
+                    status.text =
+                        "Музыкальный API отвечает. Это не подтверждает профиль или подписку; проверь поиск и трек"
+                    updateActions()
+                }
+            }
+        }
         status = label("Не подключено")
         query =
             EditText(this).apply {
@@ -207,9 +236,19 @@ class ZvukLabActivity : Activity() {
                         }
                         .onFailure {
                             evidence[stage] = "failed"
+                            val label =
+                                mapOf(
+                                    "session" to "Профиль",
+                                    "music_api" to "Музыкальный API",
+                                    "collection" to "Коллекция",
+                                    "search" to "Поиск",
+                                    "stream" to "Получение потока",
+                                )[stage] ?: "Проверка"
                             status.text =
-                                (it as? ZvukClient.Problem)?.reason
-                                    ?: "Не удалось выполнить проверку"
+                                label +
+                                    ": " +
+                                    ((it as? ZvukClient.Problem)?.reason
+                                        ?: "Не удалось выполнить проверку")
                         }
                 }
             }

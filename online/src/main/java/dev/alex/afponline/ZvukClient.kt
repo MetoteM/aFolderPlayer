@@ -109,6 +109,15 @@ internal class ZvukClient(
             throw Problem("Пользовательская сессия не подтверждена")
     }
 
+    /** This only proves a readable music API response, not account identity or subscription. */
+    fun checkMusicApi() {
+        val tracks =
+            gql("userCollection", "query userCollection { collection { tracks { id } } }")
+                .optJSONObject("collection")
+                ?.optJSONArray("tracks")
+        if (tracks == null) throw Problem("Музыкальный API не подтвердил чтение коллекции")
+    }
+
     private fun songs(items: JSONArray): List<Song> =
         (0 until minOf(items.length(), 30)).mapNotNull { index ->
             val item = items.optJSONObject(index) ?: return@mapNotNull null
