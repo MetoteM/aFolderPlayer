@@ -1,0 +1,16 @@
+{
+  "source_commit": "6f80006facec9e63ac6a1b03a7a6055cc577eb73",
+  "source_checks": "https://github.com/MetoteM/aFolderPlayer/actions/runs/38796155251",
+  "source_checks_result": "success",
+  "package": "dev.alex.folderplayer",
+  "version_name": "0.8.3",
+  "version_code": 41,
+  "certificate_matches_previous_stable": true,
+  "zipalign_16kb": true,
+  "sha256": "78e79cfb74ccbb6904be4072f663bd34827713340e31f4b630d7254474444aee",
+  "experimental_online_entry": false,
+  "online_permission": false,
+  "extension_apks_uploaded": false,
+  "models_repackaged": false,
+  "physical_device_test": "not performed"
+}
