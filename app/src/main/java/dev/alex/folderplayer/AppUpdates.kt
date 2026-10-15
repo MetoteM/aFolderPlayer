@@ -177,7 +177,7 @@ internal class AppUpdates(
 
     @Suppress("DEPRECATION")
     private fun installedExtensions(): Map<String, ExtensionUpdates.Installed> =
-        ExtensionModules.all
+        listOf(ExtensionModules.translation)
             .mapNotNull { module ->
                 runCatching {
                         val info = host.packageManager.getPackageInfo(module.pkg, 0)
@@ -232,7 +232,7 @@ internal class AppUpdates(
                     .getOrNull()
                     ?.let { result ->
                         ExtensionUpdates.plan(
-                            result.catalog.entries,
+                            result.catalog.entries.filter { it.kind != "online" },
                             installed,
                             models,
                             code,

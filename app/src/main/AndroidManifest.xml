@@ -5,9 +5,8 @@
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
  <uses-permission android:name="android.permission.WAKE_LOCK" />
  <uses-permission android:name="dev.alex.afptranslate.USE_TRANSLATOR" />
- <uses-permission android:name="dev.alex.afponline.USE_ONLINE" />
  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
- <queries><package android:name="dev.alex.afptranslate" /><package android:name="dev.alex.afponline" /></queries>
+ <queries><package android:name="dev.alex.afptranslate" /></queries>
  <application android:label="aFolderPlayer" android:icon="@drawable/ic_player" android:theme="@style/AppTheme" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true">
   <activity android:name=".SongTextActivity" android:exported="false" />
   <activity android:name=".RecognitionActivity" android:exported="false" />
