@@ -2,6 +2,8 @@ package dev.alex.folderplayer
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ComponentName
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import dev.alex.afponline.IOnlineService
@@ -59,6 +61,27 @@ internal class OnlineSection(private val host: Activity, private val updates: ()
                         .setTitle("Онлайн")
                         .setMessage(result.getOrElse { it.message ?: "Расширение не отвечает" })
                         .setPositiveButton("Закрыть", null)
+                        .setNeutralButton("Прототип Звука") { _, _ ->
+                            runCatching {
+                                    host.startActivity(
+                                        Intent()
+                                            .setComponent(
+                                                ComponentName(
+                                                    ExtensionModules.online.pkg,
+                                                    "dev.alex.afponline.ZvukLabActivity",
+                                                )
+                                            )
+                                    )
+                                }
+                                .onFailure {
+                                    AlertDialog.Builder(host)
+                                        .setMessage(
+                                            "Установи AFP Online 0.1.1 из предварительного выпуска"
+                                        )
+                                        .setPositiveButton("Закрыть", null)
+                                        .show()
+                                }
+                        }
                         .show()
             }
         }

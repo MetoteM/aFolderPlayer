@@ -14,7 +14,7 @@ internal class ZvukConnector : OnlineConnector {
     override val id = "zvuk"
     override val title = "Звук"
     override val status = "unavailable"
-    override val explanation = "Подключение готовится. Вход и воспроизведение пока недоступны."
+    override val explanation = "Есть отдельный эксперимент: ручное подключение сессии и проверка потока. Автоматический вход пока недоступен."
     override val capabilities = emptySet<String>()
 }
 
