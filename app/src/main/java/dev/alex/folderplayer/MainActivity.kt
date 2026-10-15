@@ -45,6 +45,9 @@ class MainActivity : Activity() {
     private lateinit var seek: SeekBar
     private lateinit var play: Button
     private lateinit var selectionButton: Button
+    private lateinit var identifyButton: Button
+    private lateinit var hideTracksButton: Button
+    private lateinit var deleteTracksButton: Button
     private lateinit var bulkButton: Button
     private lateinit var moreTools: LinearLayout
     private lateinit var browserTitle: TextView
@@ -344,13 +347,18 @@ class MainActivity : Activity() {
         bulkButton = button("В плейлист") { bulkAdd() }
         moreTools.addView(bulkButton, weight().apply { height = dp(48) })
         layout.addView(tools)
+        hideTracksButton = button("👁") { toggleSelectedTracksHidden() }
+        deleteTracksButton = button("Удалить") { deleteSelectedTracks() }
+        moreTools.addView(hideTracksButton, weight().apply { height = dp(48) })
+        moreTools.addView(deleteTracksButton, weight().apply { height = dp(48) })
         layout.addView(moreTools)
         val quick = row()
+        identifyButton = button("Определить песню") { identifySong() }
         quick.addView(
-            button("Определить песню") { identifySong() },
+            identifyButton,
             LinearLayout.LayoutParams(0, dp(48), 2f),
         )
-        quick.addView(button("Обновить") { scan() }, LinearLayout.LayoutParams(0, dp(48), 1f))
+
         layout.addView(quick)
         search =
             EditText(this).apply {
@@ -517,6 +525,15 @@ class MainActivity : Activity() {
         bulkButton.isEnabled = selection.isNotEmpty()
         bulkButton.alpha = if (bulkButton.isEnabled) 1f else 0.45f
         moreTools.visibility = if (selecting) View.VISIBLE else View.GONE
+        identifyButton.visibility = if (selecting) View.GONE else View.VISIBLE
+        val allHidden = selection.isNotEmpty() && selection.all { it in library.hiddenTracks() }
+        hideTracksButton.text = if (allHidden) "👁 Вернуть" else "👁 Скрыть"
+        hideTracksButton.contentDescription = if (allHidden) "Вернуть в воспроизведение" else "Не воспроизводить"
+        deleteTracksButton.contentDescription = "Удалить выбранные треки из библиотеки"
+        listOf(hideTracksButton, deleteTracksButton).forEach {
+            it.isEnabled = selection.isNotEmpty()
+            it.alpha = if (it.isEnabled) 1f else 0.45f
+        }
     }
 
     private fun render() {
@@ -585,6 +602,7 @@ class MainActivity : Activity() {
                 track.year?.let { details.add(it.toString()) }
                 track.discNumber?.let { details.add("диск $it") }
             }
+            if (track.uri in library.hiddenTracks()) details.add("👁 Не воспроизводится")
             details.add(clock(track.duration))
             val caption = "$number${track.title}\n${details.joinToString(" · ")}"
             val styled =
@@ -636,7 +654,46 @@ class MainActivity : Activity() {
         scrollView?.post { if (alive) scrollView.scrollTo(0, scrollY) }
     }
 
+    private fun removeUnavailableFromQueue() {
+        val playable = library.playableTracks().map { it.uri }.toSet()
+        controller?.let { c ->
+            for (index in c.mediaItemCount - 1 downTo 0) {
+                if (c.getMediaItemAt(index).mediaId !in playable) c.removeMediaItem(index)
+            }
+        }
+    }
+
+    private fun toggleSelectedTracksHidden() {
+        if (selection.isEmpty()) return
+        val hide = !selection.all { it in library.hiddenTracks() }
+        library.setTracksHidden(selection.toSet(), hide)
+        removeUnavailableFromQueue()
+        render()
+        toast(if (hide) "Выбранные треки не будут воспроизводиться" else "Треки возвращены в воспроизведение")
+    }
+
+    private fun deleteSelectedTracks() {
+        val ids = selection.toSet()
+        if (ids.isEmpty()) return
+        AlertDialog.Builder(this)
+            .setTitle("Удалить из библиотеки: ${ids.size}?")
+            .setMessage("Файлы останутся на устройстве. Эти треки будут исключены из библиотеки и воспроизведения, в том числе после обновления библиотеки.")
+            .setNegativeButton("Отмена", null)
+            .setPositiveButton("Удалить") { _, _ ->
+                library.excludeTracks(ids)
+                removeUnavailableFromQueue()
+                tracks = library.tracks()
+                selection.clear()
+                render()
+            }
+            .show()
+    }
+
     private fun startTrack(track: Track) {
+        if (track.uri in library.hiddenTracks()) {
+            toast("Трек скрыт от воспроизведения. Выбери его и нажми «Вернуть»")
+            return
+        }
         val c = controller ?: return toast("Плеер ещё подключается")
         sendPlaybackCommand(
             c,

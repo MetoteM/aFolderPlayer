@@ -63,6 +63,24 @@ internal data class Track(
 internal class Library(private val context: Context) {
     private val prefs = context.getSharedPreferences("library", Context.MODE_PRIVATE)
 
+    fun hiddenTracks(): Set<String> = prefs.getStringSet("hiddenTracks", emptySet())!!.toSet()
+
+    fun setTracksHidden(ids: Set<String>, hidden: Boolean) {
+        val updated = hiddenTracks().toMutableSet()
+        if (hidden) updated.addAll(ids) else updated.removeAll(ids)
+        prefs.edit().putStringSet("hiddenTracks", updated).apply()
+    }
+
+    fun excludeTracks(ids: Set<String>) {
+        val excluded = prefs.getStringSet("excludedTracks", emptySet())!!.toSet() + ids
+        prefs.edit().putStringSet("excludedTracks", excluded).apply()
+    }
+
+    fun playableTracks(): List<Track> {
+        val hidden = hiddenTracks()
+        return tracks().filter { it.uri !in hidden }
+    }
+
     fun roots(): List<String> = strings(prefs.getString("roots", "[]")!!)
 
     fun setRoots(roots: List<String>) {
@@ -92,6 +110,7 @@ internal class Library(private val context: Context) {
                 }
             }
             .getOrDefault(emptyList())
+            .filter { it.uri !in prefs.getStringSet("excludedTracks", emptySet())!! }
             .let { AlbumYears(context).apply(it) }
 
     fun scan(): Pair<List<Track>, Int> {
@@ -177,7 +196,7 @@ internal class Library(private val context: Context) {
         val sorted = found.values.sortedBy { it.title.lowercase() }
         prefs.edit().putString("tracks", JSONArray(sorted.map { it.json() }).toString()).apply()
         syncFolderPlaylists(sorted)
-        return AlbumYears(context).apply(sorted) to errors
+        return tracks() to errors
     }
 
     fun isRandom(source: String) = prefs.contains("randomOrder:$source")
