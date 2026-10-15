@@ -1,0 +1,15 @@
+name: Yandex Music experiment checks
+on:
+  push:
+    branches: [prerelease/yandex-spike]
+    paths: ['tools/yandex-spike/**', '.github/workflows/yandex-spike.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Check stage evidence and credential isolation without user accounts
+        run: python3 -m unittest discover -s tools/yandex-spike -v
