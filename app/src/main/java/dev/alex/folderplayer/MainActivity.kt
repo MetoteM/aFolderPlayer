@@ -840,7 +840,11 @@ class MainActivity : Activity() {
                 else
                     when (which) {
                         0 -> addToPlaylists(track)
-                        1 -> controller?.addMediaItem(track.item())
+                        1 -> {
+                            if (track.uri in library.hiddenTracks())
+                                toast("Трек скрыт от воспроизведения. Сначала верни его кнопкой глаза")
+                            else controller?.addMediaItem(track.item())
+                        }
                         2 ->
                             AlertDialog.Builder(this)
                                 .setTitle(track.title)
@@ -2276,6 +2280,10 @@ class MainActivity : Activity() {
         panel.addView(controls)
         controls.addView(
             button("С начала") {
+                if (track.uri in library.hiddenTracks()) {
+                    toast("Трек скрыт от воспроизведения. Сначала верни его кнопкой глаза")
+                    return@button
+                }
                 controller?.let { c ->
                     if (c.currentMediaItem?.mediaId != track.uri) {
                         var index =
