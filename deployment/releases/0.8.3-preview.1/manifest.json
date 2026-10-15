@@ -1,0 +1,38 @@
+{
+  "source_commit": "3df2e3b7c991c6aeb93ca222cc9a77faf434afb4",
+  "certificate_sha256": "36efde603967282debd976200c92acf46b68144b2704d61930ebdd9c171302cd",
+  "apks": [
+    {
+      "name": "aFolderPlayer_0.8.3.apk",
+      "size": 3912683,
+      "sha256": "89e8893bffe87e2b23907b6c38c2bca4ba64ba63c1ecb89b9ad0a145252d5d42",
+      "package": "dev.alex.folderplayer",
+      "version_code": 39,
+      "version_name": "0.8.3",
+      "delta": {
+        "base_name": "aFolderPlayer_0.8.2.base.apk",
+        "base_url": "https://github.com/MetoteM/aFolderPlayer/releases/download/v0.8.2/aFolderPlayer_0.8.2.apk",
+        "base_sha256": "228f4f9879eb688b9b61548d87af2ae5f63bf82986b0294381ef2258fb61cd83",
+        "recipe": "deployment/releases/0.8.3-preview.1/player.delta.json.gz",
+        "recipe_sha256": "9d087acee172db1c30d248d88b945927442e54fe766cefad0c86d97e8d003086"
+      }
+    },
+    {
+      "name": "AFP_Online_0.1.0.apk",
+      "size": 644431,
+      "sha256": "1d41e0133a249e33fca28b3055e2d5a8f06ea330a7441793dbd38a8545a0adc0",
+      "package": "dev.alex.afponline",
+      "version_code": 1,
+      "version_name": "0.1.0",
+      "parts": [
+        "deployment/releases/0.8.3-preview.1/online.apk.gz"
+      ],
+      "compression": "gzip",
+      "compressed_sha256": "1c455f25b2df2406d54c3f90485544ff78b3578bf763b63cfeebc1c720b0b389"
+    }
+  ],
+  "models": [],
+  "release_status": "prerelease",
+  "streaming_available": false,
+  "authentication_available": false
+}

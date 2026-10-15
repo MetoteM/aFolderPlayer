@@ -1,0 +1,29 @@
+{
+  "source_commit": "6f80006facec9e63ac6a1b03a7a6055cc577eb73",
+  "certificate_sha256": "36efde603967282debd976200c92acf46b68144b2704d61930ebdd9c171302cd",
+  "apks": [
+    {
+      "name": "aFolderPlayer_0.8.3.apk",
+      "size": 3912683,
+      "sha256": "78e79cfb74ccbb6904be4072f663bd34827713340e31f4b630d7254474444aee",
+      "compression": "gzip",
+      "compressed_sha256": "528aa24de07c6269d17f74cc948f8366211205dc3f5f9b2f1779c301051e53da",
+      "parts": [
+        "deployment/releases/0.8.3/aFolderPlayer_0.8.3.apk.gz.part00",
+        "deployment/releases/0.8.3/aFolderPlayer_0.8.3.apk.gz.part01",
+        "deployment/releases/0.8.3/aFolderPlayer_0.8.3.apk.gz.part02",
+        "deployment/releases/0.8.3/aFolderPlayer_0.8.3.apk.gz.part03",
+        "deployment/releases/0.8.3/aFolderPlayer_0.8.3.apk.gz.part04",
+        "deployment/releases/0.8.3/aFolderPlayer_0.8.3.apk.gz.part05",
+        "deployment/releases/0.8.3/aFolderPlayer_0.8.3.apk.gz.part06",
+        "deployment/releases/0.8.3/aFolderPlayer_0.8.3.apk.gz.part07"
+      ],
+      "package": "dev.alex.folderplayer",
+      "version_code": 41,
+      "version_name": "0.8.3"
+    }
+  ],
+  "models": [],
+  "release_status": "stable",
+  "shared_extensions": "Existing signed catalogue and canonical model URLs retained unchanged"
+}

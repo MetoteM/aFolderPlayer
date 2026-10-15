@@ -1,0 +1,98 @@
+name: Publish verified 0.8.3 release
+on:
+  push:
+    branches: [main]
+    paths: ['deployment/releases/0.8.3/manifest.json']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'build-tools;36.0.0'
+      - name: Require successful source checks without recompilation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RELEASE_SOURCE=$(python3 -c 'import json;print(json.load(open("deployment/releases/0.8.3/manifest.json"))["source_commit"])')
+          gh api "repos/${{ github.repository }}/actions/runs?head_sha=$RELEASE_SOURCE" > /tmp/runs.json
+          python3 -c 'import json;assert any(r["name"]=="Android checks" and r["conclusion"]=="success" for r in json.load(open("/tmp/runs.json"))["workflow_runs"]),"Source checks are not successful"'
+          git diff --name-only "$RELEASE_SOURCE" HEAD -- app translator online settings.gradle.kts tools/build-chinese-package.py tools/download-chinese-inputs.py tools/inference-test deployment/chinese-v1 tools/build-german-package.py tools/download-german-inputs.py deployment/german-v1 tools/build-french-package.py tools/download-french-inputs.py deployment/french-v1 tools/build-spanish-package.py tools/download-spanish-inputs.py deployment/spanish-v1 > /tmp/source-changes
+          test ! -s /tmp/source-changes
+      - name: Prepare release output without duplicate models
+        run: mkdir release-output
+      - name: Download actual catalogue through production HTTP code
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/live-http
+          javac -d /tmp/live-http app/src/main/java/dev/alex/folderplayer/ExtensionHttp.java tools/http-test/dev/alex/folderplayer/ExtensionHttpCheck.java
+          CATALOG_SHA=$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.assets[] | select(.name == "catalog.json") | .digest')
+          java -cp /tmp/live-http dev.alex.folderplayer.ExtensionHttpCheck https://github.com/MetoteM/aFolderPlayer/releases/latest/download/catalog.json "${CATALOG_SHA#sha256:}"
+      - name: Verify signed assets and catalogue
+        run: |
+          python3 tools/publish-release.py release-output "$ANDROID_HOME/build-tools/36.0.0/apksigner" 0.8.3
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging release-output/aFolderPlayer_0.8.3.apk > /tmp/player-badging
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          assert "package: name='dev.alex.folderplayer' versionCode='41' versionName='0.8.3'" in Path('/tmp/player-badging').read_text()
+          PYCODE
+          cd release-output
+          sha256sum -c SHA256SUMS
+          python3 -c 'import json,base64;d=json.load(open("catalog.json"));open("payload","wb").write(base64.b64decode(d["payload"]));open("signature","wb").write(base64.b64decode(d["signature"]))'
+          openssl x509 -inform DER -in ../app/src/main/assets/catalog_certificate.der -pubkey -noout > public.pem
+          openssl dgst -sha256 -verify public.pem -signature signature payload
+          rm payload signature public.pem
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verified-0.8.3
+          path: release-output/
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: signed-player-083
+          path: release-output/aFolderPlayer_0.8.3.apk
+          retention-days: 1
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-0.8.3
+          path: release-output
+      - name: Publish all assets before making the release visible
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          if gh release view v0.8.3 --json isDraft --jq '.isDraft' > /tmp/draft 2>/dev/null; then
+            if [ "$(cat /tmp/draft)" != 'true' ]; then
+              echo 'Published release exists; refusing asset replacement.'
+              exit 0
+            fi
+          else
+            gh release create v0.8.3 --target "$RELEASE_COMMIT" --title 'aFolderPlayer 0.8.3' --notes-file release-output/release-notes.md --draft
+          fi
+          gh release upload v0.8.3 release-output/aFolderPlayer_0.8.3.apk release-output/catalog.json release-output/SHA256SUMS --clobber
+          gh release edit v0.8.3 --draft=false --latest
+          mkdir -p /tmp/published-http
+          javac -d /tmp/published-http app/src/main/java/dev/alex/folderplayer/ExtensionHttp.java tools/http-test/dev/alex/folderplayer/ExtensionHttpCheck.java
+          CATALOG_SHA=$(sha256sum release-output/catalog.json | cut -d ' ' -f 1)
+          java -cp /tmp/published-http dev.alex.folderplayer.ExtensionHttpCheck https://github.com/MetoteM/aFolderPlayer/releases/latest/download/catalog.json "$CATALOG_SHA"

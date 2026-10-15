@@ -229,7 +229,7 @@ class PlaybackService : MediaSessionService() {
                 }
             }
         )
-        val tracks = Library(this).tracks().associateBy { it.uri }
+        val tracks = Library(this).playableTracks().associateBy { it.uri }
         var savedIndex = prefs.getInt("index", 0)
         var savedPosition = prefs.getLong("position", 0)
         val savedRepeat =
@@ -270,7 +270,7 @@ class PlaybackService : MediaSessionService() {
                 val library = Library(this)
                 val source = args.getString("source").orEmpty()
                 val queue =
-                    library.ordered(library.tracks(), source, prefs.getInt("librarySort", 0))
+                    library.ordered(library.playableTracks(), source, prefs.getInt("librarySort", 0))
                 val index = queue.indexOfFirst { it.uri == args.getString("uri") }
                 if (index < 0) SessionError.ERROR_BAD_VALUE
                 else {
@@ -295,8 +295,10 @@ class PlaybackService : MediaSessionService() {
                     val old = (0 until player.mediaItemCount).map { player.getMediaItemAt(it) }
                     val byId = old.groupBy { it.mediaId }
                     val refresh = args.getBoolean("refreshSource", false)
+                    val playable = library.playableTracks()
+                    val playableIds = playable.map { it.uri }.toSet()
                     val known =
-                        library.tracks().filter { refresh || it.uri in byId }.associateBy { it.uri }
+                        playable.filter { refresh || it.uri in byId }.associateBy { it.uri }
                     val sourceIds =
                         library
                             .ordered(known.values.toList(), source, prefs.getInt("librarySort", 0))
@@ -305,7 +307,7 @@ class PlaybackService : MediaSessionService() {
                     val ordered =
                         (sourceIds + extraIds).distinct().flatMap {
                             byId[it] ?: listOf(known.getValue(it).item())
-                        } + old.filter { it.mediaId !in known }
+                        } + old.filter { it.mediaId !in known && it.mediaId in playableIds }
                     val current = player.currentMediaItem?.mediaId
                     val occurrence =
                         old.take(player.currentMediaItemIndex.coerceAtLeast(0)).count {
