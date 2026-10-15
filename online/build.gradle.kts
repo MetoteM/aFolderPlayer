@@ -5,7 +5,7 @@ android {
  namespace = "dev.alex.afponline"
  compileSdk = 36
  buildToolsVersion = "36.0.0"
- defaultConfig { applicationId = "dev.alex.afponline"; minSdk = 26; targetSdk = 36; versionCode = 1; versionName = "0.1.0"; ndk { abiFilters += "arm64-v8a" } }
+ defaultConfig { applicationId = "dev.alex.afponline"; minSdk = 26; targetSdk = 36; versionCode = 3; versionName = "0.1.2"; ndk { abiFilters += "arm64-v8a" } }
  signingConfigs { create("personalRelease") {
   storeFile = rootProject.file("signing/folder-player.p12")
   storePassword = signingProps.getProperty("storePassword")
@@ -21,5 +21,7 @@ android {
 }
 dependencies {
  testImplementation("junit:junit:4.13.2")
+ testImplementation("org.json:json:20240303")
+ testImplementation("org.robolectric:robolectric:4.14.1")
 }
 

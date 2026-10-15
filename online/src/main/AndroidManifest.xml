@@ -1,7 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
  <uses-permission android:name="android.permission.INTERNET" />
  <permission android:name="dev.alex.afponline.USE_ONLINE" android:protectionLevel="signature" />
- <application android:label="AFP Online" android:allowBackup="false" android:supportsRtl="true">
+ <application android:usesCleartextTraffic="false" android:label="AFP Online · эксперимент" android:allowBackup="false" android:supportsRtl="true">
+  <activity android:name=".ZvukLabActivity" android:theme="@android:style/Theme.Material.NoActionBar" android:exported="true" android:label="Звук · эксперимент">
+   <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+  </activity>
   <service android:name=".OnlineService" android:exported="true" android:permission="dev.alex.afponline.USE_ONLINE" />
  </application>
 </manifest>
