@@ -2510,7 +2510,7 @@ class MainActivity : Activity() {
         appUpdates.resume()
     }
 
-    private val extensionManager by lazy {
+    private val extensionManager: ExtensionManager by lazy {
         ExtensionManager(
             this,
             translationClient,
@@ -2533,9 +2533,9 @@ class MainActivity : Activity() {
         extensionManager.show()
     }
 
-    private val onlineSection by lazy { OnlineSection(this) { appUpdates.check() } }
+    private val onlineSection: OnlineSection by lazy { OnlineSection(this) { appUpdates.check() } }
 
-    private val appUpdates by lazy { AppUpdates(this, extensionManager) }
+    private val appUpdates: AppUpdates by lazy { AppUpdates(this, extensionManager) }
 
     private fun about() {
         AlertDialog.Builder(this)
