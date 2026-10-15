@@ -106,7 +106,7 @@ jobs:
           AFP_SPANISH_PACKAGE: ${{ steps.model_changes.outputs.changed == 'true' && '/tmp/models/spanish.zip' || '' }}
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon :app:assembleRelease :translator:assembleRelease :app:testReleaseUnitTest :translator:testReleaseUnitTest :app:lintRelease :translator:lintRelease --max-workers=2
+          ./gradlew --no-daemon :app:assembleRelease :translator:assembleRelease :online:assembleRelease :app:testReleaseUnitTest :translator:testReleaseUnitTest :online:testReleaseUnitTest :app:lintRelease :translator:lintRelease :online:lintRelease --max-workers=2
       - name: Unsigned APKs for local signing
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -115,6 +115,7 @@ jobs:
           path: |
             app/build/outputs/apk/release/
             translator/build/outputs/apk/release/
+            online/build/outputs/apk/release/
           retention-days: 1
       - name: Test and lint reports
         if: always()
@@ -124,4 +125,5 @@ jobs:
           path: |
             app/build/reports/
             translator/build/reports/
+            online/build/reports/
           retention-days: 7

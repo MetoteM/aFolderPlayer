@@ -16,7 +16,11 @@ import java.util.concurrent.Executors
 import org.json.JSONArray
 
 /** Explicit checks only. GitHub integrity plus the installed APK signing identity. */
-internal class AppUpdates(private val host: Activity) {
+internal class AppUpdates(
+    private val host: Activity,
+    private val extensions: ExtensionManager,
+    private val open: (URI) -> java.net.HttpURLConnection = { ExtensionHttp.connect(it) },
+) {
     companion object {
         const val RELEASES =
             "https://api.github.com/repos/MetoteM/aFolderPlayer/releases?per_page=100"
@@ -163,56 +167,140 @@ internal class AppUpdates(private val host: Activity) {
         AlertDialog.Builder(host)
             .setTitle("Обновление")
             .setMessage(
-                if (error is java.io.IOException)
-                    "Не удалось соединиться с GitHub. Проверь подключение или попробуй позже."
+                if (error is java.io.IOException && error.message.orEmpty().none { it in 'А'..'я' })
+                    "Не удалось проверить источник обновлений. Проверь подключение или попробуй позже."
                 else error.message ?: "Не удалось проверить обновление. Попробуй позже."
             )
             .setPositiveButton("Закрыть", null)
             .show()
     }
 
+    @Suppress("DEPRECATION")
+    private fun installedExtensions(): Map<String, ExtensionUpdates.Installed> =
+        ExtensionModules.all
+            .mapNotNull { module ->
+                runCatching {
+                        val info = host.packageManager.getPackageInfo(module.pkg, 0)
+                        module.kind to
+                            ExtensionUpdates.Installed(
+                                info.versionName.orEmpty(),
+                                info.versionCode.toLong(),
+                                host.packageManager.checkSignatures(host.packageName, module.pkg) ==
+                                    PackageManager.SIGNATURE_MATCH,
+                            )
+                    }
+                    .getOrNull()
+            }
+            .toMap()
+
     fun check() =
-        run("Проверяем обновления…") {
-            val c = ExtensionHttp.connect(URI(RELEASES))
-            connection = c
-            try {
-                active()
-                require(c.responseCode == 200) {
-                    if (c.responseCode == 403 || c.responseCode == 429)
-                        "GitHub ограничил запросы. Попробуй позже."
-                    else "GitHub недоступен (${c.responseCode}). Попробуй позже."
-                }
-                val release =
-                    c.inputStream.use {
+        run("Проверяем плеер и расширения…") {
+            val player = runCatching {
+                val request = open(URI(RELEASES))
+                connection = request
+                try {
+                    active()
+                    check(request.responseCode == 200) {
+                        "GitHub недоступен (${request.responseCode})"
+                    }
+                    request.inputStream.use {
                         candidate(ExtensionCatalog.read(it, 2_000_000), installedVersion())
                     }
-                main.post {
-                    if (!closed && !cancelled) {
-                        if (release == null)
-                            AlertDialog.Builder(host)
-                                .setTitle("Обновление")
-                                .setMessage(
-                                    "Новых стабильных версий нет. Установлена ${installedVersion()}."
-                                )
-                                .setPositiveButton("Закрыть", null)
-                                .show()
-                        else
-                            AlertDialog.Builder(host)
-                                .setTitle("Доступна ${release.version}")
-                                .setMessage(
-                                    "Установлена ${installedVersion()}\nРазмер · ${"%.1f".format(release.size/1_000_000.0)} МБ" +
-                                        if (release.notes.isBlank()) "" else "\n\n${release.notes}"
-                                )
-                                .setPositiveButton("Скачать") { _, _ -> download(release) }
-                                .setNegativeButton("Позже", null)
-                                .show()
-                    }
+                } finally {
+                    connection = null
+                    request.disconnect()
                 }
-            } finally {
-                connection = null
-                c.disconnect()
+            }
+            active()
+            val catalogue = runCatching {
+                ExtensionCatalogueSource(host, open).read(::active) { connection = it }
+            }
+            active()
+            val installed = installedExtensions()
+            val models =
+                if (installed["engine"]?.trusted == true)
+                    runCatching {
+                            TranslationClient(host.applicationContext).availableModels().keys
+                        }
+                        .getOrNull()
+                else emptySet()
+            active()
+            @Suppress("DEPRECATION")
+            val code = host.packageManager.getPackageInfo(host.packageName, 0).versionCode.toLong()
+            val extensionRows =
+                catalogue
+                    .getOrNull()
+                    ?.let { result ->
+                        ExtensionUpdates.plan(
+                            result.catalog.entries,
+                            installed,
+                            models,
+                            code,
+                            host.getSharedPreferences("extensions", 0).getBoolean("enabled", false),
+                        )
+                    }
+                    .orEmpty()
+            main.post { if (!closed && !cancelled) showUpdates(player, catalogue, extensionRows) }
+        }
+
+    private fun showUpdates(
+        player: Result<Release?>,
+        catalogue: Result<ExtensionCatalogueSource.Result>,
+        rows: List<ExtensionUpdates.Row>,
+    ) {
+        val labels = mutableListOf<String>()
+        val actions = mutableListOf<(() -> Unit)?>()
+        val release = player.getOrNull()
+        labels +=
+            when {
+                player.isFailure -> "aFolderPlayer · не удалось проверить"
+                release != null -> "aFolderPlayer · ${installedVersion()} → ${release.version}"
+                else -> "aFolderPlayer · ${installedVersion()} · актуально"
+            }
+        actions +=
+            if (release != null) ({ offerPlayer(release) })
+            else if (player.isFailure) ({ showError(player.exceptionOrNull()!!) }) else null
+        if (catalogue.isFailure) {
+            labels += "Расширения · не удалось проверить"
+            actions += { showError(catalogue.exceptionOrNull()!!) }
+        } else {
+            for (row in rows) {
+                labels += row.title + "\n" + row.detail
+                actions += {
+                    val entry = row.entry
+                    if (entry != null) extensions.offerUpdate(catalogue.getOrThrow().base, entry)
+                    else
+                        AlertDialog.Builder(host)
+                            .setTitle(row.title)
+                            .setMessage(row.detail)
+                            .setPositiveButton("Закрыть", null)
+                            .show()
+                }
+            }
+            if (rows.isEmpty()) {
+                labels += "Расширения не установлены"
+                actions += null
             }
         }
+        AlertDialog.Builder(host)
+            .setTitle("Обновления плеера и расширений")
+            .setItems(labels.toTypedArray()) { _, index -> actions[index]?.invoke() }
+            .setPositiveButton("Закрыть", null)
+            .setNeutralButton("Расширения") { _, _ -> extensions.show() }
+            .show()
+    }
+
+    private fun offerPlayer(release: Release) {
+        AlertDialog.Builder(host)
+            .setTitle("aFolderPlayer ${release.version}")
+            .setMessage(
+                "Установлена ${installedVersion()}\nРазмер · ${"%.1f".format(release.size / 1_000_000.0)} МБ" +
+                    if (release.notes.isBlank()) "" else "\n\n${release.notes}"
+            )
+            .setPositiveButton("Скачать") { _, _ -> download(release) }
+            .setNegativeButton("Позже", null)
+            .show()
+    }
 
     private fun download(release: Release) =
         run("Скачиваем ${release.version}…") {
@@ -287,6 +375,7 @@ internal class AppUpdates(private val host: Activity) {
                 .show()
             return
         }
+        prefs.edit().putString("reviewAfterVersion", installedVersion()).apply()
         host.startActivity(
             Intent(Intent.ACTION_VIEW)
                 .setDataAndType(
@@ -298,6 +387,26 @@ internal class AppUpdates(private val host: Activity) {
     }
 
     fun resume() {
+        val component = ExtensionModules.find(prefs.getString("reviewComponentKind", null) ?: "")
+        if (component != null) {
+            val installed = installedExtensions()[component.kind]
+            if (
+                installed != null &&
+                    installed.trusted &&
+                    installed.code > prefs.getInt("reviewComponentCode", 0)
+            ) {
+                prefs.edit().remove("reviewComponentKind").remove("reviewComponentCode").apply()
+                if (component.kind == "engine") extensions.enable()
+                check()
+                return
+            }
+        }
+        val previous = prefs.getString("reviewAfterVersion", null)
+        if (previous != null && previous != installedVersion()) {
+            prefs.edit().remove("reviewAfterVersion").remove("pendingInstall").apply()
+            check()
+            return
+        }
         if (!prefs.getBoolean("pendingInstall", false)) return
         prefs.edit().remove("pendingInstall").apply()
         val file = File(folder, "player-update.apk")

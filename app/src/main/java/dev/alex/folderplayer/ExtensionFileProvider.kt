@@ -15,7 +15,7 @@ class ExtensionFileProvider : ContentProvider() {
     override fun getType(uri: Uri) = "application/vnd.android.package-archive"
 
     private fun file(uri: Uri): File {
-        require(uri.path in setOf("/engine.apk", "/player-update.apk"))
+        require(uri.path in setOf("/engine.apk", "/online.apk", "/player-update.apk"))
         return File(context!!.filesDir, "extensions" + uri.path)
     }
 

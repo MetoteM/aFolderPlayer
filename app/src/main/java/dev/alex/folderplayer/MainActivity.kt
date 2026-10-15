@@ -2524,6 +2524,8 @@ class MainActivity : Activity() {
                 )
             },
             { if (alive && page == "translation") currentTrack()?.let { translate(it, true) } },
+            online = { onlineSection.show() },
+            updates = { appUpdates.check() },
         )
     }
 
@@ -2531,7 +2533,9 @@ class MainActivity : Activity() {
         extensionManager.show()
     }
 
-    private val appUpdates by lazy { AppUpdates(this) }
+    private val onlineSection by lazy { OnlineSection(this) { appUpdates.check() } }
+
+    private val appUpdates by lazy { AppUpdates(this, extensionManager) }
 
     private fun about() {
         AlertDialog.Builder(this)
@@ -2573,6 +2577,7 @@ class MainActivity : Activity() {
         if (!isChangingConfigurations) translationWork.close()
         extensionManager.close()
         appUpdates.close()
+        onlineSection.close()
         lyricsWork.detach()
         if (!isChangingConfigurations) lyricsWork.close()
         albumYears.close()

@@ -24,6 +24,8 @@ internal class ExtensionManager(
     private val message: (String) -> Unit,
     private val importModel: () -> Unit,
     private val changed: () -> Unit = {},
+    private val online: () -> Unit = {},
+    private val updates: () -> Unit = {},
 ) {
     companion object {
         const val DEFAULT_CATALOG =
@@ -54,7 +56,9 @@ internal class ExtensionManager(
         val choices = mutableListOf<String>()
         choices.add("Перевод: " + if (prefs.getBoolean("enabled", false)) "включён" else "выключен")
         choices.add("Скачать расширения")
+        choices.add("Проверить обновления")
         choices.add("Источник загрузки")
+        choices.add("Онлайн")
         choices.add("Установить переводчик из файла")
         if (installed) {
             choices.add("Пакет для отдельных документов")
@@ -76,7 +80,9 @@ internal class ExtensionManager(
                             if (prefs.getBoolean("enabled", false)) "включён" else "выключен"
                 }
                 "Скачать расширения" -> fetchCatalog()
+                "Проверить обновления" -> updates()
                 "Источник загрузки" -> address()
+                "Онлайн" -> online()
                 "Установить переводчик из файла" ->
                     host.startActivityForResult(
                         Intent(Intent.ACTION_OPEN_DOCUMENT)
@@ -299,38 +305,29 @@ internal class ExtensionManager(
     }
 
     private fun fetchCatalog() {
-        val server =
-            prefs.getString("server", DEFAULT_CATALOG).orEmpty().ifBlank { DEFAULT_CATALOG }
         run("Загружаем каталог…") {
-            val base = ExtensionCatalog.base(server)
-            val c = ExtensionCatalog.connect(base.resolve("catalog.json"))
-            connection = c
-            try {
-                check(c.responseCode == 200) { "Сервер каталога недоступен (${c.responseCode})" }
-                val bytes = c.inputStream.use { ExtensionCatalog.read(it, 200_000) }
-                val cert = host.assets.open("catalog_certificate.der").use { it.readBytes() }
-                val catalog =
-                    ExtensionCatalog.verify(bytes, cert, prefs.getInt("catalogVersion", 1))
-                prefs.edit().putInt("catalogVersion", catalog.version).apply()
-                main.post {
-                    if (!closed && !cancelled)
-                        AlertDialog.Builder(host)
-                            .setTitle("Выбери расширение")
-                            .setItems(
-                                catalog.entries
-                                    .map { "${it.title} · ${it.size/1_000_000} МБ" }
-                                    .toTypedArray()
-                            ) { _, index ->
-                                confirm(base, catalog.entries[index])
-                            }
-                            .setNegativeButton("Закрыть", null)
-                            .show()
-                }
-            } finally {
-                connection = null
-                c.disconnect()
+            val result =
+                ExtensionCatalogueSource(host)
+                    .read({ check(!closed && !cancelled) { "Отменено" } }, { connection = it })
+            main.post {
+                if (!closed && !cancelled)
+                    AlertDialog.Builder(host)
+                        .setTitle("Выбери расширение")
+                        .setItems(
+                            result.catalog.entries
+                                .map { "${it.title} · ${it.size / 1_000_000} МБ" }
+                                .toTypedArray()
+                        ) { _, index ->
+                            confirm(result.base, result.catalog.entries[index])
+                        }
+                        .setNegativeButton("Закрыть", null)
+                        .show()
             }
         }
+    }
+
+    fun offerUpdate(base: java.net.URI, entry: ExtensionCatalog.Entry) {
+        confirm(base, entry)
     }
 
     private fun confirm(base: java.net.URI, entry: ExtensionCatalog.Entry) {
@@ -343,6 +340,13 @@ internal class ExtensionManager(
                         .toLong()
                 }
                 .getOrDefault(0)
+        @Suppress("DEPRECATION")
+        val playerCode =
+            host.packageManager.getPackageInfo(host.packageName, 0).versionCode.toLong()
+        if (entry.minimumPlayer > playerCode) {
+            message("Сначала обнови aFolderPlayer")
+            return
+        }
         if (entry.kind == "model" && installedCode < entry.minimumEngine) {
             AlertDialog.Builder(host)
                 .setTitle("Обнови переводчик")
@@ -362,7 +366,7 @@ internal class ExtensionManager(
             .setTitle(entry.title)
             .setMessage(
                 "Скачать ${entry.size/1_000_000} МБ с ${base.host}?" +
-                    (if (entry.kind == "engine") " Затем Android попросит подтвердить установку."
+                    (if (entry.kind != "model") " Затем Android попросит подтвердить установку."
                     else " Пакет будет установлен в AFP Translate.")
             )
             .setPositiveButton("Скачать") { _, _ -> download(base, entry) }
@@ -373,7 +377,14 @@ internal class ExtensionManager(
     private fun download(base: java.net.URI, entry: ExtensionCatalog.Entry) =
         run("Подключаемся для загрузки ${entry.title}…", entry.size) {
             val destination =
-                File(folder, if (entry.kind == "engine") "engine.apk" else "model.zip")
+                File(
+                    folder,
+                    when (entry.kind) {
+                        "engine" -> "engine.apk"
+                        "online" -> "online.apk"
+                        else -> "model.zip"
+                    },
+                )
             val part = File(folder, destination.name + ".part")
             val c = ExtensionCatalog.connect(entry.address(base))
             connection = c
@@ -411,9 +422,13 @@ internal class ExtensionManager(
                 }
                 check(!cancelled && !closed) { "Загрузка отменена" }
                 check(part.renameTo(destination)) { "Не удалось сохранить файл" }
-                if (entry.kind == "engine") {
-                    validateEngine(destination)
-                    main.post { if (!closed && !cancelled) installEngine() }
+                if (entry.kind != "model") {
+                    validateComponent(
+                        destination,
+                        entry.kind,
+                        ExtensionUpdates.targetVersion(entry),
+                    )
+                    main.post { if (!closed && !cancelled) installComponent(entry.kind) }
                 } else {
                     phase("Устанавливаем языковой пакет…")
                     ParcelFileDescriptor.open(destination, ParcelFileDescriptor.MODE_READ_ONLY)
@@ -463,21 +478,37 @@ internal class ExtensionManager(
         }
 
     @Suppress("DEPRECATION")
-    private fun validateEngine(file: File) {
+    private fun validateEngine(file: File) = validateComponent(file, "engine")
+
+    @Suppress("DEPRECATION")
+    private fun validateComponent(file: File, kind: String, expectedVersion: String? = null) {
+        val module = ExtensionModules.find(kind) ?: error("Неизвестное расширение")
         val pm = host.packageManager
         val info =
             pm.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNATURES)
                 ?: error("Не удалось прочитать APK")
-        require(info.packageName == TranslationClient.PACKAGE) { "Это не AFP Translate" }
+        require(expectedVersion == null || info.versionName == expectedVersion) {
+            "Версия APK не соответствует каталогу"
+        }
+        require(info.packageName == module.pkg) { "Это не ${module.title}" }
         val own = pm.getPackageInfo(host.packageName, PackageManager.GET_SIGNATURES)
         require(
-            info.signatures?.toSet() == own.signatures?.toSet() && !info.signatures.isNullOrEmpty()
+            !info.signatures.isNullOrEmpty() && info.signatures?.toSet() == own.signatures?.toSet()
         ) {
-            "Подпись движка не совпадает с плеером"
+            "Подпись расширения не совпадает с плеером"
+        }
+        val installed = runCatching { pm.getPackageInfo(module.pkg, 0).versionCode }.getOrNull()
+        require(installed == null || info.versionCode >= installed) {
+            "Расширение старее установленного"
         }
     }
 
-    private fun installEngine() {
+    private fun installEngine() = installComponent("engine")
+
+    private fun installComponent(kind: String) {
+        val module = ExtensionModules.find(kind) ?: error("Неизвестное расширение")
+        val file = File(folder, "$kind.apk")
+        validateComponent(file, kind)
         if (!host.packageManager.canRequestPackageInstalls()) {
             AlertDialog.Builder(host)
                 .setTitle("Установка расширения")
@@ -485,7 +516,11 @@ internal class ExtensionManager(
                     "Разреши aFolderPlayer устанавливать выбранный APK. После возврата откроется установка; файл уже скачан."
                 )
                 .setPositiveButton("Разрешить") { _, _ ->
-                    prefs.edit().putBoolean("pendingInstall", true).apply()
+                    prefs
+                        .edit()
+                        .putBoolean("pendingInstall", true)
+                        .putString("pendingKind", kind)
+                        .apply()
                     host.startActivity(
                         Intent(
                             Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
@@ -497,15 +532,24 @@ internal class ExtensionManager(
                 .show()
             return
         }
+        @Suppress("DEPRECATION")
+        val previousCode =
+            runCatching { host.packageManager.getPackageInfo(module.pkg, 0).versionCode }
+                .getOrDefault(0)
+        host
+            .getSharedPreferences("updates", 0)
+            .edit()
+            .putString("reviewComponentKind", kind)
+            .putInt("reviewComponentCode", previousCode)
+            .apply()
         host.startActivity(
             Intent(Intent.ACTION_VIEW)
                 .setDataAndType(
-                    Uri.parse("content://dev.alex.folderplayer.extensions/engine.apk"),
+                    Uri.parse("content://dev.alex.folderplayer.extensions/$kind.apk"),
                     "application/vnd.android.package-archive",
                 )
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         )
-        enable()
     }
 
     fun resume() {
@@ -514,7 +558,14 @@ internal class ExtensionManager(
                 host.packageManager.canRequestPackageInstalls()
         ) {
             prefs.edit().putBoolean("pendingInstall", false).apply()
-            if (File(folder, "engine.apk").isFile) installEngine()
+            val kind = prefs.getString("pendingKind", "engine") ?: "engine"
+            if (ExtensionModules.find(kind) != null && File(folder, "$kind.apk").isFile) {
+                runCatching { installComponent(kind) }
+                    .onFailure {
+                        File(folder, "$kind.apk").delete()
+                        message(it.message ?: "Не удалось продолжить установку")
+                    }
+            }
         }
     }
 

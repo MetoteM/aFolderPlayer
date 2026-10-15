@@ -10,8 +10,8 @@ import org.json.*;
 /** Signed data only. Executable code is installed by Android as a separately signed APK. */
 public final class ExtensionCatalog {
   public static final class Entry {
-    public final String id, kind, title, file, hash, model, url;
-    public final long size, minimumEngine;
+    public final String id, kind, title, file, hash, model, url, versionName;
+    public final long size, minimumEngine, minimumPlayer;
 
     Entry(JSONObject item) throws Exception {
       id = item.getString("id");
@@ -24,15 +24,21 @@ public final class ExtensionCatalog {
       url = item.optString("url", "");
       if (!url.isEmpty()) validateModelUrl(url, kind, file);
       minimumEngine = item.optLong("minimumEngine", 0);
-      if (minimumEngine < 0
+      minimumPlayer = item.optLong("minimumPlayer", 0);
+      versionName = item.optString("versionName", "");
+      if (minimumPlayer < 0
+          || minimumPlayer > Integer.MAX_VALUE
+          || versionName.length() > 40
+          || minimumEngine < 0
           || minimumEngine > 100000
-          || !Set.of("engine", "model").contains(kind)
+          || !Set.of("engine", "model", "online").contains(kind)
           || !file.matches("[A-Za-z0-9_.-]{1,100}")
           || !hash.matches("[a-f0-9]{64}")
           || size <= 0
           || size > 240_000_000
           || title.length() > 150) throw new IOException("Некорректный каталог расширений");
-      if (kind.equals("engine") && !id.equals("engine")
+      if (kind.equals("online") && !id.equals("online")
+          || kind.equals("engine") && !id.equals("engine")
           || kind.equals("model") && !model.matches("[a-z0-9][a-z0-9_-]{1,63}"))
         throw new IOException("Пакет пока не поддерживается этой версией");
     }
@@ -63,8 +69,9 @@ public final class ExtensionCatalog {
   public final int version;
   public final List<Entry> entries;
 
-  private ExtensionCatalog(JSONObject payload) throws Exception {
-    if (payload.getInt("schema") != 1) throw new IOException("Нужна новая версия плеера");
+  ExtensionCatalog(JSONObject payload) throws Exception {
+    int schema = payload.getInt("schema");
+    if (schema != 1 && schema != 2) throw new IOException("Нужна новая версия плеера");
     version = payload.getInt("version");
     if (version < 1) throw new IOException("Некорректная версия каталога");
     JSONArray items = payload.getJSONArray("entries");
@@ -73,6 +80,8 @@ public final class ExtensionCatalog {
     Set<String> ids = new HashSet<>();
     for (int i = 0; i < items.length(); i++) {
       Entry e = new Entry(items.getJSONObject(i));
+      if (schema == 1 && e.kind.equals("online"))
+        throw new IOException("Онлайн требует каталога второй версии");
       if (!ids.add(e.id)) throw new IOException("Повторяющиеся пакеты");
       values.add(e);
     }

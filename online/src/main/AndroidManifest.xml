@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ <uses-permission android:name="android.permission.INTERNET" />
+ <permission android:name="dev.alex.afponline.USE_ONLINE" android:protectionLevel="signature" />
+ <application android:label="AFP Online" android:allowBackup="false" android:supportsRtl="true">
+  <service android:name=".OnlineService" android:exported="true" android:permission="dev.alex.afponline.USE_ONLINE" />
+ </application>
+</manifest>
