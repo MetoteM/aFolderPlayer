@@ -24,12 +24,8 @@ class YandexAccountActivity : Activity() {
         root.addView(TextView(this).apply { text="Яндекс Музыка · эксперимент\nВход хранится только в расширении. Музыку воспроизводит aFolderPlayer." })
         status=TextView(this);root.addView(status)
         fun button(title:String,action:()->Unit) { root.addView(Button(this).apply { text=title;setOnClickListener { action() } }) }
-        button("Войти в Яндекс") {
-            AlertDialog.Builder(this).setTitle("Вход через Яндекс")
-                .setMessage("Откроется страница oauth.yandex.ru. Используется клиент авторизации из успешного эксперимента; это пока не официальная интеграция aFolderPlayer. Пароль обрабатывает страница Яндекса.")
-                .setPositiveButton("Продолжить") { _,_->startActivity(Intent(this,YandexAuthActivity::class.java)) }
-                .setNegativeButton("Отмена",null).show()
-        }
+        root.addView(TextView(this).apply { text="Откроется страница Яндекса. Используется клиент из эксперимента, не официальная интеграция aFolderPlayer. Доступ к Музыке проверяется после входа." })
+        button("Войти в Яндекс") { openAuth() }
         button("Выйти") {
             generation++
             YandexSession(this).clear()
@@ -51,6 +47,13 @@ class YandexAccountActivity : Activity() {
             dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show()
         }
         button("Вернуться в плеер") { finish() }
+        if(savedInstanceState==null && intent.getBooleanExtra("loginNow",false)) openAuth()
+    }
+    private fun openAuth() { startActivityForResult(Intent(this,YandexAuthActivity::class.java),71) }
+    @Deprecated("Activity result callback")
+    override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
+        super.onActivityResult(requestCode,resultCode,data)
+        if(requestCode==71 && resultCode==RESULT_OK) { setResult(RESULT_OK);finish() }
     }
     override fun onResume() { super.onResume();status.text=if(YandexSession(this).read()!=null) "Подключено · Яндекс Музыка" else "Вход не выполнен" }
     override fun onDestroy() { dead=true;worker.shutdownNow();super.onDestroy() }

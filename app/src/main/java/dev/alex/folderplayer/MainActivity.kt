@@ -309,6 +309,10 @@ class MainActivity : Activity() {
         layout.addView(browserTitle)
         browserCount = label("", 13f).apply { setTextColor(PlayerScreens.muted) }
         layout.addView(browserCount)
+        val sources = row()
+        sources.addView(button("На устройстве") { selectedPlaylist=null;render() },weight())
+        sources.addView(button("Яндекс Музыка") { onlineSection.show() },weight())
+        layout.addView(sources)
         val tools = row()
         moreTools = row()
         fun command(kind: IconButton.Kind, label: String, action: () -> Unit) =
@@ -760,6 +764,11 @@ class MainActivity : Activity() {
         if (id?.startsWith("afp-yandex://") == true && mediaLoadedId != id) {
             mediaLoadedId = id
             screens.setArtwork(id, null)
+            val cover = c.mediaMetadata.artworkUri?.toString().orEmpty()
+            if (cover.isNotEmpty()) artworkWorker.execute {
+                val bitmap = OnlineArtwork(applicationContext).load(cover)
+                handler.post { if (alive && controller?.currentMediaItem?.mediaId == id) screens.setArtwork(id, bitmap) }
+            }
             screens.setLyrics(id, null, "Тексты онлайн-треков пока не подключены")
             screens.setTranslation(id, "", "Перевод онлайн-треков пока не подключён")
         }
@@ -1520,6 +1529,8 @@ class MainActivity : Activity() {
             }
         }
     }
+
+    private val artworkWorker=java.util.concurrent.Executors.newSingleThreadExecutor()
 
     private fun currentTrack() = tracks.find { it.uri == controller?.currentMediaItem?.mediaId }
 
@@ -2514,6 +2525,7 @@ class MainActivity : Activity() {
         translationForeground = true
         extensionManager.resume()
         appUpdates.resume()
+        onlineSection.resume()
     }
 
     private val extensionManager: ExtensionManager by lazy {
@@ -2543,7 +2555,7 @@ class MainActivity : Activity() {
         val c = controller
         if (c == null) toast("Плеер ещё подключается")
         else {
-            sendPlaybackCommand(c, PlaybackCommands.START_ONLINE_QUEUE, Bundle().apply { putString("tracks", raw); putInt("index", index) })
+            sendPlaybackCommand(c, PlaybackCommands.START_ONLINE_QUEUE, Bundle().apply { putString("queueId", raw); putInt("index", index) })
             showPage("player")
         }
     } }
@@ -2591,6 +2603,7 @@ class MainActivity : Activity() {
         extensionManager.close()
         appUpdates.close()
         onlineSection.close()
+        artworkWorker.shutdownNow()
         lyricsWork.detach()
         if (!isChangingConfigurations) lyricsWork.close()
         albumYears.close()

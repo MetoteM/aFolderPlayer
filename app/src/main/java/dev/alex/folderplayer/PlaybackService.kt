@@ -258,7 +258,7 @@ class PlaybackService : MediaSessionService() {
                 .getInt("requestedRepeat", prefs.getInt("repeat", Player.REPEAT_MODE_OFF))
                 .coerceIn(0, 2)
         val savedShuffle = prefs.getBoolean("shuffle", false)
-        val onlineSaved = runCatching { OnlinePlayback.items(prefs.getString("onlineQueue", "[]")!!) }.getOrDefault(emptyList()).associateBy { it.mediaId }
+        val onlineSaved = runCatching { OnlinePlayback.items(OnlineLibraryStore(this).queue(prefs.getString("onlineQueueId", "").orEmpty()) ?: prefs.getString("onlineQueue", "[]")!!) }.getOrDefault(emptyList()).associateBy { it.mediaId }
         val saved =
             Library.strings(prefs.getString("queue", "[]")!!).mapNotNull { tracks[it]?.item() ?: onlineSaved[it] }
         val positionIndex = positionPrefs.getInt("index", -1)
@@ -289,12 +289,13 @@ class PlaybackService : MediaSessionService() {
     internal fun applyPlaybackCommand(action: String, args: Bundle): Int {
         return when (action) {
             PlaybackCommands.START_ONLINE_QUEUE -> {
-                val raw = args.getString("tracks").orEmpty()
+                val queueId = args.getString("queueId").orEmpty()
+                val raw = OnlineLibraryStore(this).queue(queueId) ?: "[]"
                 val items = runCatching { OnlinePlayback.items(raw) }.getOrNull()
                 val index = args.getInt("index", -1)
                 if (items == null || index !in items.indices) SessionError.ERROR_BAD_VALUE
                 else {
-                    prefs.edit().putString("queueSource", "Яндекс Музыка").putString("onlineQueue", raw).apply()
+                    prefs.edit().putString("queueSource", "Яндекс Музыка").putString("onlineQueueId", queueId).remove("onlineQueue").apply()
                     player.setMediaItems(items, index, 0)
                     player.setPauseAtEndOfMediaItems(false)
                     player.prepare();player.play()

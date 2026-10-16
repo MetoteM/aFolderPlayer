@@ -21,7 +21,7 @@ internal class OnlinePlayback(context: Context) {
         val service=IOnlineService.Stub.asInterface(binder)
         if(service.apiVersion()!=2) throw Problem("Обнови расширение Яндекс Музыки")
         val raw=service.yandex(operation,argument)
-        if(raw.length>40000) throw Problem("Слишком большой ответ расширения")
+        if(raw.length>150000) throw Problem("Слишком большой ответ расширения")
         val result=JSONObject(raw)
         if(result.has("error")) throw Problem(result.optString("error").take(200))
         result
@@ -39,12 +39,12 @@ internal class OnlinePlayback(context: Context) {
             uri.scheme=="afp-yandex" && uri.host=="track" && uri.pathSegments.size==1 && uri.query==null && uri.fragment==null && it.matches(Regex("[0-9]{1,20}"))
         }
         fun items(raw:String):List<MediaItem> {
-            require(raw.length<=30000)
-            val rows=JSONArray(raw);require(rows.length() in 1..20)
+            require(raw.length<=8_000_000)
+            val rows=JSONArray(raw);require(rows.length() in 1..20000)
             return (0 until rows.length()).map { i ->
                 val row=rows.getJSONObject(i);val id=row.getString("id");require(id.matches(Regex("[0-9]{1,20}")))
                 MediaItem.Builder().setMediaId("afp-yandex://track/$id").setUri("afp-yandex://track/$id").setMimeType(MimeTypes.AUDIO_MPEG)
-                    .setMediaMetadata(MediaMetadata.Builder().setTitle(row.optString("title").take(200)).setArtist(row.optString("artist").take(500)).build()).build()
+                    .setMediaMetadata(MediaMetadata.Builder().setTitle(row.optString("title").take(200)).setArtist(row.optString("artist").take(500)).setArtworkUri(OnlineArtwork.valid(row.optString("cover"))).build()).build()
             }
         }
     }

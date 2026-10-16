@@ -5,7 +5,7 @@ android {
  namespace = "dev.alex.afponline"
  compileSdk = 36
  buildToolsVersion = "36.0.0"
- defaultConfig { applicationId = "dev.alex.afponline"; minSdk = 26; targetSdk = 36; versionCode = 6; versionName = "0.2.0-yandex.3"; ndk { abiFilters += "arm64-v8a" } }
+ defaultConfig { applicationId = "dev.alex.afponline"; minSdk = 26; targetSdk = 36; versionCode = 7; versionName = "0.2.0-yandex.4"; ndk { abiFilters += "arm64-v8a" } }
  signingConfigs { create("personalRelease") {
   storeFile = rootProject.file("signing/folder-player.p12")
   storePassword = signingProps.getProperty("storePassword")
