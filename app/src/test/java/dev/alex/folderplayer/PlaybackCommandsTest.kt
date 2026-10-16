@@ -44,4 +44,35 @@ class PlaybackCommandsTest {
    assertEquals(Player.REPEAT_MODE_ALL,p.repeatMode);assertEquals("Металл",prefs().getString("queueSource",null))
   } finally { host.destroy() }
  }
+ @Test fun onlineNextAppendHideAndRestartKeepTheWholeQueueAndMetadata() {
+  val context=RuntimeEnvironment.getApplication();prefs().edit().clear().commit()
+  val store=OnlineLibraryStore(context);store.setSession("queue-account")
+  val host=Robolectric.buildService(PlaybackService::class.java).create();val service=host.get()
+  fun send(ids:List<Int>,mode:String,index:Int=0) {
+   val rows=org.json.JSONArray(ids.map { org.json.JSONObject().put("id",it).put("title","Track $it").put("duration",100000+it) })
+   assertEquals(SessionResult.RESULT_SUCCESS,service.applyPlaybackCommand(PlaybackCommands.START_ONLINE_QUEUE,Bundle().apply {
+    putString("queueId",store.saveQueue(rows));putInt("index",index);putString("mode",mode)
+   }))
+  }
+  val expected=mutableListOf<String>()
+  try {
+   send((1..125).toList(),"play",49);val p=player(service);p.pause()
+   assertEquals(125,p.mediaItemCount);assertEquals(49,p.currentMediaItemIndex)
+   send(listOf(900,901),"next");assertEquals("afp-yandex://track/900",p.getMediaItemAt(50).mediaId)
+   send(listOf(902),"append");assertEquals(128,p.mediaItemCount);assertEquals("afp-yandex://track/902",p.getMediaItemAt(127).mediaId)
+   assertEquals("afp-yandex://track/50",p.currentMediaItem!!.mediaId)
+   OnlineLibraryActions(context).set("hidden",org.json.JSONArray("""[{"id":"900"}]"""),true)
+   org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+   assertEquals(127,p.mediaItemCount)
+   expected+=(0 until p.mediaItemCount).map { p.getMediaItemAt(it).mediaId }
+   assertFalse(expected.contains("afp-yandex://track/900"))
+  } finally { host.destroy() }
+  val restored=Robolectric.buildService(PlaybackService::class.java).create()
+  try {
+   val p=player(restored.get());p.pause()
+   assertEquals(expected,(0 until p.mediaItemCount).map { p.getMediaItemAt(it).mediaId })
+   assertEquals(100902L,p.getMediaItemAt(p.mediaItemCount-1).mediaMetadata.extras!!.getLong("onlineDuration"))
+   assertEquals("afp-yandex://track/50",p.currentMediaItem!!.mediaId)
+  } finally { restored.destroy() }
+ }
 }

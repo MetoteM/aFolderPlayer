@@ -8,222 +8,277 @@ import android.content.Intent
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** One source screen: explicit network actions, paged collection, private metadata cache. */
-internal class OnlineSection(private val host:Activity, private val updates:()->Unit,private val play:(String,Int)->Unit) {
-    private val extension=OnlinePlayback(host)
+/** A source browser with explicit selection and a complete, transactional playback snapshot. */
+internal class OnlineSection(
+    private val host:Activity,
+    private val play:(String,Int,String)->Unit,
+    private val extension:OnlineCatalogue=OnlinePlayback(host),
+    private val worker:ExecutorService=Executors.newSingleThreadExecutor(),
+) {
     private val store=OnlineLibraryStore(host)
-    private val worker=Executors.newSingleThreadExecutor()
+    private val decisions=OnlineLibraryActions(host)
+    private val loader=OnlineCatalogueLoader(extension)
     private val covers=Executors.newFixedThreadPool(2)
     private val main=Handler(Looper.getMainLooper())
     private val artwork=OnlineArtwork(host)
     private var dialog:Dialog?=null
-    private var generation=0
-    private var closed=false
+    @Volatile private var generation=0
+    @Volatile private var closed=false
     private var returning=false
-    private var connected=false
     private var busy=false
     private var operation="collectionPage"
-    private var playlistId=""
-    private var next:Int?=null
-    private var total=0
+    private var sourceId=""
+    private var sourceTitle="Мне нравится в Яндексе"
+    private var data=JSONObject().put("tracks",JSONArray())
     private var rows=JSONArray()
+    private var shown=emptyList<OnlineRows.Row>()
     private var playlistMode=false
+    private var query=""
+    private var sort=0
+    private var selecting=false
+    private val selected=mutableSetOf<Int>()
+    private lateinit var title:TextView
     private lateinit var status:TextView
+    private lateinit var selection:TextView
     private lateinit var list:ListView
     private lateinit var more:Button
-    private lateinit var login:Button
+    private lateinit var retry:Button
+    private lateinit var cancel:Button
     private lateinit var playAll:Button
-    private lateinit var progress:ProgressBar
-    private val actions=mutableListOf<Button>()
+    private lateinit var sortView:Spinner
+    private lateinit var search:EditText
+    private val buttons=mutableListOf<Button>()
     private val adapter=object:BaseAdapter() {
-        override fun getCount()=rows.length()
-        override fun getItem(position:Int)=rows.optJSONObject(position)
-        override fun getItemId(position:Int)=position.toLong()
+        override fun getCount()=shown.size
+        override fun getItem(position:Int)=shown[position].song
+        override fun getItemId(position:Int)=shown[position].sourceIndex.toLong()
         override fun getView(position:Int,convertView:View?,parent:ViewGroup):View {
-            val root=convertView as? LinearLayout ?: LinearLayout(host).apply {
-                orientation=LinearLayout.HORIZONTAL;setPadding(12,10,12,10)
-                addView(ImageView(host),LinearLayout.LayoutParams(112,112))
-                addView(TextView(host).apply { setTextColor(Color.WHITE);textSize=16f;setPadding(16,0,8,0) },LinearLayout.LayoutParams(0,-2,1f))
+            val entry=shown[position];val song=entry.song
+            val row=LinearLayout(host).apply { orientation=LinearLayout.HORIZONTAL;gravity=android.view.Gravity.CENTER_VERTICAL;setPadding(8,8,8,8) }
+            if(!playlistMode) row.addView(CheckBox(host).apply {
+                isChecked=entry.sourceIndex in selected;contentDescription="Выбрать ${song.optString("title")}"
+                setOnCheckedChangeListener { _,checked -> selecting=true;if(checked)selected+=entry.sourceIndex else selected-=entry.sourceIndex;updateSelection() }
+            })
+            val image=ImageView(host).apply { setImageResource(android.R.drawable.ic_menu_gallery) }
+            row.addView(image,LinearLayout.LayoutParams(dp(40),dp(40)))
+            val id=song.optString("id")
+            row.addView(TextView(host).apply {
+                setTextColor(Color.WHITE);textSize=16f;setPadding(12,0,8,0)
+                text=if(playlistMode) song.optString("title")+"\n"+song.optInt("count")+" треков"
+                else (if(decisions.contains("favorites",id))"♥ " else "")+song.optString("title")+"\n"+song.optString("artist")+" · "+formatDuration(song.optLong("duration"))+
+                    (if(!song.optBoolean("available",true))" · недоступен" else "")
+            },LinearLayout.LayoutParams(0,-2,1f))
+            if(playlistMode) row.addView(Button(host).apply {
+                text="Открыть";isFocusable=false
+                setOnClickListener { if(!busy)openPlaylist(song) }
+            })
+            row.setOnClickListener { if(!busy) { if(playlistMode)openPlaylist(song) else if(selecting || operation=="hidden") { selecting=true;toggle(entry.sourceIndex) } else prepare("play",entry.sourceIndex) } }
+            if(!playlistMode)row.setOnLongClickListener { if(!busy) { selecting=true;toggle(entry.sourceIndex) };true }
+            row.alpha=if(song.optBoolean("available",true))1f else .5f
+            val cover=song.optString("cover");image.tag=cover
+            if(cover.isNotEmpty() && !closed)covers.execute {
+                val bitmap=artwork.load(cover)
+                main.post { if(!closed && dialog?.isShowing==true && image.tag==cover && bitmap!=null)image.setImageBitmap(bitmap) }
             }
-            val song=rows.getJSONObject(position)
-            val image=root.getChildAt(0) as ImageView
-            val text=root.getChildAt(1) as TextView
-            val uri=song.optString("cover")
-            image.tag=uri;image.setImageResource(android.R.drawable.ic_menu_gallery)
-            text.text=if(playlistMode) song.optString("title")+"\n"+song.optInt("count")+" треков · Открыть →" else song.optString("title")+"\n"+song.optString("artist")+" · "+formatDuration(song.optLong("duration"))+
-                if(!song.optBoolean("available",true)) " · недоступен" else ""
-            root.alpha=if(!playlistMode && !song.optBoolean("available",true)) .5f else 1f
-            if(uri.isNotEmpty() && !closed) covers.execute {
-                val bitmap=artwork.load(uri)
-                main.post { if(!closed && dialog?.isShowing==true && image.tag==uri && bitmap!=null) image.setImageBitmap(bitmap) }
-            }
-            root.setOnClickListener { selectRow(position) }
-            return root
+            return row
         }
     }
     fun show() {
         if(closed || dialog?.isShowing==true)return
-        if(!extension.installed()) {
-            AlertDialog.Builder(host).setTitle("Яндекс Музыка").setMessage("Установи AFP Online из того же тестового комплекта, что и плеер.").setPositiveButton("Закрыть",null).show();return
-        }
+        if(!extension.installed()) { AlertDialog.Builder(host).setTitle("Яндекс Музыка").setMessage("Установи AFP Online из того же тестового комплекта.").setPositiveButton("Закрыть",null).show();return }
         val screen=Dialog(host,android.R.style.Theme_Material_NoActionBar)
-        dialog=screen;generation++;actions.clear();rows=JSONArray();next=null;busy=false;playlistMode=false
-        operation="collectionPage";playlistId=""
-        val root=LinearLayout(host).apply { orientation=LinearLayout.VERTICAL;setPadding(20,12,20,12);setBackgroundColor(Color.rgb(15,21,32)) }
-        fun button(title:String,action:()->Unit):Button=Button(host).apply { text=title;setOnClickListener { if(!busy)action() };actions+=this }
-        val top=LinearLayout(host)
-        top.addView(button("← Библиотека") { screen.dismiss() },LinearLayout.LayoutParams(0,-2,1f))
-        login=Button(host).apply { text="Войти / аккаунт";setOnClickListener { openLogin(false) } }
-        top.addView(login,LinearLayout.LayoutParams(0,-2,1f));root.addView(top)
-        root.addView(Button(host).apply { text="Сеть и качество";setOnClickListener { OnlineSettings(host).show(host) } })
-        root.addView(TextView(host).apply { text="Яндекс Музыка";textSize=24f;setTextColor(Color.WHITE) })
-        status=TextView(host).apply { setTextColor(Color.LTGRAY);setPadding(0,8,0,8) };root.addView(status)
-        progress=ProgressBar(host).apply { visibility=View.GONE };root.addView(progress,LinearLayout.LayoutParams(-1,8))
+        dialog=screen;generation++;busy=false;buttons.clear();selected.clear();selecting=false;query="";sort=0;rows=JSONArray();shown=emptyList()
+        val root=LinearLayout(host).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(8),dp(4),dp(8),dp(4));setBackgroundColor(Color.rgb(15,21,32)) }
+        fun button(label:String,action:()->Unit)=Button(host).apply { text=label;setOnClickListener { if(!busy)action() };buttons+=this }
+        fun pair(a:View,b:View) { root.addView(LinearLayout(host).apply { addView(a,LinearLayout.LayoutParams(0,-2,1f));addView(b,LinearLayout.LayoutParams(0,-2,1f)) }) }
+        pair(Button(host).apply { text="← Назад";setOnClickListener { if(operation=="playlistPage" && !busy)choose("playlists","","Плейлисты") else screen.dismiss() } },
+            Button(host).apply { text="Вход / аккаунт";setOnClickListener { openLogin() } })
+        title=TextView(host).apply { textSize=22f;setTextColor(Color.WHITE) };root.addView(title)
+        status=TextView(host).apply { textSize=13f;setTextColor(Color.LTGRAY) };root.addView(status)
         val tabs=LinearLayout(host)
-        tabs.addView(button("Мне нравится") { choose("collectionPage","") },LinearLayout.LayoutParams(0,-2,1f))
-        tabs.addView(button("Плейлисты") { operation="playlists";playlistId="";load(0,false) },LinearLayout.LayoutParams(0,-2,1f))
-        tabs.addView(button("↻") { load(0,true) },LinearLayout.LayoutParams(90,-2));root.addView(tabs)
-        val search=LinearLayout(host)
-        val query=EditText(host).apply { hint="Песня или исполнитель";isSingleLine=true;setTextColor(Color.WHITE);setHintTextColor(Color.GRAY) }
-        search.addView(query,LinearLayout.LayoutParams(0,-2,1f))
-        search.addView(button("Найти") {
-            val q=query.text.toString().trim()
-            if(q.isBlank()) { status.text="Введи поисковый запрос" } else { operation="search";playlistId=q;load(0,false) }
-        });root.addView(search)
-        playAll=button("▶ Играть список") { val first=(0 until rows.length()).firstOrNull { rows.optJSONObject(it)?.optBoolean("available",true)==true };if(first!=null)selectRow(first) };root.addView(playAll)
-        list=ListView(host).apply { adapter=this@OnlineSection.adapter }
-        list.setOnItemClickListener { _,_,position,_-> selectRow(position) }
+        tabs.addView(button("Коллекция") { choose("collectionPage","","Мне нравится в Яндексе") },LinearLayout.LayoutParams(0,-2,1f))
+        tabs.addView(button("Плейлисты") { choose("playlists","","Плейлисты") },LinearLayout.LayoutParams(0,-2,1f))
+        tabs.addView(button("⋮") { sourceMenu() },LinearLayout.LayoutParams(dp(56),-2));root.addView(tabs)
+        search=EditText(host).apply { hint="Фильтр списка / поиск";isSingleLine=true;setTextColor(Color.WHITE);setHintTextColor(Color.GRAY) }
+        search.addTextChangedListener(object:TextWatcher {
+            override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
+            override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { query=s?.toString().orEmpty();selected.clear();selecting=false;render() }
+            override fun afterTextChanged(s:Editable?){}
+        })
+        val searchRow=LinearLayout(host);searchRow.addView(search,LinearLayout.LayoutParams(0,-2,1f))
+        searchRow.addView(button("В Яндексе") { val q=query.trim();if(q.isNotEmpty())choose("search",q,"Поиск: $q") });root.addView(searchRow)
+        sortView=Spinner(host).apply { adapter=ArrayAdapter(host,android.R.layout.simple_spinner_dropdown_item,arrayOf("Исходный порядок","По названию","По исполнителю","По длительности")) }
+        sortView.onItemSelectedListener=object:AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent:AdapterView<*>?){}
+            override fun onItemSelected(parent:AdapterView<*>?,view:View?,position:Int,id:Long) { sort=position;render() }
+        }
+        pair(sortView,button("Действия") { actionsMenu() })
+        selection=TextView(host).apply { setTextColor(Color.CYAN);setOnClickListener { selected.clear();selecting=false;render() } };root.addView(selection)
+        playAll=button("▶ Играть список целиком") { prepare("play",null) };root.addView(playAll)
+        list=ListView(host).apply { adapter=this@OnlineSection.adapter;descendantFocusability=ViewGroup.FOCUS_BLOCK_DESCENDANTS }
+        list.setOnItemClickListener { _,_,position,_ -> shown.getOrNull(position)?.let { if(!busy) { if(playlistMode)openPlaylist(it.song) else if(selecting || operation=="hidden") { selecting=true;toggle(it.sourceIndex) } else prepare("play",it.sourceIndex) } } }
         root.addView(list,LinearLayout.LayoutParams(-1,0,1f))
-        more=button("Показать ещё") { next?.let { load(it,false) } };root.addView(more)
-        SystemBarInsets.apply(root)
-        screen.setContentView(root)
+        more=button("Показать ещё") { next()?.let { fetch(it,false) } };root.addView(more)
+        retry=button("Повторить загрузку") { fetch(0,true) };root.addView(retry)
+        cancel=Button(host).apply { text="Отменить загрузку";setOnClickListener { generation++;busy=false;status.text="Загрузка отменена";update() } };root.addView(cancel)
+        SystemBarInsets.apply(root);screen.setContentView(root)
         screen.setOnDismissListener { generation++;dialog=null;busy=false }
         screen.show();screen.window?.setLayout(-1,-1)
-        checkStatus()
+        update();checkStatus()
     }
-    private fun selectRow(position:Int) {
-            if(busy)return
-            val row=rows.optJSONObject(position) ?: return
-            if(playlistMode) choose("playlistPage",row.optString("id"))
-            else if(!row.optBoolean("available",true)) status.text="Этот трек недоступен в сервисе"
-            else {
-                val snapshot=JSONArray();var selected=0
-                for(i in 0 until rows.length()) {
-                    val song=rows.optJSONObject(i) ?: continue
-                    if(song.optBoolean("available",true)) { if(i==position)selected=snapshot.length();snapshot.put(song) }
-                }
-                val id=generation
-                busy=true;update()
-                worker.execute {
-                    val result=runCatching { store.saveQueue(snapshot) }
-                    main.post {
-                        if(closed || id!=generation)return@post
-                        busy=false;update()
-                        result.onSuccess { play(it,selected);dialog?.dismiss() }.onFailure { status.text="Не удалось подготовить очередь" }
-                    }
-                }
-            }
-    }
-    private fun update() {
-        actions.forEach { it.isEnabled=!busy }
-        progress.visibility=if(busy)View.VISIBLE else View.GONE
-        more.visibility=if(next!=null && !playlistMode)View.VISIBLE else View.GONE
-        playAll.text="▶ Играть загруженные · ${rows.length()}"
-        playAll.visibility=if(!playlistMode && rows.length()>0)View.VISIBLE else View.GONE
-        login.text="Войти / аккаунт"
+    private fun dp(value:Int)=(value*host.resources.displayMetrics.density).toInt()
+    private fun next():Int?=if(data.has("next") && !data.isNull("next"))data.optInt("next").takeIf { it>=0 } else null
+    private fun cacheKey()=if(operation=="collectionPage")"likes" else OnlineLibraryStore.playlistKey(sourceId)
+    private fun openPlaylist(song:JSONObject) { choose("playlistPage",song.optString("id"),song.optString("title")) }
+    private fun choose(op:String,id:String,label:String) {
+        generation++;operation=op;sourceId=id;sourceTitle=label;selected.clear();selecting=false
+        rows=JSONArray();data=JSONObject().put("tracks",rows);playlistMode=op=="playlists";search.setText("")
+        render()
+        if(op in listOf("favorites","hidden")) { apply(JSONObject().put("tracks",decisions.rows(op)));return }
+        val token=generation;busy=true;status.text="Загрузка…";retry.visibility=View.GONE;update()
+        worker.execute {
+            val cached=if(op in listOf("collectionPage","playlistPage"))store.read(cacheKey()) else null
+            main.post { if(!closed && token==generation) { busy=false;if(cached!=null)apply(cached) else fetch(0,false) } }
+        }
     }
     private fun checkStatus() {
-        val id=generation;busy=true;update();status.text="Проверяем сохранённый вход…"
+        val token=generation;busy=true;status.text="Проверяем сохранённый вход…";update()
+        worker.execute {
+            val result=runCatching { extension.request("status").also { store.setSession(it.optString("sessionKey")) } }
+            main.post { if(!closed && token==generation) {
+                busy=false
+                result.onSuccess { if(it.optBoolean("connected"))choose("collectionPage","","Мне нравится в Яндексе") else { status.text="Войди, чтобы открыть коллекцию";update() } }
+                    .onFailure { fail(it) }
+            } }
+        }
+    }
+    private fun fetch(offset:Int,refresh:Boolean) {
+        if(busy)return
+        val token=generation;val op=operation;val id=sourceId;val key=cacheKey();val prior=JSONArray(rows.toString())
+        busy=true;retry.visibility=View.GONE;status.text="Загрузка…";update()
         worker.execute {
             val result=runCatching {
-                val value=extension.request("status")
-                store.setSession(value.optString("sessionKey"))
+                val value=if(op in listOf("collectionPage","playlistPage"))loader.page(op,id,offset,refresh) else extension.request(op,if(op=="search")id else "")
+                if(offset>0)value.put("tracks",merge(prior,value.getJSONArray("tracks")))
+                if(op in listOf("collectionPage","playlistPage"))store.write(key,value)
                 value
             }
-            main.post {
-                if(closed || id!=generation)return@post
-                busy=false
-                result.onSuccess {
-                    connected=it.optBoolean("connected");update()
-                    if(connected) choose("collectionPage","") else { rows=JSONArray();adapter.notifyDataSetChanged();status.text="Войди один раз, чтобы открыть свою коллекцию" }
-                }.onFailure { update();status.text=it.message?.take(200) ?: "Расширение не отвечает" }
-            }
+            main.post { if(!closed && token==generation) { busy=false;result.onSuccess { apply(it,offset>0) }.onFailure { fail(it) } } }
         }
     }
-    private fun choose(op:String,arg:String) {
-        operation=op;playlistId=arg;next=null
-        val cacheKey=if(op=="collectionPage") "likes" else "pl-$arg"
-        val id=generation;busy=true;update()
+    private fun apply(value:JSONObject,append:Boolean=false) {
+        data=value;playlistMode=value.has("playlists");rows=value.optJSONArray(if(playlistMode)"playlists" else "tracks") ?: JSONArray()
+        if(!append) { selected.clear();selecting=false };retry.visibility=View.GONE;render();if(!append)list.setSelection(0)
+    }
+    private fun render() {
+        if(!::title.isInitialized || !::list.isInitialized)return
+        title.text=if(operation=="playlistPage")sourceTitle else "Яндекс Музыка · $sourceTitle"
+        shown=OnlineRows.display(rows,query,sort,if(playlistMode)emptySet() else decisions.ids("hidden"),operation=="hidden")
+        adapter.notifyDataSetChanged()
+        if(!busy)status.text=if(playlistMode)"Плейлистов: ${shown.size} · нажми «Открыть»" else "Показано ${shown.size} · загружено ${rows.length()} из ${data.optInt("total",rows.length())}"
+        update()
+    }
+    private fun updateSelection() { playAll.text=if(selected.isNotEmpty())"▶ Играть выбранные · ${selected.size}" else "▶ Играть список целиком";selection.text=if(selecting)"Выбрано: ${selected.size} · нажми здесь, чтобы снять выбор" else "Долгое нажатие или флажок — выбрать песни" }
+    private fun update() {
+        if(!::more.isInitialized)return
+        buttons.forEach { it.isEnabled=!busy };sortView.isEnabled=!busy;search.isEnabled=!busy
+        more.visibility=if(!playlistMode && next()!=null)View.VISIBLE else View.GONE
+        playAll.visibility=if(!playlistMode && operation!="hidden" && shown.isNotEmpty())View.VISIBLE else View.GONE
+        cancel.visibility=if(busy)View.VISIBLE else View.GONE
+        updateSelection()
+    }
+    private fun fail(error:Throwable) {
+        status.text="Не удалось загрузить: "+(error.message?.take(180) ?: "неизвестная ошибка")
+        retry.visibility=View.VISIBLE;update()
+        AlertDialog.Builder(host).setTitle("$sourceTitle · ошибка").setMessage(status.text).setPositiveButton("Закрыть",null).show()
+    }
+    private fun toggle(index:Int) { if(!selected.add(index))selected.remove(index);render() }
+    private fun sourceMenu() {
+        AlertDialog.Builder(host).setTitle("Онлайн-библиотека").setItems(arrayOf("Избранное в плеере","Скрытые в плеере","Обновить список","Сеть и качество")) { _,i ->
+            when(i) { 0->choose("favorites","","Избранное в плеере");1->choose("hidden","","Скрытые в плеере");2->if(operation in listOf("favorites","hidden"))choose(operation,"",sourceTitle) else fetch(0,true);3->OnlineSettings(host).show(host) }
+        }.show()
+    }
+    private fun selectedRows():JSONArray=JSONArray(shown.filter { it.sourceIndex in selected }.map { it.song })
+    private fun actionsMenu() {
+        if(playlistMode) { status.text="Сначала открой плейлист";return }
+        val has=selected.isNotEmpty()
+        val labels=mutableListOf("Выбрать все показанные","Снять выбор")
+        if(has)labels+=listOf("Воспроизвести выбранные","Играть выбранные далее","Выбранные в конец очереди","В избранное плеера","Убрать из избранного",if(operation=="hidden")"Вернуть в библиотеку" else "Скрыть в плеере")
+        else labels+=listOf("Воспроизвести список целиком","Весь список — играть далее","Весь список — в конец очереди")
+        AlertDialog.Builder(host).setTitle(if(has)"Выбрано: ${selected.size}" else "Действия со списком").setItems(labels.toTypedArray()) { _,i ->
+            when(i) {
+                0->{ selecting=true;selected.clear();selected+=shown.map { it.sourceIndex };render() }
+                1->{ selecting=false;selected.clear();render() }
+                2->prepare("play",null)
+                3->prepare("next",null)
+                4->prepare("append",null)
+                5->changeDecision("favorites",true)
+                6->changeDecision("favorites",false)
+                7->changeDecision("hidden",operation!="hidden")
+            }
+        }.setNegativeButton("Закрыть",null).show()
+    }
+    private fun changeDecision(kind:String,enabled:Boolean) {
+        val snapshot=selectedRows();if(snapshot.length()==0)return
+        val token=generation;busy=true;update()
         worker.execute {
-            val cached=store.read(cacheKey)
-            main.post {
-                if(closed || id!=generation)return@post
-                busy=false;update()
-                if(cached!=null) apply(cached,false,true) else load(0,false)
-            }
+            val result=runCatching { decisions.set(kind,snapshot,enabled);if(kind=="hidden" && enabled)store.saveQueue(snapshot) else null }
+            main.post { if(!closed && token==generation) {
+                busy=false
+                result.onSuccess { handle ->
+                    if(handle!=null)play(handle,0,"remove")
+                    selected.clear();selecting=false
+                    if(operation in listOf("favorites","hidden"))apply(JSONObject().put("tracks",decisions.rows(operation))) else render()
+                }.onFailure { fail(it) }
+            } }
         }
     }
-    private fun load(offset:Int,refresh:Boolean) {
-        if(busy)return
-        val id=generation;val op=operation;val arg=playlistId;val prior=JSONArray(rows.toString())
-        busy=true;update();status.text="Загрузка…"
+    private fun prepare(mode:String,start:Int?) {
+        if(busy || playlistMode)return
+        val token=generation;val op=operation;val id=sourceId;val key=cacheKey()
+        val initial=JSONObject(data.toString());val selectionSnapshot=selected.toSet();val q=query;val sorting=sort
+        busy=true;status.text="Подготовка очереди…";update()
         worker.execute {
             val result=runCatching {
-                val param=when(op) {
-                    "search" -> arg
-                    "collectionPage", "playlistPage" -> JSONObject().put("offset",offset).put("refresh",refresh).put("id",arg).toString()
-                    else -> ""
-                }
-                val data=extension.request(op,param)
-                if(op=="collectionPage" || op=="playlistPage") {
-                    val combined=if(offset>0) merge(prior,data.getJSONArray("tracks")) else data.getJSONArray("tracks")
-                    val cache=JSONObject(data.toString()).put("tracks",combined)
-                    store.write(if(op=="collectionPage")"likes" else "pl-$arg",cache)
-                }
-                data
+                val full=if(selectionSnapshot.isEmpty() && op in listOf("collectionPage","playlistPage")) {
+                    loader.complete(op,id,initial,{ !closed && token==generation }) { n,total -> main.post { if(!closed && token==generation)status.text="Подготовка очереди: $n из $total" } }.also { store.write(key,it) }
+                } else initial
+                val all=full.optJSONArray("tracks") ?: JSONArray()
+                val visible=OnlineRows.display(all,q,sorting,decisions.ids("hidden"))
+                    .filter { it.song.optBoolean("available",true) && (selectionSnapshot.isEmpty() || it.sourceIndex in selectionSnapshot) }
+                check(visible.isNotEmpty()) { "Нет доступных нескрытых песен для воспроизведения" }
+                val index=if(start==null)0 else visible.indexOfFirst { it.sourceIndex==start }.also { check(it>=0) { "Этот трек недоступен или скрыт" } }
+                check(!closed && token==generation) { "Подготовка отменена" }
+                Triple(store.saveQueue(JSONArray(visible.map { it.song })),index,full)
             }
-            main.post {
-                if(closed || id!=generation)return@post
-                busy=false;update()
-                result.onSuccess { apply(it,offset>0,false) }.onFailure {
-                    status.text=(it.message?.take(200) ?: "Не удалось загрузить")+if(rows.length()>0) " · сохранённый список доступен" else ""
-                }
-            }
+            main.post { if(!closed && token==generation) {
+                busy=false
+                result.onSuccess { (handle,index,full) -> data=full;rows=full.optJSONArray("tracks") ?: rows;render();play(handle,index,mode);if(mode=="play")dialog?.dismiss() else status.text="Добавлено в очередь" }
+                    .onFailure { fail(it) }
+            } }
         }
     }
-    private fun apply(data:JSONObject,append:Boolean,cached:Boolean) {
-        playlistMode=data.has("playlists")
-        val received=data.optJSONArray(if(playlistMode)"playlists" else "tracks") ?: JSONArray()
-        rows=if(append)merge(rows,received) else received
-        next=if(data.isNull("next") || !data.has("next"))null else data.optInt("next").takeIf { it>=0 }
-        total=data.optInt("total",rows.length())
-        adapter.notifyDataSetChanged();update()
-        if(!append)list.setSelection(0)
-        status.text=if(playlistMode) "${rows.length()} плейлистов · нажми, чтобы открыть" else "Загружено ${rows.length()} из $total"+
-            if(cached) " · сохранено на телефоне" else ""
-    }
-    private fun openLogin(now:Boolean) {
+    private fun openLogin() {
         returning=true;dialog?.dismiss()
-        runCatching { host.startActivity(Intent().setComponent(ComponentName(onlinePackage(host),"dev.alex.afponline.YandexAccountActivity")).putExtra("loginNow",now)) }
+        runCatching { host.startActivity(Intent().setComponent(ComponentName(onlinePackage(host),"dev.alex.afponline.YandexAccountActivity"))) }
             .onFailure { returning=false;Toast.makeText(host,"Не удалось открыть вход",Toast.LENGTH_LONG).show() }
     }
     fun resume() { if(returning && !closed) { returning=false;show() } }
-    fun close() { closed=true;dialog?.dismiss();worker.shutdownNow();covers.shutdownNow();main.removeCallbacksAndMessages(null) }
+    fun close() { closed=true;generation++;dialog?.dismiss();worker.shutdownNow();covers.shutdownNow();main.removeCallbacksAndMessages(null) }
     companion object {
-        private fun formatDuration(ms:Long):String = if(ms<=0) "—" else "${ms/60000}:${(ms/1000%60).toString().padStart(2,'0')}"
+        private fun formatDuration(ms:Long):String=if(ms<=0)"—" else "${ms/60000}:${(ms/1000%60).toString().padStart(2,'0')}"
         fun merge(old:JSONArray,more:JSONArray):JSONArray {
-            val result=JSONArray()
-            for(array in listOf(old,more)) for(i in 0 until array.length()) {
-                array.optJSONObject(i)?.let { result.put(it) }
-            }
-            return result
+            val result=JSONArray();for(array in listOf(old,more))for(i in 0 until array.length())array.optJSONObject(i)?.let { result.put(it) };return result
         }
     }
 }

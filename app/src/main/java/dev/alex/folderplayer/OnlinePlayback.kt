@@ -12,13 +12,18 @@ import java.io.IOException
 
 internal fun onlinePackage(context: Context) = "dev.alex.afponline" + if(context.packageName.endsWith(".yandexlab")) ".yandexlab" else ""
 
+internal interface OnlineCatalogue {
+    fun installed():Boolean
+    fun request(operation:String,argument:String=""):JSONObject
+}
+
 /** IPC carries catalogue metadata and short-lived URLs, never OAuth credentials. */
-internal class OnlinePlayback(context: Context) {
+internal class OnlinePlayback(context: Context):OnlineCatalogue {
     class Problem(message:String):IOException(message)
     private val settings = OnlineSettings(context)
     private val connection = SignedExtensionConnection(context,onlinePackage(context),"dev.alex.afponline.OnlineService")
-    fun installed() = connection.installed()
-    fun request(operation:String, argument:String=""):JSONObject {
+    override fun installed() = connection.installed()
+    override fun request(operation:String, argument:String):JSONObject {
         if(operation!="status") settings.requireNetwork()
         return connection.use { binder ->
         val service=IOnlineService.Stub.asInterface(binder)

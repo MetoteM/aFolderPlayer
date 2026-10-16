@@ -14,6 +14,7 @@ internal class OnlineLibraryStore(private val context:Context) {
     fun setSession(key:String) {
         if(key!=session()) {
             context.filesDir.listFiles()?.filter { it.name.startsWith("ym-library-") }?.forEach { it.delete() }
+            context.getSharedPreferences("online_actions",Context.MODE_PRIVATE).edit().clear().apply()
             prefs.edit().putString("session",key).apply()
         }
     }
@@ -32,8 +33,17 @@ internal class OnlineLibraryStore(private val context:Context) {
     }.getOrNull()
     fun saveQueue(rows:JSONArray):String {
         val id=UUID.randomUUID().toString()
-        write("queue",JSONObject().put("id",id).put("tracks",rows))
+        write("pending-$id",JSONObject().put("id",id).put("tracks",rows))
+        val old=context.filesDir.listFiles().orEmpty().filter { it.name.startsWith("ym-library-pending-") && it.name.endsWith(".json") }.sortedByDescending { it.lastModified() }
+        old.drop(20).forEach { it.delete() }
         return id
     }
-    fun queue(id:String):String? = read("queue")?.takeIf { it.optString("id")==id }?.optJSONArray("tracks")?.toString()
+    fun queue(id:String):String? {
+        if(!id.matches(Regex("[0-9a-f-]{36}")))return null
+        return (read("pending-$id") ?: read("queue")?.takeIf { it.optString("id")==id })?.optJSONArray("tracks")?.toString()
+    }
+    fun dropQueue(id:String) { if(id.matches(Regex("[0-9a-f-]{36}")))File(context.filesDir,"ym-library-pending-$id.json").delete() }
+    companion object {
+        fun playlistKey(reference:String):String = "pl-"+java.security.MessageDigest.getInstance("SHA-256").digest(reference.toByteArray()).joinToString("") { "%02x".format(it.toInt() and 255) }.take(40)
+    }
 }

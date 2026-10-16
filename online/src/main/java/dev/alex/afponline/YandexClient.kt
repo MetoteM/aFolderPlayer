@@ -110,23 +110,40 @@ internal class YandexClient(private val token: String, private val transport: ((
     }
     fun playlists():JSONArray {
         val user=uid ?: throw Problem("Сначала подтверди аккаунт")
-        val rows=api("/users/$user/playlists/list").getJSONArray("result")
         val result=JSONArray()
-        for(i in 0 until rows.length()) {
-            val row=rows.optJSONObject(i) ?: continue
-            val kind=row.optString("kind")
-            if(kind.matches(Regex("[0-9]{1,20}"))) result.put(JSONObject().put("id",kind).put("title",row.optString("title").take(200)).put("count",row.optInt("trackCount",0)))
+        val seen=mutableSetOf<String>()
+        fun append(rows:JSONArray,liked:Boolean) {
+            for(i in 0 until rows.length()) {
+                val wrapper=rows.optJSONObject(i) ?: continue
+                val row=wrapper.optJSONObject("playlist") ?: wrapper
+                val kind=row.optString("kind")
+                val owner=row.optJSONObject("owner")?.optString("uid").orEmpty().ifBlank { if(!liked)user else "" }
+                if(!kind.matches(Regex("[0-9]{1,20}")) || !owner.matches(Regex("[0-9]{1,20}")))continue
+                val id="$owner:$kind"
+                if(seen.add(id))result.put(JSONObject().put("id",id).put("owner",owner).put("kind",kind)
+                    .put("title",row.optString("title").take(200)).put("count",row.optInt("trackCount",0)))
+            }
         }
+        append(api("/users/$user/playlists/list").getJSONArray("result"),false)
+        // A separate collection contains followed playlists owned by other users.
+        // A denied optional endpoint does not make the user's own playlists disappear.
+        try { append(api("/users/$user/likes/playlists").getJSONArray("result"),true) }
+        catch(e:Problem) { if(e.reason.contains("401"))throw e }
         return result
     }
-    fun playlistPage(kind:String,offset:Int,refresh:Boolean=false):Page {
-        val user=uid ?: throw Problem("Сначала подтверди аккаунт")
-        if(!kind.matches(Regex("[0-9]{1,20}")) || offset<0) throw Problem("Некорректный плейлист")
-        val cached=playlistRows[kind]
+    fun playlistPage(reference:String,offset:Int,refresh:Boolean=false):Page {
+        val account=uid ?: throw Problem("Сначала подтверди аккаунт")
+        val parts=reference.split(':')
+        val user=if(parts.size==2)parts[0] else account
+        val kind=if(parts.size==2)parts[1] else reference
+        if(parts.size>2 || !user.matches(Regex("[0-9]{1,20}")) || !kind.matches(Regex("[0-9]{1,20}")) || offset<0) throw Problem("Некорректный плейлист")
+        val key="$user:$kind"
+        val cached=playlistRows[key]
         val rows=if(!refresh && cached!=null && System.currentTimeMillis()-cached.first<300_000) cached.second else {
-            val list=api("/users/$user/playlists/$kind").getJSONObject("result").getJSONArray("tracks")
-            if(playlistRows.size>=5) playlistRows.clear()
-            playlistRows[kind]=System.currentTimeMillis() to list
+            val value=api("/users/$user/playlists/$kind").getJSONObject("result")
+            val list=value.optJSONArray("tracks") ?: if(value.optInt("trackCount",0)==0)JSONArray() else throw Problem("Сервис не вернул содержимое плейлиста")
+            if(playlistRows.size>=5)playlistRows.clear()
+            playlistRows[key]=System.currentTimeMillis() to list
             list
         }
         val end=minOf(rows.length(),offset+50)
@@ -134,13 +151,15 @@ internal class YandexClient(private val token: String, private val transport: ((
         for(i in offset until end) {
             val row=rows.optJSONObject(i) ?: continue
             val track=row.optJSONObject("track")
-            if(track!=null) full.put(track) else row.optString("id").takeIf { it.matches(Regex("[0-9]{1,20}")) }?.let { ids+=it }
+            val id=track?.optString("id")?.ifBlank { null } ?: row.optString("id")
+            if(track!=null && track.has("title"))full.put(track)
+            else id.takeIf { it.matches(Regex("[0-9]{1,20}")) }?.let { ids+=it }
         }
-        val fetched=if(ids.isEmpty()) emptyList() else songs(api("/tracks?track-ids=${ids.joinToString(",")}").getJSONArray("result"))
+        val fetched=if(ids.isEmpty())emptyList() else songs(api("/tracks?track-ids=${ids.joinToString(",")}").getJSONArray("result"))
         val byId=(songs(full)+fetched).associateBy { it.id }
         val ordered=(offset until end).mapNotNull { i ->
-            val row=rows.optJSONObject(i);val id=row?.optJSONObject("track")?.optString("id") ?: row?.optString("id")
-            byId[id]
+            val row=rows.optJSONObject(i);val id=row?.optJSONObject("track")?.optString("id")?.ifBlank { null } ?: row?.optString("id")
+            byId[id] ?: id?.takeIf { it.matches(Regex("[0-9]{1,20}")) }?.let { Song(it,"Недоступный трек $it","",available=false) }
         }
         return Page(ordered,rows.length(),end.takeIf { it<rows.length() })
     }

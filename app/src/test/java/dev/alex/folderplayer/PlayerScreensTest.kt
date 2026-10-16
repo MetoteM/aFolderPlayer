@@ -29,11 +29,11 @@ class PlayerScreensTest {
  }
  private fun all(view:View):List<View> = listOf(view)+(if(view is ViewGroup)(0 until view.childCount).flatMap { all(view.getChildAt(it)) } else emptyList())
  private fun state(id:String="a",position:Long=1500)=PlayerScreens.State(id,"Песня","Автор","Альбом · 2026","Плейлист",true,true,Player.REPEAT_MODE_ALL,position,10000,20)
- @Test fun onlineTrackDoesNotOfferUnimplementedLocalPlaylistSaving() {
+ @Test fun onlineTrackOffersLocalFavorites() {
   val activity=Robolectric.buildActivity(Activity::class.java).setup().get();val ui=PlayerScreens(activity,Actions())
   ui.show("player");ui.update(state("afp-yandex://track/123"))
   val heart=all(ui.view).filterIsInstance<Button>().single { it.text=="♥" }
-  assertFalse(heart.isEnabled)
+  assertTrue(heart.isEnabled)
   ui.update(state("local"));assertTrue(heart.isEnabled)
  }
  @Test fun playerFitsPortraitAndLandscapeWithoutScrolling() {

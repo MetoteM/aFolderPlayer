@@ -178,7 +178,12 @@ class MainActivity : Activity() {
 
                     override fun favorite() {
                         currentTrack()?.let {
-                            library.toggleFavorite(it)
+                            val item=controller?.currentMediaItem
+                            val online=item?.let { media -> OnlineQueueMetadata.row(media) }
+                            if(online!=null) {
+                                val actions=OnlineLibraryActions(this@MainActivity)
+                                actions.set("favorites",org.json.JSONArray().put(online),!actions.contains("favorites",online.optString("id")))
+                            } else library.toggleFavorite(it)
                             render()
                             updatePlayer()
                         }
@@ -738,7 +743,8 @@ class MainActivity : Activity() {
                     .joinToString(" · "),
                 prefs.getString("queueSource", "").orEmpty().ifBlank { "Библиотека" },
                 c.isPlaying,
-                id != null && id in library.playlist("Избранное"),
+                if(id?.startsWith("afp-yandex://")==true) OnlineLibraryActions(this).contains("favorites",Uri.parse(id).lastPathSegment.orEmpty())
+                else id != null && id in library.playlist("Избранное"),
                 c.repeatMode,
                 c.currentPosition,
                 d,
@@ -1105,6 +1111,7 @@ class MainActivity : Activity() {
     }
 
     private fun addToPlaylists(track: Track) {
+        if(track.uri.startsWith("afp-yandex://")) { toast("Смешанные сохраняемые плейлисты — следующий этап. Избранное доступно кнопкой ♥");return }
         val names = (listOf("Избранное") + library.playlistNames()).distinct()
         val checked = names.map { track.uri in library.playlist(it) }.toBooleanArray()
         AlertDialog.Builder(this)
@@ -2553,14 +2560,14 @@ class MainActivity : Activity() {
         extensionManager.show()
     }
 
-    private val onlineSection: OnlineSection by lazy { OnlineSection(this, { appUpdates.check() }) { raw, index ->
+    private val onlineSection: OnlineSection by lazy { OnlineSection(this, { raw, index, mode ->
         val c = controller
         if (c == null) toast("Плеер ещё подключается")
         else {
-            sendPlaybackCommand(c, PlaybackCommands.START_ONLINE_QUEUE, Bundle().apply { putString("queueId", raw); putInt("index", index) })
-            showPage("player")
+            sendPlaybackCommand(c, PlaybackCommands.START_ONLINE_QUEUE, Bundle().apply { putString("queueId", raw); putInt("index", index);putString("mode",mode) })
+            if(mode=="play")showPage("player")
         }
-    } }
+    }) }
 
     private val appUpdates: AppUpdates by lazy { AppUpdates(this, extensionManager) }
 
