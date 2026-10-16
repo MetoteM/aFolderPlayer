@@ -39,3 +39,14 @@ bash gradlew :online:assembleDebug -PyandexSdkClientId=CLIENT_ID_ИЗ_РЕГИС
 ## UI preview 4
 
 Каталог Яндекс Музыки, экран аккаунта и страница входа учитывают status/navigation bars и вырезы экрана. Исходные отступы сохраняются, повторная доставка insets их не накапливает. Есть регрессионные тесты портретных и боковых системных панелей.
+
+## Проверка preview 4
+
+Исходники APK: 2579dd20a81222a4975571b2e9d163ebc98de9f8. CI: https://github.com/MetoteM/aFolderPlayer/actions/runs/38906715667
+
+Плеер 0.8.4-yandex.4 (45), расширение 0.2.0-yandex.6 (9). 200 тестов плеера, 27 тестов расширения, 8 Python-тестов: PASS. Сборка и lint обоих модулей: PASS. Проверки подписей оригинальным сертификатом и zipalign: PASS. Целостность установочного ZIP и обоих APK внутри повторно проверена после сохранения.
+
+| APK | SHA-256 |
+|---|---|
+| aFolderPlayer_0.8.4-yandex.4_test.apk | 93eaac4f4f876440d8b9be2641623abea379a98879fd368dd832a4fc778d0359 |
+| AFP_Online_0.2.0-yandex.6_test.apk | c76f6c8105bbd5d578cc6b0bb43d19a1725bfde716606845d87a2585a31ae57a |
