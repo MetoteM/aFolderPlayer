@@ -31,9 +31,9 @@ internal class OnlineLibraryStore(private val context:Context) {
         require(file.length()<=8_000_000)
         JSONObject(AtomicFile(file).openRead().bufferedReader().use { it.readText() })
     }.getOrNull()
-    fun saveQueue(rows:JSONArray):String {
+    fun saveQueue(rows:JSONArray,source:String=""):String {
         val id=UUID.randomUUID().toString()
-        write("pending-$id",JSONObject().put("id",id).put("tracks",rows))
+        write("pending-$id",JSONObject().put("id",id).put("tracks",rows).put("source",source.take(200)))
         val old=context.filesDir.listFiles().orEmpty().filter { it.name.startsWith("ym-library-pending-") && it.name.endsWith(".json") }.sortedByDescending { it.lastModified() }
         old.filter { it.name!="ym-library-pending-$id.json" }.drop(19).forEach { it.delete() }
         return id
@@ -42,6 +42,7 @@ internal class OnlineLibraryStore(private val context:Context) {
         if(!id.matches(Regex("[0-9a-f-]{36}")))return null
         return (read("pending-$id") ?: read("queue")?.takeIf { it.optString("id")==id })?.optJSONArray("tracks")?.toString()
     }
+    fun queueSource(id:String):String=if(id.matches(Regex("[0-9a-f-]{36}")))read("pending-$id")?.optString("source").orEmpty() else ""
     fun dropQueue(id:String) { if(id.matches(Regex("[0-9a-f-]{36}")))File(context.filesDir,"ym-library-pending-$id.json").delete() }
     companion object {
         fun playlistKey(reference:String):String = "pl-"+java.security.MessageDigest.getInstance("SHA-256").digest(reference.toByteArray()).joinToString("") { "%02x".format(it.toInt() and 255) }.take(40)

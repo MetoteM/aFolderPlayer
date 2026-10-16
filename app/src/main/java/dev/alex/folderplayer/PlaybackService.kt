@@ -317,7 +317,7 @@ class PlaybackService : MediaSessionService() {
                     else {
                         when(mode) {
                             "play" -> {
-                                prefs.edit().putString("queueSource","Яндекс Музыка").remove("onlineQueueId").remove("onlineQueue").apply()
+                                prefs.edit().putString("queueSource","Яндекс Музыка"+store.queueSource(queueId).takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()).remove("onlineQueueId").remove("onlineQueue").apply()
                                 player.setMediaItems(items,index,0);player.setPauseAtEndOfMediaItems(false);player.prepare();player.play()
                             }
                             "next", "append" -> {

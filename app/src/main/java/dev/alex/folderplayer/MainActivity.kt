@@ -2560,12 +2560,23 @@ class MainActivity : Activity() {
         extensionManager.show()
     }
 
-    private val onlineSection: OnlineSection by lazy { OnlineSection(this, { raw, index, mode ->
-        val c = controller
-        if (c == null) toast("Плеер ещё подключается")
+    private val onlineSection: OnlineSection by lazy { OnlineSection(this, { raw,index,mode,done ->
+        val c=controller
+        if(c==null)done(if(mode=="remove")null else "Плеер ещё подключается. Повтори запуск")
         else {
-            sendPlaybackCommand(c, PlaybackCommands.START_ONLINE_QUEUE, Bundle().apply { putString("queueId", raw); putInt("index", index);putString("mode",mode) })
-            if(mode=="play")showPage("player")
+            val request=c.sendCustomCommand(SessionCommand(PlaybackCommands.START_ONLINE_QUEUE,Bundle.EMPTY),Bundle().apply {
+                putString("queueId",raw);putInt("index",index);putString("mode",mode)
+            })
+            request.addListener({
+                if(alive) {
+                    val error=runCatching { request.get().resultCode }.fold(
+                        { if(it==SessionResult.RESULT_SUCCESS)null else "Плеер отклонил очередь. Повтори действие" },
+                        { "Не удалось передать очередь плееру. Повтори действие" })
+                    done(error)
+                    if(error==null && mode=="play")showPage("player")
+                    updatePlayer()
+                }
+            },java.util.concurrent.Executor { handler.post(it) })
         }
     }) }
 

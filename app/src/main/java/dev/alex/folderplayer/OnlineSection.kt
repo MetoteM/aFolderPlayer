@@ -21,7 +21,7 @@ import org.json.JSONObject
 /** A source browser with explicit selection and a complete, transactional playback snapshot. */
 internal class OnlineSection(
     private val host:Activity,
-    private val play:(String,Int,String)->Unit,
+    private val play:(String,Int,String,(String?)->Unit)->Unit,
     private val extension:OnlineCatalogue=OnlinePlayback(host),
     private val worker:ExecutorService=Executors.newSingleThreadExecutor(),
 ) {
@@ -237,7 +237,7 @@ internal class OnlineSection(
             main.post { if(!closed && token==generation) {
                 busy=false
                 result.onSuccess { handle ->
-                    if(handle!=null)play(handle,0,"remove")
+                    if(handle!=null)play(handle,0,"remove") { error -> if(!closed && token==generation && error!=null)status.text=error }
                     selected.clear();selecting=false
                     if(operation in listOf("favorites","hidden"))apply(JSONObject().put("tracks",decisions.rows(operation))) else render()
                 }.onFailure { fail(it) }
@@ -247,7 +247,7 @@ internal class OnlineSection(
     private fun prepare(mode:String,start:Int?) {
         if(busy || playlistMode)return
         val token=generation;val op=operation;val id=sourceId;val key=cacheKey()
-        val initial=JSONObject(data.toString());val selectionSnapshot=selected.toSet();val q=query;val sorting=sort
+        val initial=JSONObject(data.toString());val selectionSnapshot=selected.toSet();val q=query;val sorting=sort;val label=sourceTitle
         busy=true;status.text="Подготовка очереди…";update()
         worker.execute {
             val result=runCatching {
@@ -260,12 +260,20 @@ internal class OnlineSection(
                 check(visible.isNotEmpty()) { "Нет доступных нескрытых песен для воспроизведения" }
                 val index=if(start==null)0 else visible.indexOfFirst { it.sourceIndex==start }.also { check(it>=0) { "Этот трек недоступен или скрыт" } }
                 check(!closed && token==generation) { "Подготовка отменена" }
-                Triple(store.saveQueue(JSONArray(visible.map { it.song })),index,full)
+                Triple(store.saveQueue(JSONArray(visible.map { it.song }),label),index,full)
             }
             main.post { if(!closed && token==generation) {
                 busy=false
-                result.onSuccess { (handle,index,full) -> data=full;rows=full.optJSONArray("tracks") ?: rows;render();play(handle,index,mode);if(mode=="play")dialog?.dismiss() else status.text="Добавлено в очередь" }
-                    .onFailure { fail(it) }
+                result.onSuccess { (handle,index,full) ->
+                    data=full;rows=full.optJSONArray("tracks") ?: rows;busy=true;status.text="Передаём очередь плееру…";render();cancel.visibility=View.GONE
+                    play(handle,index,mode) { error ->
+                        if(!closed && token==generation) {
+                            busy=false
+                            if(error!=null)fail(IllegalStateException(error))
+                            else { render();if(mode=="play")dialog?.dismiss() else status.text="Добавлено в очередь" }
+                        }
+                    }
+                }.onFailure { fail(it) }
             } }
         }
     }

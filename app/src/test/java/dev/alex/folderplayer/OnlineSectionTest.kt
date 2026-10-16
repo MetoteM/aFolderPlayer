@@ -53,7 +53,7 @@ class OnlineSectionTest {
                 }
             }
         }
-        val ui=OnlineSection(host.get(),{ handle,index,mode -> dispatched+=Triple(handle,index,mode) },api,Direct())
+        val ui=OnlineSection(host.get(),{ handle,index,mode,done -> dispatched+=Triple(handle,index,mode);done(null) },api,Direct())
         try {
             ui.show();idle()
             val dialog=ShadowDialog.getLatestDialog();val root=dialog.window!!.decorView
@@ -80,9 +80,10 @@ class OnlineSectionTest {
                 else->throw AssertionError("Local actions must not call $operation")
             }
         }
-        val ui=OnlineSection(host.get(),{ handle,_,mode ->
+        val ui=OnlineSection(host.get(),{ handle,_,mode,done ->
             val rows=JSONArray(OnlineLibraryStore(host.get()).queue(handle))
             dispatched+=(0 until rows.length()).map { rows.getJSONObject(it).getString("id") } to mode
+            done(null)
         },api,Direct())
         fun choose(index:Int) {
             val menu=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
@@ -107,6 +108,22 @@ class OnlineSectionTest {
             assertEquals(2,list.adapter.count)
             select(0);actions();choose(7)
             assertEquals(setOf("3"),OnlineLibraryActions(host.get()).ids("hidden"))
+        } finally { ui.close();host.pause().stop().destroy() }
+    }
+    @Test fun rejectedQueueKeepsTheSourceOpenAndShowsAnError() {
+        val host=Robolectric.buildActivity(Activity::class.java).setup()
+        val api=object:OnlineCatalogue {
+            override fun installed()=true
+            override fun request(operation:String,argument:String)=if(operation=="status")JSONObject().put("connected",true).put("sessionKey","error-account")
+                else JSONObject().put("tracks",JSONArray("""[{"id":"1","title":"Song"}]""")).put("total",1)
+        }
+        val ui=OnlineSection(host.get(),{ _,_,_,done -> done("Плеер отклонил очередь") },api,Direct())
+        try {
+            ui.show();idle();val source=ShadowDialog.getLatestDialog();val root=source.window!!.decorView
+            val list=all(root).filterIsInstance<ListView>().single()
+            list.adapter.getView(0,null,list).performClick();idle()
+            assertTrue(source.isShowing)
+            assertTrue(all(root).filterIsInstance<TextView>().any { it.text.toString().contains("Плеер отклонил очередь") })
         } finally { ui.close();host.pause().stop().destroy() }
     }
 }
