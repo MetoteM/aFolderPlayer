@@ -45,7 +45,7 @@ internal class OnlineSection(private val host: Activity, private val updates: ()
                         results.removeAllViews()
                         if(rows==null || rows.length()==0) { status.text="Треки не найдены";return@onSuccess }
                         val raw=rows.toString()
-                        status.text="${rows.length()} треков · выбранный трек и следующие попадут в очередь"
+                        status.text="${rows.length()} треков · выдача станет очередью с выбранного трека"
                         for(i in 0 until rows.length()) {
                             val song=rows.optJSONObject(i) ?: continue
                             results.addView(Button(host).apply {

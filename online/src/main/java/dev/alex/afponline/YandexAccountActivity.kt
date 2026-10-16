@@ -15,6 +15,7 @@ class YandexAccountActivity : Activity() {
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var status: TextView
     private var dead = false
+    private var generation = 0
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -30,6 +31,7 @@ class YandexAccountActivity : Activity() {
                 .setNegativeButton("Отмена",null).show()
         }
         button("Выйти") {
+            generation++
             YandexSession(this).clear()
             CookieManager.getInstance().removeAllCookies(null);CookieManager.getInstance().flush()
             status.text="Вход удалён. Уже открытый поток может доиграть; новые запросы потребуют входа."
@@ -38,10 +40,12 @@ class YandexAccountActivity : Activity() {
             val field=EditText(this).apply { inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD;isSaveEnabled=false;importantForAutofill=View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS }
             val dialog=AlertDialog.Builder(this).setTitle("Токен своей сессии").setView(field)
                 .setPositiveButton("Подключить") { _,_->
-                    val value=field.text.toString().trim();field.text.clear();status.text="Проверяем…"
+                    val value=field.text.toString().trim();val attempt=++generation;field.text.clear();status.text="Проверяем…"
                     worker.execute {
-                        val result=runCatching { YandexClient(value).checkSession();YandexSession(this).save(value) }
-                        runOnUiThread { if(!dead) status.text=if(result.isSuccess) "Подключено. Вернись в плеер" else (result.exceptionOrNull() as? YandexClient.Problem)?.reason ?: "Не удалось сохранить вход" }
+                        val result=runCatching { YandexClient(value).checkSession() }
+                        runOnUiThread { if(!dead && generation==attempt) status.text=if(result.isSuccess) {
+                            if(runCatching { YandexSession(this).save(value) }.isSuccess) "Подключено. Вернись в плеер" else "Не удалось сохранить вход"
+                        } else (result.exceptionOrNull() as? YandexClient.Problem)?.reason ?: "Вход не подтверждён" }
                     }
                 }.setNegativeButton("Отмена") { _,_->field.text.clear() }.create()
             dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show()

@@ -439,9 +439,9 @@ class MainActivity : Activity() {
                                     }
 
                                     override fun onPlayerError(error: PlaybackException) {
-                                        toast(
-                                            "Не удалось воспроизвести файл: ${error.errorCodeName}"
-                                        )
+                                        val onlineError = generateSequence(error as Throwable?) { it.cause }
+                                            .take(8).filterIsInstance<OnlinePlayback.Problem>().firstOrNull()
+                                        toast(onlineError?.message ?: "Не удалось воспроизвести трек: ${error.errorCodeName}")
                                     }
                                 }
                             )
@@ -756,6 +756,12 @@ class MainActivity : Activity() {
                     )
                 }
             screens.setQueue(entries)
+        }
+        if (id?.startsWith("afp-yandex://") == true && mediaLoadedId != id) {
+            mediaLoadedId = id
+            screens.setArtwork(id, null)
+            screens.setLyrics(id, null, "Тексты онлайн-треков пока не подключены")
+            screens.setTranslation(id, "", "Перевод онлайн-треков пока не подключён")
         }
         if (page != "library" && track != null && mediaLoadedId != id) loadScreenMedia(track)
         if (page == "translation" && track != null && translationId != id) translate(track)

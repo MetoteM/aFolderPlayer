@@ -16,7 +16,7 @@ class YandexAuthActivity : Activity() {
     private lateinit var web: WebView
     private lateinit var status: TextView
     private var consumed = false
-    private var dead = false
+    @Volatile private var dead = false
     @android.annotation.SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,6 +37,7 @@ class YandexAuthActivity : Activity() {
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false)
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                if (!request.isForMainFrame) return false
                 if (capture(request.url.toString())) return true
                 if (!YandexAuth.navigationAllowed(request.url.toString())) { status.text = "Переход вне доменов Яндекса остановлен"; return true }
                 status.text = "Вход · ${request.url.host}"
@@ -56,9 +57,12 @@ class YandexAuthActivity : Activity() {
         consumed = true; web.stopLoading(); web.loadUrl("about:blank")
         status.text = "Проверяем доступ к Музыке…"
         worker.execute {
-            val result = runCatching { YandexClient(token).checkSession(); YandexSession(this).save(token) }
+            val result = runCatching { YandexClient(token).checkSession() }
             runOnUiThread {
-                if (!dead) if (result.isSuccess) { setResult(RESULT_OK); finish() }
+                if (!dead) if (result.isSuccess) {
+                    if (runCatching { YandexSession(this).save(token) }.isSuccess) { setResult(RESULT_OK); finish() }
+                    else status.text = "Не удалось сохранить вход"
+                }
                 else status.text = (result.exceptionOrNull() as? YandexClient.Problem)?.reason ?: "Не удалось сохранить вход"
             }
         }

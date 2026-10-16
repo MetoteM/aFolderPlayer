@@ -241,6 +241,9 @@ class PlaybackService : MediaSessionService() {
                 .build()
         player.addListener(
             object : Player.Listener {
+                override fun onMediaItemTransition(item: androidx.media3.common.MediaItem?, reason: Int) {
+                    this@PlaybackService.player.setWakeMode(if (item?.mediaId?.startsWith("afp-yandex://") == true) C.WAKE_MODE_NETWORK else C.WAKE_MODE_LOCAL)
+                }
                 override fun onEvents(player: Player, events: Player.Events) {
                     saveState(events.contains(Player.EVENT_TIMELINE_CHANGED))
                     scheduleCheckpoint()
