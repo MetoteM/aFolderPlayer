@@ -253,7 +253,7 @@ internal class OnlineSection(
         val labels=mutableListOf("Выбрать все показанные","Снять выбор")
         if(has)labels+=listOf("Воспроизвести выбранные","Играть выбранные далее","Выбранные в конец очереди","В избранное плеера","Убрать из избранного",if(operation=="hidden")"Вернуть в библиотеку" else "Скрыть в плеере")
         else labels+=listOf("Воспроизвести список целиком","Весь список — играть далее","Весь список — в конец очереди")
-        if(selected.size==1)labels+="Поделиться треком"
+        if(selected.size==1)labels+=listOf("Поделиться треком","Сохранить MP3…")
         AlertDialog.Builder(host).setTitle(if(has)"Выбрано: ${selected.size}" else "Действия со списком").setItems(labels.toTypedArray()) { _,i ->
             if(busy || menuGeneration!=generation || (suspended || dialog?.isShowing!=true))return@setItems
             when(i) {
@@ -265,6 +265,7 @@ internal class OnlineSection(
                 5->changeDecision("favorites",true)
                 6->changeDecision("favorites",false)
                 7->changeDecision("hidden",operation!="hidden")
+                9->selectedRows().optJSONObject(0)?.let { YandexSaveActivity.open(host,"afp-yandex://track/${it.optString("id")}",it.optString("title"),it.optString("artist")) }
                 8->selectedRows().optJSONObject(0)?.let { YandexTrackShare.show(host,"afp-yandex://track/${it.optString("id")}",it.optString("title")) }
             }
         }.setNegativeButton("Закрыть",null).show()

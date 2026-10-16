@@ -11,6 +11,7 @@
  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
  <queries><package android:name="dev.alex.afptranslate" /><package android:name="dev.alex.afponline" /><package android:name="dev.alex.afponline.yandexlab" /></queries>
  <application android:label="aFolderPlayer" android:icon="@drawable/ic_player" android:theme="@style/AppTheme" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true">
+  <activity android:name=".YandexSaveActivity" android:exported="false" android:configChanges="orientation|screenSize" />
   <activity android:name=".SongTextActivity" android:exported="false" />
   <activity android:name=".RecognitionActivity" android:exported="false" />
   <provider android:name=".ExtensionFileProvider" android:authorities="${applicationId}.extensions" android:exported="false" android:grantUriPermissions="true" />

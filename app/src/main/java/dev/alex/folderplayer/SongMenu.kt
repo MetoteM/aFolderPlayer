@@ -7,6 +7,7 @@ import android.content.Context
 internal object SongMenu {
     enum class Action(val title: String) {
         SHARE("Поделиться треком"),
+        SAVE_MP3("Сохранить MP3…"),
         SEARCH("Найти текст в интернете"),
         EDIT("Свой текст"),
         IMPORT("Импорт TXT / LRC"),
@@ -20,7 +21,7 @@ internal object SongMenu {
     }
 
     fun show(context: Context, title: String, online:Boolean=false, chosen: (Action) -> Unit) {
-        val actions = Action.values().filter { if(online)it !in listOf(Action.YEAR,Action.PLAYLIST) else it!=Action.SHARE }
+        val actions = Action.values().filter { if(online)it !in listOf(Action.YEAR,Action.PLAYLIST) else it !in listOf(Action.SHARE,Action.SAVE_MP3) }
         AlertDialog.Builder(context)
             .setTitle(title)
             .setItems(actions.map { it.title }.toTypedArray()) { _, index ->

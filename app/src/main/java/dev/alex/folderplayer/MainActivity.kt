@@ -1472,6 +1472,7 @@ class MainActivity : Activity() {
         stopDirectLyrics()
         SongMenu.show(this, track.title, track.uri.startsWith("afp-yandex://")) { action ->
             when (action) {
+                SongMenu.Action.SAVE_MP3 -> YandexSaveActivity.open(this,track.uri,track.title,track.artist)
                 SongMenu.Action.SHARE -> YandexTrackShare.show(this,track.uri,track.title)
                 SongMenu.Action.SEARCH -> {
                     showPage("lyrics")
