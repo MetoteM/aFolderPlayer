@@ -57,7 +57,7 @@ class OnlineSectionTest {
         try {
             ui.show();idle()
             val dialog=ShadowDialog.getLatestDialog();val root=dialog.window!!.decorView
-            all(root).filterIsInstance<Button>().single { it.text=="Плейлисты" }.performClick();idle()
+            all(root).filterIsInstance<Button>().single { it.contentDescription=="Плейлисты" }.performClick();idle()
             val list=all(root).filterIsInstance<ListView>().single();assertEquals(1,list.adapter.count)
             val row=list.adapter.getView(0,null,list)
             all(row).filterIsInstance<Button>().single { it.text=="Открыть" }.performClick();idle()
@@ -104,7 +104,7 @@ class OnlineSectionTest {
             select(0);select(2);actions();choose(7)
             assertEquals(setOf("1","3"),OnlineLibraryActions(host.get()).ids("hidden"))
             assertEquals(1,list.adapter.count);assertEquals("remove",dispatched.last().second)
-            all(root).filterIsInstance<Button>().single { it.text=="⋮" }.performClick();choose(1)
+            all(root).filterIsInstance<Button>().single { it.contentDescription=="⋮" }.performClick();choose(1)
             assertEquals(2,list.adapter.count)
             select(0);actions();choose(7)
             assertEquals(setOf("3"),OnlineLibraryActions(host.get()).ids("hidden"))
@@ -126,4 +126,68 @@ class OnlineSectionTest {
             assertTrue(all(root).filterIsInstance<TextView>().any { it.text.toString().contains("Плеер отклонил очередь") })
         } finally { ui.close();host.pause().stop().destroy() }
     }
+    @Test fun rapidTapsCommitOnceAndReturnToTheSameOnlineList() {
+        val host=Robolectric.buildActivity(Activity::class.java).setup()
+        var dispatches=0;var opened=0;var complete:((String?)->Unit)?=null
+        val calls=mutableListOf<String>()
+        val api=object:OnlineCatalogue {
+            override fun installed()=true
+            override fun request(operation:String,argument:String):JSONObject {
+                calls+=operation
+                return if(operation=="status")JSONObject().put("connected",true).put("sessionKey","rapid-account")
+                else JSONObject().put("tracks",JSONArray((1..3).map { JSONObject().put("id",it).put("title","Rapid $it") })).put("total",3)
+            }
+        }
+        val ui=OnlineSection(host.get(),{ _,_,_,done -> dispatches++;complete=done },api,Direct(),{ opened++ })
+        try {
+            ui.show();idle();val source=ShadowDialog.getLatestDialog();val root=source.window!!.decorView
+            val list=all(root).filterIsInstance<ListView>().single()
+            repeat(30) { list.adapter.getView(0,null,list).performClick() };idle()
+            assertEquals(1,dispatches)
+            repeat(30) {
+                list.adapter.getView(1,null,list).performClick()
+                all(root).filterIsInstance<Button>().single { it.contentDescription=="Плейлисты" }.performClick()
+            }
+            assertEquals(1,dispatches);assertFalse(calls.contains("playlists"))
+            complete!!(null);idle();assertFalse(source.isShowing)
+            val before=calls.size
+            ui.show();idle();assertTrue(source.isShowing);assertSame(source,ShadowDialog.getLatestDialog())
+            assertEquals(3,list.adapter.count);assertEquals(before,calls.size)
+            all(root).filterIsInstance<NowPlayingStrip>().single().performAccessibilityAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_EXPAND,null);idle()
+            assertEquals(1,opened);assertFalse(source.isShowing)
+        } finally { ui.close();host.pause().stop().destroy() }
+    }
+    @Test fun cancelledRequestsDoNotAccumulateNetworkCallsOrOverwriteLatestSource() {
+        val host=Robolectric.buildActivity(Activity::class.java).setup()
+        val tasks=java.util.ArrayDeque<Runnable>()
+        val queue=object:AbstractExecutorService() {
+            override fun execute(command:Runnable) { tasks.add(command) }
+            override fun shutdown() {}
+            override fun shutdownNow():MutableList<Runnable> = mutableListOf()
+            override fun isShutdown()=false
+            override fun isTerminated()=false
+            override fun awaitTermination(timeout:Long,unit:TimeUnit)=true
+        }
+        val calls=mutableListOf<String>()
+        val api=object:OnlineCatalogue {
+            override fun installed()=true
+            override fun request(operation:String,argument:String):JSONObject {
+                calls+=operation
+                return JSONObject().put("playlists",JSONArray("""[{"id":"42:7","title":"Latest","count":2}]"""))
+            }
+        }
+        val ui=OnlineSection(host.get(),{ _,_,_,_->error("Unexpected playback") },api,queue)
+        try {
+            ui.show();val root=ShadowDialog.getLatestDialog().window!!.decorView
+            repeat(30) {
+                all(root).filterIsInstance<Button>().single { it.text=="Отменить загрузку" }.performClick()
+                all(root).filterIsInstance<Button>().single { it.contentDescription=="Плейлисты" }.performClick()
+            }
+            while(tasks.isNotEmpty()) { tasks.removeFirst().run();idle() }
+            assertEquals(listOf("playlists"),calls)
+            val list=all(root).filterIsInstance<ListView>().single()
+            assertEquals(1,list.adapter.count);assertEquals("Latest",(list.adapter.getItem(0) as JSONObject).getString("title"))
+        } finally { ui.close();host.pause().stop().destroy() }
+    }
+
 }
