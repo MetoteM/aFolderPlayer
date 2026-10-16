@@ -11,3 +11,10 @@ Export checks HTTP 200, declared content length, 250 MB cap, ID3 size and MPEG L
 The export has its own visible activity, progress and cancel button. Keep it open while saving. Activity destruction cancels work; normal orientation changes do not restart it. Process recreation with an unfinished destination attempts cleanup and exits. No background service/resumable jobs in this experimental iteration. Saved bytes retain the server-provided metadata; filename includes artist/title, no separate artwork requests or ID3 rewriting.
 
 Automated QA: exact bytes including ID3, progress, HTML/truncation/size rejection, cancellation/network-policy failure cleanup, Android destination picker MIME/name/cancel. Existing playback, rapid-tap and sharing tests must remain green. Real account download + playback of the resulting file on the Honor device remain pending user validation.
+
+## Final build evidence
+
+Source: `a423d0840aadc729afd4b9d40104c6e8884d84dd`.
+CI: https://github.com/MetoteM/aFolderPlayer/actions/runs/38980392308 — app 218, extension 29, Python 8 tests; lint passed. APK signatures match the original certificate; zipalign and ZIP integrity passed. Saved ZIP and inner APK hashes/sizes rechecked after upload.
+Install ZIP SHA-256: `3a82d6232e1a2426f487248a536c4a3e162d6982acdcf4b8cc4dcb5865681c7e`.
+Actual account download and resulting-file playback remain unverified.
