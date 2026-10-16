@@ -16,7 +16,7 @@ class OnlineService : Service() {
     private val registry = ConnectorRegistry()
     private val binder =
         object : IOnlineService.Stub() {
-            override fun apiVersion() = 2
+            override fun apiVersion() = 3
 
             @Synchronized override fun yandex(operation: String, argument: String): String {
                 if (argument.length > 1500) return JSONObject().put("error", "Слишком длинный запрос").toString()
@@ -37,7 +37,7 @@ class OnlineService : Service() {
                                 val page=if(operation=="collectionPage") client.collectionPage(offset,args.optBoolean("refresh")) else client.playlistPage(args.optString("id"),offset,args.optBoolean("refresh"))
                                 page.json().toString()
                             }
-                            "playlists" -> JSONObject().put("playlists",client.playlists()).toString()
+                            "playlists" -> JSONObject().put("playlists",client.playlists()).put("warning",client.playlistWarning).toString()
                             "streamOptions" -> { val options=JSONObject(argument);JSONObject().put("url",client.stream(options.getString("id"),options.optString("quality")).toString()).toString() }
                             "stream" -> JSONObject().put("url",client.stream(argument).toString()).toString()
                             else -> JSONObject().put("error","Неизвестное действие").toString()

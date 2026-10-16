@@ -27,7 +27,7 @@ internal class OnlinePlayback(context: Context):OnlineCatalogue {
         if(operation!="status") settings.requireNetwork()
         return connection.use { binder ->
         val service=IOnlineService.Stub.asInterface(binder)
-        if(service.apiVersion()!=2) throw Problem("Обнови расширение Яндекс Музыки")
+        if(service.apiVersion()!=3) throw Problem("Обнови плеер и AFP Online из одного тестового комплекта")
         val raw=service.yandex(operation,argument)
         if(raw.length>150000) throw Problem("Слишком большой ответ расширения")
         val result=JSONObject(raw)

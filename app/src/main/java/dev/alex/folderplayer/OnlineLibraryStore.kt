@@ -35,7 +35,7 @@ internal class OnlineLibraryStore(private val context:Context) {
         val id=UUID.randomUUID().toString()
         write("pending-$id",JSONObject().put("id",id).put("tracks",rows))
         val old=context.filesDir.listFiles().orEmpty().filter { it.name.startsWith("ym-library-pending-") && it.name.endsWith(".json") }.sortedByDescending { it.lastModified() }
-        old.drop(20).forEach { it.delete() }
+        old.filter { it.name!="ym-library-pending-$id.json" }.drop(19).forEach { it.delete() }
         return id
     }
     fun queue(id:String):String? {

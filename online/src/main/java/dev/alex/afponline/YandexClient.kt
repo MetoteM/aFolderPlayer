@@ -20,6 +20,8 @@ internal class YandexClient(private val token: String, private val transport: ((
     }
     private var likedIds:List<String>? = null
     private var likedAt = 0L
+    var playlistWarning:String?=null
+        private set
     private val playlistRows = mutableMapOf<String, Pair<Long,JSONArray>>()
     @Volatile private var connection: HttpURLConnection? = null
     private var uid: String? = null
@@ -110,6 +112,7 @@ internal class YandexClient(private val token: String, private val transport: ((
     }
     fun playlists():JSONArray {
         val user=uid ?: throw Problem("Сначала подтверди аккаунт")
+        playlistWarning=null
         val result=JSONArray()
         val seen=mutableSetOf<String>()
         fun append(rows:JSONArray,liked:Boolean) {
@@ -128,7 +131,7 @@ internal class YandexClient(private val token: String, private val transport: ((
         // A separate collection contains followed playlists owned by other users.
         // A denied optional endpoint does not make the user's own playlists disappear.
         try { append(api("/users/$user/likes/playlists").getJSONArray("result"),true) }
-        catch(e:Problem) { if(e.reason.contains("401"))throw e }
+        catch(e:Problem) { if(e.reason.contains("401"))throw e;playlistWarning=e.reason }
         return result
     }
     fun playlistPage(reference:String,offset:Int,refresh:Boolean=false):Page {

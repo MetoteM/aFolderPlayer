@@ -185,7 +185,8 @@ internal class OnlineSection(
         title.text=if(operation=="playlistPage")sourceTitle else "Яндекс Музыка · $sourceTitle"
         shown=OnlineRows.display(rows,query,sort,if(playlistMode)emptySet() else decisions.ids("hidden"),operation=="hidden")
         adapter.notifyDataSetChanged()
-        if(!busy)status.text=if(playlistMode)"Плейлистов: ${shown.size} · нажми «Открыть»" else "Показано ${shown.size} · загружено ${rows.length()} из ${data.optInt("total",rows.length())}"
+        if(!busy)status.text=(if(playlistMode)"Плейлистов: ${shown.size} · нажми «Открыть»" else "Показано ${shown.size} · загружено ${rows.length()} из ${data.optInt("total",rows.length())}")+
+            data.optString("warning").takeIf { it.isNotBlank() }?.let { " · Добавленные плейлисты не загружены: $it" }.orEmpty()
         update()
     }
     private fun updateSelection() { playAll.text=if(selected.isNotEmpty())"▶ Играть выбранные · ${selected.size}" else "▶ Играть список целиком";selection.text=if(selecting)"Выбрано: ${selected.size} · нажми здесь, чтобы снять выбор" else "Долгое нажатие или флажок — выбрать песни" }

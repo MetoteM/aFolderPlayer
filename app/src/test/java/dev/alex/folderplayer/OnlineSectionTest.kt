@@ -69,4 +69,44 @@ class OnlineSectionTest {
             assertEquals("125",queue.getJSONObject(124).getString("id"));assertEquals(3,calls.count { it=="playlistPage" })
         } finally { ui.close();host.pause().stop().destroy() }
     }
+    @Test fun checkboxesDispatchSelectedNextAndFavoritesHideStayLocal() {
+        val host=Robolectric.buildActivity(Activity::class.java).setup()
+        val dispatched=mutableListOf<Pair<List<String>,String>>()
+        val api=object:OnlineCatalogue {
+            override fun installed()=true
+            override fun request(operation:String,argument:String):JSONObject = when(operation) {
+                "status"->JSONObject().put("connected",true).put("sessionKey","batch-account")
+                "collectionPage"->JSONObject().put("tracks",JSONArray((1..3).map { JSONObject().put("id",it).put("title","Song $it") })).put("total",3)
+                else->throw AssertionError("Local actions must not call $operation")
+            }
+        }
+        val ui=OnlineSection(host.get(),{ handle,_,mode ->
+            val rows=JSONArray(OnlineLibraryStore(host.get()).queue(handle))
+            dispatched+=(0 until rows.length()).map { rows.getJSONObject(it).getString("id") } to mode
+        },api,Direct())
+        fun choose(index:Int) {
+            val menu=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
+            val list=menu.listView;list.performItemClick(list.adapter.getView(index,null,list),index,index.toLong());idle()
+        }
+        try {
+            ui.show();idle();val root=ShadowDialog.getLatestDialog().window!!.decorView
+            val list=all(root).filterIsInstance<ListView>().single()
+            val search=all(root).filterIsInstance<EditText>().single()
+            search.setText("Song 2");idle();assertEquals(1,list.adapter.count)
+            search.setText("");idle();assertEquals(3,list.adapter.count)
+            fun select(index:Int) { all(list.adapter.getView(index,null,list)).filterIsInstance<CheckBox>().single().performClick();idle() }
+            fun actions() { all(root).filterIsInstance<Button>().single { it.text=="Действия" }.performClick() }
+            select(0);select(2);actions();choose(3)
+            assertEquals(listOf("1","3") to "next",dispatched.single())
+            actions();choose(5)
+            assertEquals(setOf("1","3"),OnlineLibraryActions(host.get()).ids("favorites"))
+            select(0);select(2);actions();choose(7)
+            assertEquals(setOf("1","3"),OnlineLibraryActions(host.get()).ids("hidden"))
+            assertEquals(1,list.adapter.count);assertEquals("remove",dispatched.last().second)
+            all(root).filterIsInstance<Button>().single { it.text=="⋮" }.performClick();choose(1)
+            assertEquals(2,list.adapter.count)
+            select(0);actions();choose(7)
+            assertEquals(setOf("3"),OnlineLibraryActions(host.get()).ids("hidden"))
+        } finally { ui.close();host.pause().stop().destroy() }
+    }
 }
