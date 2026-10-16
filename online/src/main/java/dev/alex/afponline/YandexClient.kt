@@ -4,7 +4,8 @@ import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URLEncoder
 import java.security.MessageDigest
-import javax.xml.parsers.DocumentBuilderFactory
+import android.util.Xml
+import org.xmlpull.v1.XmlPullParser
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -112,17 +113,30 @@ internal class YandexClient(private val token: String, private val transport: ((
         fun resolve(xml: String): URI {
             try {
                 if (xml.contains("<!DOCTYPE", true) || xml.contains("<!ENTITY",true)) throw Problem("Небезопасный XML")
-                val f = DocumentBuilderFactory.newInstance()
-                f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-                f.isExpandEntityReferences = false
-                val doc = f.newDocumentBuilder().parse(xml.byteInputStream())
-                fun value(tag: String) = doc.getElementsByTagName(tag).item(0)?.textContent ?: throw Problem("Неполный аудиодескриптор")
+                if (xml.trimStart().startsWith("<html", true) || xml.contains("<!doctype html",true))
+                    throw Problem("Вместо аудиодескриптора получена HTML-страница")
+                val parser = Xml.newPullParser()
+                parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
+                parser.setInput(xml.reader())
+                val fields = mutableMapOf<String, String>()
+                val expected = setOf("host", "path", "ts", "s")
+                var event = parser.eventType
+                while (event != XmlPullParser.END_DOCUMENT) {
+                    if (event == XmlPullParser.START_TAG && parser.name in expected) {
+                        val key = parser.name
+                        if (fields.containsKey(key)) throw Problem("Аудиодескриптор содержит повторяющиеся поля")
+                        fields[key] = parser.nextText().trim()
+                    }
+                    event = parser.next()
+                }
+                fun value(tag: String) = fields[tag]?.takeIf { it.isNotEmpty() }
+                    ?: throw Problem("В аудиодескрипторе отсутствует поле $tag")
                 val host=value("host"); val path=value("path"); val ts=value("ts"); val salt=value("s")
-                if (!path.startsWith("/") || path.contains('?') || path.contains('#') || !ts.matches(Regex("[0-9]+"))) throw Problem("Некорректный аудиодескриптор")
+                if (!path.startsWith("/") || path.contains('?') || path.contains('#') || !ts.matches(Regex("[A-Fa-f0-9]{1,64}"))) throw Problem("Некорректный аудиодескриптор")
                 val sign=MessageDigest.getInstance("MD5").digest(("XGRlBW9FXlekgbPrRHuSiA"+path.drop(1)+salt).toByteArray()).joinToString("") { "%02x".format(it.toInt() and 255) }
                 return safeStream("https://$host/get-mp3/$sign/$ts$path")
             } catch(e: Problem) { throw e }
-            catch (_: Exception) { throw Problem("Аудиодескриптор не распознан") }
+            catch (_: Exception) { throw Problem("Аудиодескриптор: некорректный XML") }
         }
     }
 }

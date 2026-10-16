@@ -2,6 +2,8 @@ package dev.alex.afponline
 import org.junit.Assert.*
 import org.junit.Test
 
+@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
+@org.robolectric.annotation.Config(sdk = [28])
 class YandexClientTest {
     @Test fun anonymous200IsNotLogin() {
         val c=YandexClient("secret") { _, _ -> "{\"result\":{\"account\":{}}}" }
@@ -34,6 +36,17 @@ class YandexClientTest {
         }
         c.checkSession()
         assertEquals("storage.yandex.net",c.stream("1").host)
+    }
+    @Test fun reportsMissingFieldsWithoutResponseData() {
+        try { YandexClient.resolve("<download-info><host>private-account-data</host></download-info>"); fail() }
+        catch(e:YandexClient.Problem) {
+            assertTrue(e.reason.contains("поле path"))
+            assertFalse(e.reason.contains("private-account-data"))
+        }
+    }
+    @Test fun malformedXmlHasSafeError() {
+        try { YandexClient.resolve("<download-info>private-token"); fail() }
+        catch(e:YandexClient.Problem) { assertEquals("Аудиодескриптор: некорректный XML", e.reason) }
     }
     @Test fun rejectsUnsafeHostsAndEntities() {
         for(url in listOf("http://storage.yandex.net/a","https://yandex.net.evil.example/a","https://127.0.0.1/a","https://user@storage.yandex.net/a")) {
