@@ -190,4 +190,24 @@ class OnlineSectionTest {
         } finally { ui.close();host.pause().stop().destroy() }
     }
 
+    @Test fun synchronousPlaybackFailureUnlocksTheSourceForRetry() {
+        val host=Robolectric.buildActivity(Activity::class.java).setup()
+        var attempts=0
+        val api=object:OnlineCatalogue {
+            override fun installed()=true
+            override fun request(operation:String,argument:String)=if(operation=="status")JSONObject().put("connected",true).put("sessionKey","throw-account")
+                else JSONObject().put("tracks",JSONArray("""[{"id":"1","title":"Song"}]""")).put("total",1)
+        }
+        val ui=OnlineSection(host.get(),{ _,_,_,done -> if(++attempts==1)throw IllegalStateException("Disconnected controller") else done(null) },api,Direct())
+        try {
+            ui.show();idle();val source=ShadowDialog.getLatestDialog();val root=source.window!!.decorView
+            val list=all(root).filterIsInstance<ListView>().single()
+            list.adapter.getView(0,null,list).performClick();idle()
+            assertTrue(source.isShowing)
+            assertTrue(all(root).filterIsInstance<TextView>().any { it.text.toString().contains("Не удалось передать очередь") })
+            list.adapter.getView(0,null,list).performClick();idle()
+            assertEquals(2,attempts);assertFalse(source.isShowing)
+        } finally { ui.close();host.pause().stop().destroy() }
+    }
+
 }

@@ -40,6 +40,7 @@ internal class OnlineSection(
     private var busy=false
     private var pending:java.util.concurrent.Future<*>?=null
     private var handingOff=false
+    private var renderedBusy=false
     private var now:NowPlayingStrip?=null
     private var operation="collectionPage"
     private var sourceId=""
@@ -221,6 +222,8 @@ internal class OnlineSection(
     private fun updateSelection() { playAll.text=if(selected.isNotEmpty())"▶ Играть выбранные · ${selected.size}" else "▶ Играть список целиком";selection.text=if(selecting)"Выбрано: ${selected.size} · нажми здесь, чтобы снять выбор" else "Долгое нажатие или флажок — выбрать песни" }
     private fun update() {
         if(!::more.isInitialized)return
+        if(renderedBusy!=busy) { renderedBusy=busy;adapter.notifyDataSetChanged() }
+        list.isEnabled=!busy;selection.isEnabled=!busy
         buttons.forEach { it.isEnabled=!busy };sortView.isEnabled=!busy;search.isEnabled=!busy
         more.visibility=if(!playlistMode && next()!=null)View.VISIBLE else View.GONE
         playAll.visibility=if(!playlistMode && operation!="hidden" && shown.isNotEmpty())View.VISIBLE else View.GONE
@@ -303,13 +306,17 @@ internal class OnlineSection(
                 busy=false
                 result.onSuccess { (handle,index,full) ->
                     data=full;rows=full.optJSONArray("tracks") ?: rows;busy=true;handingOff=true;status.text="Передаём очередь плееру…";render();cancel.visibility=View.GONE
-                    play(handle,index,mode) { error ->
-                        if(!closed && token==generation) {
-                            busy=false;handingOff=false
+                    var acknowledged=false
+                    val finish:(String?)->Unit={ error ->
+                        if(!acknowledged && !closed && token==generation) {
+                            acknowledged=true;busy=false;handingOff=false
                             if(error!=null)fail(IllegalStateException(error))
                             else { render();if(mode=="play")dialog?.hide() else status.text="Добавлено в очередь" }
                         }
                     }
+                    try { play(handle,index,mode,finish) }
+                    catch(_:Exception) { finish("Не удалось передать очередь плееру. Повтори действие") }
+
                 }.onFailure { fail(it) }
             } }
         }
@@ -317,7 +324,7 @@ internal class OnlineSection(
     private fun cancelWork() {
         if(handingOff)return
         generation++;pending?.cancel(true);pending=null;busy=false
-        status.text="Загрузка отменена";update()
+        status.text="Загрузка отменена";retry.visibility=View.VISIBLE;update()
     }
     fun updateNowPlaying(label:String,time:String) { now?.title?.text=label;now?.time?.text=time }
     private fun openLogin() {
