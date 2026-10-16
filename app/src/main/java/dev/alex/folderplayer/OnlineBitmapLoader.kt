@@ -8,6 +8,7 @@ import androidx.media3.datasource.DataSourceBitmapLoader
 import com.google.common.util.concurrent.*
 
 /** Notifications use the same bounded cache and network policy as the player cover. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal class OnlineBitmapLoader(context:Context):BitmapLoader {
     private val local=DataSourceBitmapLoader(context)
     private val artwork=OnlineArtwork(context)

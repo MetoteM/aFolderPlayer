@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.media3.datasource.*
 
 /** Rechecks policy during reads as well as opens, including already opened audio streams. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal class OnlineDataSource(context:Context):DataSource {
     private val delegate=DefaultDataSource.Factory(context).createDataSource()
     private val policy=OnlineSettings(context)
