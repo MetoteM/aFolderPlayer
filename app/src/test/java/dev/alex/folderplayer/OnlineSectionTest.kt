@@ -149,12 +149,12 @@ class OnlineSectionTest {
                 all(root).filterIsInstance<Button>().single { it.contentDescription=="Плейлисты" }.performClick()
             }
             assertEquals(1,dispatches);assertFalse(calls.contains("playlists"))
-            complete!!(null);idle();assertFalse(source.isShowing)
+            complete!!(null);idle();assertEquals(View.GONE,source.window!!.decorView.visibility)
             val before=calls.size
-            ui.show();idle();assertTrue(source.isShowing);assertSame(source,ShadowDialog.getLatestDialog())
+            ui.show();idle();assertEquals(View.VISIBLE,source.window!!.decorView.visibility);assertSame(source,ShadowDialog.getLatestDialog())
             assertEquals(3,list.adapter.count);assertEquals(before,calls.size)
             all(root).filterIsInstance<NowPlayingStrip>().single().performAccessibilityAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_EXPAND,null);idle()
-            assertEquals(1,opened);assertFalse(source.isShowing)
+            assertEquals(1,opened);assertEquals(View.GONE,source.window!!.decorView.visibility)
         } finally { ui.close();host.pause().stop().destroy() }
     }
     @Test fun cancelledRequestsDoNotAccumulateNetworkCallsOrOverwriteLatestSource() {
@@ -206,7 +206,7 @@ class OnlineSectionTest {
             assertTrue(source.isShowing)
             assertTrue(all(root).filterIsInstance<TextView>().any { it.text.toString().contains("Не удалось передать очередь") })
             list.adapter.getView(0,null,list).performClick();idle()
-            assertEquals(2,attempts);assertFalse(source.isShowing)
+            assertEquals(2,attempts);assertEquals(View.GONE,source.window!!.decorView.visibility)
         } finally { ui.close();host.pause().stop().destroy() }
     }
 

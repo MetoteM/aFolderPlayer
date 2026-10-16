@@ -36,6 +36,7 @@ internal class OnlineSection(
     private var dialog:Dialog?=null
     @Volatile private var generation=0
     @Volatile private var closed=false
+    @Volatile private var suspended=false
     private var returning=false
     private var busy=false
     private var pending:java.util.concurrent.Future<*>?=null
@@ -95,16 +96,16 @@ internal class OnlineSection(
             val cover=song.optString("cover");image.tag=cover
             val coverGeneration=generation
             if(cover.isNotEmpty() && !closed)covers.execute {
-                if(closed || coverGeneration!=generation || dialog?.isShowing!=true)return@execute
+                if(closed || coverGeneration!=generation || (suspended || dialog?.isShowing!=true))return@execute
                 val bitmap=artwork.load(cover)
-                main.post { if(!closed && coverGeneration==generation && dialog?.isShowing==true && image.tag==cover && bitmap!=null)image.setImageBitmap(bitmap) }
+                main.post { if(!closed && coverGeneration==generation && !suspended && dialog?.isShowing==true && image.tag==cover && bitmap!=null)image.setImageBitmap(bitmap) }
             }
             return row
         }
     }
     fun show() {
-        if(closed || dialog?.isShowing==true)return
-        dialog?.let { it.show();return }
+        if(closed)return
+        dialog?.let { if(suspended) { suspended=false;it.show();adapter.notifyDataSetChanged() };return }
         if(!extension.installed()) { AlertDialog.Builder(host).setTitle("Яндекс Музыка").setMessage("Установи AFP Online из того же тестового комплекта.").setPositiveButton("Закрыть",null).show();return }
         val screen=Dialog(host,android.R.style.Theme_Material_NoActionBar)
         dialog=screen;generation++;busy=false;buttons.clear();selected.clear();selecting=false;query="";sort=0;rows=JSONArray();shown=emptyList()
@@ -154,9 +155,9 @@ internal class OnlineSection(
         more=button("Показать ещё") { next()?.let { fetch(it,false) } };root.addView(more)
         retry=button("Повторить загрузку") { fetch(0,true) };root.addView(retry)
         cancel=Button(host).apply { text="Отменить загрузку";setOnClickListener { cancelWork() } };root.addView(cancel)
-        now=NowPlayingStrip(host) { if(!busy) { screen.hide();openPlayer() } }.also { root.addView(it,LinearLayout.LayoutParams(-1,-2)) }
+        now=NowPlayingStrip(host) { if(!busy) { suspended=true;screen.hide();openPlayer() } }.also { root.addView(it,LinearLayout.LayoutParams(-1,-2)) }
         SystemBarInsets.apply(root);screen.setContentView(root)
-        screen.setOnDismissListener { generation++;pending?.cancel(true);pending=null;dialog=null;busy=false;handingOff=false }
+        screen.setOnDismissListener { generation++;pending?.cancel(true);pending=null;dialog=null;suspended=false;busy=false;handingOff=false }
         screen.show();screen.window?.setLayout(-1,-1)
         update();checkStatus()
     }
@@ -240,7 +241,7 @@ internal class OnlineSection(
     private fun sourceMenu() {
         val menuGeneration=generation
         AlertDialog.Builder(host).setTitle("Онлайн-библиотека").setItems(arrayOf("Избранное в плеере","Скрытые в плеере","Обновить список","Сеть и качество")) { _,i ->
-            if(busy || menuGeneration!=generation || dialog?.isShowing!=true)return@setItems
+            if(busy || menuGeneration!=generation || (suspended || dialog?.isShowing!=true))return@setItems
             when(i) { 0->choose("favorites","","Избранное в плеере");1->choose("hidden","","Скрытые в плеере");2->if(operation in listOf("favorites","hidden"))choose(operation,"",sourceTitle) else fetch(0,true);3->OnlineSettings(host).show(host) }
         }.show()
     }
@@ -253,7 +254,7 @@ internal class OnlineSection(
         if(has)labels+=listOf("Воспроизвести выбранные","Играть выбранные далее","Выбранные в конец очереди","В избранное плеера","Убрать из избранного",if(operation=="hidden")"Вернуть в библиотеку" else "Скрыть в плеере")
         else labels+=listOf("Воспроизвести список целиком","Весь список — играть далее","Весь список — в конец очереди")
         AlertDialog.Builder(host).setTitle(if(has)"Выбрано: ${selected.size}" else "Действия со списком").setItems(labels.toTypedArray()) { _,i ->
-            if(busy || menuGeneration!=generation || dialog?.isShowing!=true)return@setItems
+            if(busy || menuGeneration!=generation || (suspended || dialog?.isShowing!=true))return@setItems
             when(i) {
                 0->{ selecting=true;selected.clear();selected+=shown.map { it.sourceIndex };render() }
                 1->{ selecting=false;selected.clear();render() }
@@ -284,7 +285,7 @@ internal class OnlineSection(
         }
     }
     private fun prepare(mode:String,start:Int?) {
-        if(busy || playlistMode || dialog?.isShowing!=true)return
+        if(busy || playlistMode || (suspended || dialog?.isShowing!=true))return
         val token=++generation;val op=operation;val id=sourceId;val key=cacheKey()
         val initial=JSONObject(data.toString());val selectionSnapshot=selected.toSet();val q=query;val sorting=sort;val label=sourceTitle
         busy=true;status.text="Подготовка очереди…";update()
@@ -311,7 +312,7 @@ internal class OnlineSection(
                         if(!acknowledged && !closed && token==generation) {
                             acknowledged=true;busy=false;handingOff=false
                             if(error!=null)fail(IllegalStateException(error))
-                            else { render();if(mode=="play")dialog?.hide() else status.text="Добавлено в очередь" }
+                            else { render();if(mode=="play") { suspended=true;dialog?.hide() } else status.text="Добавлено в очередь" }
                         }
                     }
                     try { play(handle,index,mode,finish) }
