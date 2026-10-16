@@ -12,3 +12,11 @@ Player 0.8.4-yandex.6 (47), AFP Online 0.2.0-yandex.8 (11). Both APKs must be up
 Regression coverage: 30 rapid play/playlist taps during a pending acknowledgement dispatch only one queue; 30 cancellations queue only the latest catalogue request; hide/show preserves the list without reloading; blocked catalogue request does not delay the independent playback lane. Existing playlist/125-track/batch/restore tests remain required.
 
 Real-account device QA remains pending: rapidly navigate, cancel and reopen playlists, launch songs, minimize down, reopen from mini-player, then launch a local song and check local return. These tests use controlled API responses and do not establish actual server availability.
+
+## Final evidence
+
+Source: `8882c1378f37f78ff171bcacd8ffde06cd0294d0`.
+CI: https://github.com/MetoteM/aFolderPlayer/actions/runs/38964196197 — app 212, online 29, Python 8 tests, lint passed.
+Both APK signatures, original certificate fingerprint, zipalign and ZIP CRC checks passed. Saved install ZIP and both inner APK hashes/sizes were verified after upload.
+Install archive SHA-256: `42684e727318bb00800eb6b35154937fbe2fb03b9b349b4a7732125417ab30b0`.
+Real-account device QA is pending.
