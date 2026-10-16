@@ -11,13 +11,36 @@ import android.text.InputType
 import android.webkit.CookieManager
 import java.util.concurrent.Executors
 
-class YandexAccountActivity : Activity() {
+class YandexAccountActivity : androidx.activity.ComponentActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var status: TextView
     private var dead = false
     private var generation = 0
+    private lateinit var sdkLauncher: androidx.activity.result.ActivityResultLauncher<com.yandex.authsdk.YandexAuthLoginOptions>
+    private fun sdkResult(result:com.yandex.authsdk.YandexAuthResult) {
+        when(result) {
+            is com.yandex.authsdk.YandexAuthResult.Success -> {
+                val value=result.token.value
+                val attempt=++generation
+                status.text="Яндекс ID получен. Проверяем доступ к Музыке…"
+                worker.execute {
+                    val checked=runCatching { val client=YandexClient(value);client.checkSession();client.collectionPage(0) }
+                    runOnUiThread {
+                        if(!dead && generation==attempt) {
+                            if(checked.isSuccess && runCatching { YandexSession(this).save(value) }.isSuccess) { setResult(RESULT_OK);finish() }
+                            else status.text="LoginSDK не подтвердил доступ к Музыке. Сохранённый вход оставлен. Можно войти через страницу Яндекса."
+                        }
+                    }
+                }
+            }
+            is com.yandex.authsdk.YandexAuthResult.Failure -> status.text="LoginSDK отклонил вход. Для собственного клиента нужны регистрация приложения и права Музыки. Доступен вход через страницу Яндекса."
+            com.yandex.authsdk.YandexAuthResult.Cancelled -> status.text="Вход отменён. Сохранённая сессия оставлена."
+        }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val sdk=com.yandex.authsdk.YandexAuthSdk.create(com.yandex.authsdk.YandexAuthOptions(this))
+        sdkLauncher=registerForActivityResult(sdk.contract) { sdkResult(it) }
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         val root = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(24,24,24,24) }
         setContentView(root)
@@ -25,7 +48,13 @@ class YandexAccountActivity : Activity() {
         status=TextView(this);root.addView(status)
         fun button(title:String,action:()->Unit) { root.addView(Button(this).apply { text=title;setOnClickListener { action() } }) }
         root.addView(TextView(this).apply { text="Откроется страница Яндекса. Используется клиент из эксперимента, не официальная интеграция aFolderPlayer. Доступ к Музыке проверяется после входа." })
-        button("Войти в Яндекс") { openAuth() }
+        button("Войти через Яндекс ID · LoginSDK") {
+            generation++
+            runCatching { sdkLauncher.launch(com.yandex.authsdk.YandexAuthLoginOptions()) }
+                .onFailure { status.text="Не удалось запустить Яндекс ID. Доступен вход через страницу Яндекса." }
+        }
+        button("Войти через страницу Яндекса") { openAuth() }
+        root.addView(TextView(this).apply { text="LoginSDK — пробный вход через установленное приложение Яндекса или браузер. Клиент экспериментальный; Яндекс может отклонить регистрацию либо не выдать доступ к Музыке." })
         button("Выйти") {
             generation++
             YandexSession(this).clear()

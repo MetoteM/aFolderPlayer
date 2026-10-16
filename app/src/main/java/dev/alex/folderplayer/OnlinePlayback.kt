@@ -15,9 +15,12 @@ internal fun onlinePackage(context: Context) = "dev.alex.afponline" + if(context
 /** IPC carries catalogue metadata and short-lived URLs, never OAuth credentials. */
 internal class OnlinePlayback(context: Context) {
     class Problem(message:String):IOException(message)
+    private val settings = OnlineSettings(context)
     private val connection = SignedExtensionConnection(context,onlinePackage(context),"dev.alex.afponline.OnlineService")
     fun installed() = connection.installed()
-    fun request(operation:String, argument:String=""):JSONObject = connection.use { binder ->
+    fun request(operation:String, argument:String=""):JSONObject {
+        if(operation!="status") settings.requireNetwork()
+        return connection.use { binder ->
         val service=IOnlineService.Stub.asInterface(binder)
         if(service.apiVersion()!=2) throw Problem("Обнови расширение Яндекс Музыки")
         val raw=service.yandex(operation,argument)
@@ -25,10 +28,11 @@ internal class OnlinePlayback(context: Context) {
         val result=JSONObject(raw)
         if(result.has("error")) throw Problem(result.optString("error").take(200))
         result
+        }
     }
     fun resolve(uri:Uri):Uri {
         val id=trackId(uri) ?: throw Problem("Некорректный трек Яндекс Музыки")
-        val result=request("stream",id)
+        val result=request("streamOptions",JSONObject().put("id",id).put("quality",settings.quality()).toString())
         val out=Uri.parse(result.optString("url"));val host=out.host.orEmpty().lowercase()
         if(out.scheme!="https" || out.userInfo!=null || out.fragment!=null || out.port !in listOf(-1,443) ||
             !listOf("yandex.net","yandex.ru").any { host.endsWith(".$it") }) throw Problem("Расширение вернуло недопустимый аудиоадрес")
@@ -44,7 +48,7 @@ internal class OnlinePlayback(context: Context) {
             return (0 until rows.length()).map { i ->
                 val row=rows.getJSONObject(i);val id=row.getString("id");require(id.matches(Regex("[0-9]{1,20}")))
                 MediaItem.Builder().setMediaId("afp-yandex://track/$id").setUri("afp-yandex://track/$id").setMimeType(MimeTypes.AUDIO_MPEG)
-                    .setMediaMetadata(MediaMetadata.Builder().setTitle(row.optString("title").take(200)).setArtist(row.optString("artist").take(500)).setArtworkUri(OnlineArtwork.valid(row.optString("cover"))).build()).build()
+                    .setMediaMetadata(MediaMetadata.Builder().setTitle(row.optString("title").take(200)).setArtist(row.optString("artist").take(500)).setArtworkUri(OnlineArtwork.valid(row.optString("cover"))).setExtras(android.os.Bundle().apply { putLong("onlineDuration",row.optLong("duration").coerceAtLeast(0)) }).build()).build()
             }
         }
     }

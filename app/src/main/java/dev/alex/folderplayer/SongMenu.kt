@@ -18,8 +18,8 @@ internal object SongMenu {
         RETRANSLATE("Перевести заново"),
     }
 
-    fun show(context: Context, title: String, chosen: (Action) -> Unit) {
-        val actions = Action.values()
+    fun show(context: Context, title: String, online:Boolean=false, chosen: (Action) -> Unit) {
+        val actions = Action.values().filter { !online || it !in listOf(Action.YEAR,Action.PLAYLIST) }
         AlertDialog.Builder(context)
             .setTitle(title)
             .setItems(actions.map { it.title }.toTypedArray()) { _, index ->

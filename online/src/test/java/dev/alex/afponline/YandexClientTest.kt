@@ -37,6 +37,18 @@ class YandexClientTest {
         c.checkSession()
         assertEquals("storage.yandex.net",c.stream("1").host)
     }
+    @Test fun qualitySelectsFullMp3Only() {
+        val selected=mutableListOf<String>()
+        val c=YandexClient("secret") { url,_ ->
+            when {
+                url.endsWith("/account/status") -> """{"result":{"account":{"uid":42}}}"""
+                url.endsWith("/download-info") -> """{"result":[{"codec":"mp3","preview":false,"bitrateInKbps":64,"downloadInfoUrl":"https://storage.yandex.net/64"},{"codec":"mp3","preview":false,"bitrateInKbps":320,"downloadInfoUrl":"https://storage.yandex.net/320"},{"codec":"mp3","preview":true,"bitrateInKbps":999,"downloadInfoUrl":"https://storage.yandex.net/preview"}]}"""
+                else -> { selected+=url;"<download-info><host>storage.yandex.net</host><path>/test</path><ts>123</ts><s>abc</s></download-info>" }
+            }
+        }
+        c.checkSession();c.stream("1","economy");c.stream("1","high")
+        assertEquals(listOf("https://storage.yandex.net/64","https://storage.yandex.net/320"),selected)
+    }
     @Test fun reportsMissingFieldsWithoutResponseData() {
         try { YandexClient.resolve("<download-info><host>private-account-data</host></download-info>"); fail() }
         catch(e:YandexClient.Problem) {

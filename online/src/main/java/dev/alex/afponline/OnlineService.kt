@@ -38,6 +38,7 @@ class OnlineService : Service() {
                                 page.json().toString()
                             }
                             "playlists" -> JSONObject().put("playlists",client.playlists()).toString()
+                            "streamOptions" -> { val options=JSONObject(argument);JSONObject().put("url",client.stream(options.getString("id"),options.optString("quality")).toString()).toString() }
                             "stream" -> JSONObject().put("url",client.stream(argument).toString()).toString()
                             else -> JSONObject().put("error","Неизвестное действие").toString()
                         }

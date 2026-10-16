@@ -144,13 +144,13 @@ internal class YandexClient(private val token: String, private val transport: ((
         }
         return Page(ordered,rows.length(),end.takeIf { it<rows.length() })
     }
-    fun stream(id: String): URI {
+    fun stream(id: String, quality:String="economy"): URI {
         if (uid == null) throw Problem("Сначала подтверди аккаунт; поиск не подтверждает вход")
         if (!id.matches(Regex("[0-9]{1,20}"))) throw Problem("Некорректный трек")
         val rows = api("/tracks/$id/download-info").getJSONArray("result")
         val descriptor = (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }
             .filter { it.optString("codec") == "mp3" && it.has("preview") && !it.optBoolean("preview", true) }
-            .minByOrNull { it.optInt("bitrateInKbps", 9999) }
+            .let { options -> if(quality=="high") options.maxByOrNull { it.optInt("bitrateInKbps",0) } else options.minByOrNull { it.optInt("bitrateInKbps",9999) } }
             ?: throw Problem("Полный MP3 не предоставлен; preview и зашифрованные форматы не используются")
         val url = safeStream(descriptor.optString("downloadInfoUrl"))
         val xml = fetch(url.toString(), false)

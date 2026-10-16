@@ -713,7 +713,7 @@ class MainActivity : Activity() {
         if (!screenStarted) return
         val c = controller ?: return
         highlightTrack(false)
-        now.text = c.mediaMetadata.title?.toString() ?: "Выбери песню"
+        now.text = c.currentMediaItem?.mediaMetadata?.title?.toString() ?: "Выбери песню"
         play.text = if (c.isPlaying) "❚❚" else "▶"
         val d = c.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0
         position.text =
@@ -756,21 +756,10 @@ class MainActivity : Activity() {
                         item.mediaId,
                         local?.title ?: item.mediaMetadata.title?.toString().orEmpty(),
                         local?.artist ?: item.mediaMetadata.artist?.toString().orEmpty(),
-                        local?.duration ?: 0,
+                        local?.duration ?: item.mediaMetadata.extras?.getLong("onlineDuration") ?: 0L,
                     )
                 }
             screens.setQueue(entries)
-        }
-        if (id?.startsWith("afp-yandex://") == true && mediaLoadedId != id) {
-            mediaLoadedId = id
-            screens.setArtwork(id, null)
-            val cover = c.mediaMetadata.artworkUri?.toString().orEmpty()
-            if (cover.isNotEmpty()) artworkWorker.execute {
-                val bitmap = OnlineArtwork(applicationContext).load(cover)
-                handler.post { if (alive && controller?.currentMediaItem?.mediaId == id) screens.setArtwork(id, bitmap) }
-            }
-            screens.setLyrics(id, null, "Тексты онлайн-треков пока не подключены")
-            screens.setTranslation(id, "", "Перевод онлайн-треков пока не подключён")
         }
         if (page != "library" && track != null && mediaLoadedId != id) loadScreenMedia(track)
         if (page == "translation" && track != null && translationId != id) translate(track)
@@ -1471,7 +1460,7 @@ class MainActivity : Activity() {
 
     private fun currentSongMenu(track: Track) {
         stopDirectLyrics()
-        SongMenu.show(this, track.title) { action ->
+        SongMenu.show(this, track.title, track.uri.startsWith("afp-yandex://")) { action ->
             when (action) {
                 SongMenu.Action.SEARCH -> {
                     showPage("lyrics")
@@ -1532,7 +1521,14 @@ class MainActivity : Activity() {
 
     private val artworkWorker=java.util.concurrent.Executors.newSingleThreadExecutor()
 
-    private fun currentTrack() = tracks.find { it.uri == controller?.currentMediaItem?.mediaId }
+    private fun currentTrack(): Track? {
+        val item=controller?.currentMediaItem ?: return null
+        tracks.find { it.uri==item.mediaId }?.let { return it }
+        if(OnlinePlayback.trackId(Uri.parse(item.mediaId))==null)return null
+        val meta=item.mediaMetadata
+        return Track(item.mediaId,meta.title?.toString().orEmpty(),meta.artist?.toString().orEmpty(),
+            meta.extras?.getLong("onlineDuration") ?: 0L,"Яндекс Музыка")
+    }
 
     private fun backPage() {
         val target =
@@ -1608,8 +1604,13 @@ class MainActivity : Activity() {
         val generation = ++mediaGeneration
         screens.setArtwork(track.uri, null)
         screens.lyricsSearching(track.uri, false, "Читаем локальный текст…")
+        // Capture artwork from this queue item, never the aggregated (possibly previous) metadata.
+        val cover=controller?.currentMediaItem?.mediaMetadata?.artworkUri?.toString().orEmpty()
         executor.execute {
-            val bitmap = runCatching { LocalArtwork.read(this, track.uri) }.getOrNull()
+            val bitmap = runCatching {
+                if(track.uri.startsWith("afp-yandex://")) OnlineArtwork(applicationContext).load(cover)
+                else LocalArtwork.read(this, track.uri)
+            }.getOrNull()
             val lyrics = runCatching { loadLyrics(track)?.let { LyricsDocument(it) } }
             handler.post {
                 if (

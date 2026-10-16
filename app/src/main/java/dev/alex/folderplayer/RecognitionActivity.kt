@@ -256,7 +256,7 @@ class RecognitionActivity : Activity() {
                     val samples =
                         LocalAudio.decode(
                             this,
-                            localUri,
+                            if(localUri.startsWith("afp-yandex://")) OnlinePlayback(this).resolve(android.net.Uri.parse(localUri)).toString() else localUri,
                             intent.getLongExtra("localPosition", 0),
                             intent.getLongExtra("localDuration", 0),
                         ) {

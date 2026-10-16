@@ -39,6 +39,7 @@ internal class OnlineSection(private val host:Activity, private val updates:()->
     private lateinit var list:ListView
     private lateinit var more:Button
     private lateinit var login:Button
+    private lateinit var playAll:Button
     private lateinit var progress:ProgressBar
     private val actions=mutableListOf<Button>()
     private val adapter=object:BaseAdapter() {
@@ -56,13 +57,14 @@ internal class OnlineSection(private val host:Activity, private val updates:()->
             val text=root.getChildAt(1) as TextView
             val uri=song.optString("cover")
             image.tag=uri;image.setImageResource(android.R.drawable.ic_menu_gallery)
-            text.text=if(playlistMode) song.optString("title")+"\n"+song.optInt("count")+" треков" else song.optString("title")+"\n"+song.optString("artist")+
+            text.text=if(playlistMode) song.optString("title")+"\n"+song.optInt("count")+" треков · Открыть →" else song.optString("title")+"\n"+song.optString("artist")+" · "+formatDuration(song.optLong("duration"))+
                 if(!song.optBoolean("available",true)) " · недоступен" else ""
             root.alpha=if(!playlistMode && !song.optBoolean("available",true)) .5f else 1f
             if(uri.isNotEmpty() && !closed) covers.execute {
                 val bitmap=artwork.load(uri)
                 main.post { if(!closed && dialog?.isShowing==true && image.tag==uri && bitmap!=null) image.setImageBitmap(bitmap) }
             }
+            root.setOnClickListener { selectRow(position) }
             return root
         }
     }
@@ -78,8 +80,9 @@ internal class OnlineSection(private val host:Activity, private val updates:()->
         fun button(title:String,action:()->Unit):Button=Button(host).apply { text=title;setOnClickListener { if(!busy)action() };actions+=this }
         val top=LinearLayout(host)
         top.addView(button("← Библиотека") { screen.dismiss() },LinearLayout.LayoutParams(0,-2,1f))
-        login=button("Аккаунт") { openLogin(!connected) }
+        login=button("Войти / аккаунт") { openLogin(false) }
         top.addView(login,LinearLayout.LayoutParams(0,-2,1f));root.addView(top)
+        root.addView(Button(host).apply { text="Сеть и качество";setOnClickListener { OnlineSettings(host).show(host) } })
         root.addView(TextView(host).apply { text="Яндекс Музыка";textSize=24f;setTextColor(Color.WHITE) })
         status=TextView(host).apply { setTextColor(Color.LTGRAY);setPadding(0,8,0,8) };root.addView(status)
         progress=ProgressBar(host).apply { visibility=View.GONE };root.addView(progress,LinearLayout.LayoutParams(-1,8))
@@ -94,10 +97,19 @@ internal class OnlineSection(private val host:Activity, private val updates:()->
             val q=query.text.toString().trim()
             if(q.isBlank()) { status.text="Введи поисковый запрос" } else { operation="search";playlistId=q;load(0,false) }
         });root.addView(search)
+        playAll=button("▶ Играть список") { if(rows.length()>0)selectRow(0) };root.addView(playAll)
         list=ListView(host).apply { adapter=this@OnlineSection.adapter }
-        list.setOnItemClickListener { _,_,position,_->
-            if(busy)return@setOnItemClickListener
-            val row=rows.optJSONObject(position) ?: return@setOnItemClickListener
+        list.setOnItemClickListener { _,_,position,_-> selectRow(position) }
+        root.addView(list,LinearLayout.LayoutParams(-1,0,1f))
+        more=button("Показать ещё") { next?.let { load(it,false) } };root.addView(more)
+        screen.setContentView(root)
+        screen.setOnDismissListener { generation++;dialog=null;busy=false }
+        screen.show();screen.window?.setLayout(-1,-1)
+        checkStatus()
+    }
+    private fun selectRow(position:Int) {
+            if(busy)return
+            val row=rows.optJSONObject(position) ?: return
             if(playlistMode) choose("playlistPage",row.optString("id"))
             else if(!row.optBoolean("available",true)) status.text="Этот трек недоступен в сервисе"
             else {
@@ -108,23 +120,17 @@ internal class OnlineSection(private val host:Activity, private val updates:()->
                     main.post {
                         if(closed || id!=generation)return@post
                         busy=false;update()
-                        result.onSuccess { play(it,position);screen.dismiss() }.onFailure { status.text="Не удалось подготовить очередь" }
+                        result.onSuccess { play(it,position);dialog?.dismiss() }.onFailure { status.text="Не удалось подготовить очередь" }
                     }
                 }
             }
-        }
-        root.addView(list,LinearLayout.LayoutParams(-1,0,1f))
-        more=button("Показать ещё") { next?.let { load(it,false) } };root.addView(more)
-        screen.setContentView(root)
-        screen.setOnDismissListener { generation++;dialog=null;busy=false }
-        screen.show();screen.window?.setLayout(-1,-1)
-        checkStatus()
     }
     private fun update() {
         actions.forEach { it.isEnabled=!busy }
         progress.visibility=if(busy)View.VISIBLE else View.GONE
         more.visibility=if(next!=null && !playlistMode)View.VISIBLE else View.GONE
-        login.text=if(connected) "Аккаунт" else "Войти в Яндекс"
+        playAll.visibility=if(!playlistMode && rows.length()>0)View.VISIBLE else View.GONE
+        login.text="Войти / аккаунт"
     }
     private fun checkStatus() {
         val id=generation;busy=true;update();status.text="Проверяем сохранённый вход…"
@@ -193,7 +199,7 @@ internal class OnlineSection(private val host:Activity, private val updates:()->
         total=data.optInt("total",rows.length())
         adapter.notifyDataSetChanged();update()
         if(!append)list.setSelection(0)
-        status.text=if(playlistMode) "${rows.length()} плейлистов · чтение" else "Загружено ${rows.length()} из $total"+
+        status.text=if(playlistMode) "${rows.length()} плейлистов · нажми, чтобы открыть" else "Загружено ${rows.length()} из $total"+
             if(cached) " · сохранено на телефоне" else ""
     }
     private fun openLogin(now:Boolean) {
@@ -204,6 +210,7 @@ internal class OnlineSection(private val host:Activity, private val updates:()->
     fun resume() { if(returning && !closed) { returning=false;show() } }
     fun close() { closed=true;dialog?.dismiss();worker.shutdownNow();covers.shutdownNow();main.removeCallbacksAndMessages(null) }
     companion object {
+        private fun formatDuration(ms:Long):String = if(ms<=0) "—" else "${ms/60000}:${(ms/1000%60).toString().padStart(2,'0')}"
         fun merge(old:JSONArray,more:JSONArray):JSONArray {
             val result=JSONArray()
             for(array in listOf(old,more)) for(i in 0 until array.length()) {

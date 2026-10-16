@@ -125,7 +125,7 @@ class PlaybackService : MediaSessionService() {
             ExoPlayer.Builder(this, renderers)
                 .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
                     androidx.media3.datasource.ResolvingDataSource.Factory(
-                        androidx.media3.datasource.DefaultDataSource.Factory(this),
+                        OnlineDataSource.Factory(this),
                         object : androidx.media3.datasource.ResolvingDataSource.Resolver {
                             override fun resolveDataSpec(dataSpec: androidx.media3.datasource.DataSpec): androidx.media3.datasource.DataSpec {
                                 if (dataSpec.uri.scheme != "afp-yandex") return dataSpec
@@ -156,6 +156,7 @@ class PlaybackService : MediaSessionService() {
         session =
             MediaSession.Builder(this, player)
                 .setSessionActivity(activity)
+                .setBitmapLoader(OnlineBitmapLoader(this))
                 .setCallback(
                     object : MediaSession.Callback {
                         override fun onCustomCommand(

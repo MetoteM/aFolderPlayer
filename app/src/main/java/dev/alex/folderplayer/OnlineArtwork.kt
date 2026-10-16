@@ -11,6 +11,7 @@ import java.security.MessageDigest
 
 /** Small bounded cover cache. No session headers, cookies, or tracking SDK. */
 internal class OnlineArtwork(context:Context) {
+    private val policy=OnlineSettings(context)
     private val dir=File(context.cacheDir,"online-covers").apply { mkdirs() }
     fun load(raw:String):Bitmap?=runCatching {
         val uri=valid(raw) ?: return null
@@ -18,6 +19,7 @@ internal class OnlineArtwork(context:Context) {
         val file=File(dir,name)
         var bytes=if(file.isFile && file.length()<=1_000_000) file.readBytes() else null
         if(bytes==null) {
+            policy.requireNetwork()
             val c=URL(uri.toString()).openConnection() as HttpURLConnection
             try {
                 c.instanceFollowRedirects=false;c.connectTimeout=7000;c.readTimeout=10000
@@ -25,10 +27,11 @@ internal class OnlineArtwork(context:Context) {
                 if(c.responseCode!=200)return null
                 bytes=c.inputStream.use { input ->
                     val out=java.io.ByteArrayOutputStream();val buf=ByteArray(8192)
-                    while(true) { val n=input.read(buf);if(n<0)break;require(out.size()+n<=1_000_000);out.write(buf,0,n) }
+                    while(true) { policy.requireNetwork();val n=input.read(buf);if(n<0)break;require(out.size()+n<=1_000_000);out.write(buf,0,n) }
                     out.toByteArray()
                 }
-                file.writeBytes(bytes!!)
+                val tmp=File.createTempFile("cover-",".tmp",dir)
+                try { tmp.writeBytes(bytes!!);if(!tmp.renameTo(file))tmp.delete() } finally { tmp.delete() }
                 var total=dir.listFiles()?.sumOf { it.length() } ?: 0
                 for(old in dir.listFiles().orEmpty().sortedBy { it.lastModified() }) {
                     if(total<=20_000_000)break

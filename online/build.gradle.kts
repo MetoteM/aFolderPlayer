@@ -5,7 +5,7 @@ android {
  namespace = "dev.alex.afponline"
  compileSdk = 36
  buildToolsVersion = "36.0.0"
- defaultConfig { applicationId = "dev.alex.afponline"; minSdk = 26; targetSdk = 36; versionCode = 7; versionName = "0.2.0-yandex.4"; ndk { abiFilters += "arm64-v8a" } }
+ defaultConfig { applicationId = "dev.alex.afponline"; minSdk = 26; targetSdk = 36; versionCode = 8; versionName = "0.2.0-yandex.5"; manifestPlaceholders["YANDEX_CLIENT_ID"] = "23cabbbdc6cd418abb4b39c32c41195d"; ndk { abiFilters += "arm64-v8a" } }
  signingConfigs { create("personalRelease") {
   storeFile = rootProject.file("signing/folder-player.p12")
   storePassword = signingProps.getProperty("storePassword")
@@ -20,6 +20,8 @@ android {
  testOptions { unitTests.isReturnDefaultValues = true; unitTests.isIncludeAndroidResources = true }
 }
 dependencies {
+ implementation("com.yandex.android:authsdk:3.1.3")
+ implementation("androidx.activity:activity-ktx:1.9.3")
  testImplementation("junit:junit:4.13.2")
  testImplementation("org.json:json:20240303")
  testImplementation("org.robolectric:robolectric:4.14.1")
