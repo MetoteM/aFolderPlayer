@@ -22,6 +22,7 @@ class YandexAuthActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        SystemBarInsets.apply(root)
         status = TextView(this).apply { text = "Вход на странице Яндекса · oauth.yandex.ru"; setPadding(20,16,20,16) }
         root.addView(status)
         web = WebView(this)

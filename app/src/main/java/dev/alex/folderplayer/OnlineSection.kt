@@ -102,6 +102,7 @@ internal class OnlineSection(private val host:Activity, private val updates:()->
         list.setOnItemClickListener { _,_,position,_-> selectRow(position) }
         root.addView(list,LinearLayout.LayoutParams(-1,0,1f))
         more=button("Показать ещё") { next?.let { load(it,false) } };root.addView(more)
+        SystemBarInsets.apply(root)
         screen.setContentView(root)
         screen.setOnDismissListener { generation++;dialog=null;busy=false }
         screen.show();screen.window?.setLayout(-1,-1)
