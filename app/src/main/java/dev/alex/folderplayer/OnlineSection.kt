@@ -24,11 +24,13 @@ internal class OnlineSection(
     private val play:(String,Int,String,(String?)->Unit)->Unit,
     private val extension:OnlineCatalogue=OnlinePlayback(host),
     private val worker:ExecutorService=Executors.newSingleThreadExecutor(),
+    private val openPlayer:()->Unit={},
 ) {
     private val store=OnlineLibraryStore(host)
     private val decisions=OnlineLibraryActions(host)
     private val loader=OnlineCatalogueLoader(extension)
-    private val covers=Executors.newFixedThreadPool(2)
+    private val covers=java.util.concurrent.ThreadPoolExecutor(2,2,0L,java.util.concurrent.TimeUnit.MILLISECONDS,
+        java.util.concurrent.ArrayBlockingQueue<Runnable>(24),java.util.concurrent.ThreadPoolExecutor.DiscardPolicy())
     private val main=Handler(Looper.getMainLooper())
     private val artwork=OnlineArtwork(host)
     private var dialog:Dialog?=null
@@ -36,6 +38,9 @@ internal class OnlineSection(
     @Volatile private var closed=false
     private var returning=false
     private var busy=false
+    private var pending:java.util.concurrent.Future<*>?=null
+    private var handingOff=false
+    private var now:NowPlayingStrip?=null
     private var operation="collectionPage"
     private var sourceId=""
     private var sourceTitle="Мне нравится в Яндексе"
@@ -66,8 +71,8 @@ internal class OnlineSection(
             val entry=shown[position];val song=entry.song
             val row=LinearLayout(host).apply { orientation=LinearLayout.HORIZONTAL;gravity=android.view.Gravity.CENTER_VERTICAL;setPadding(8,8,8,8) }
             if(!playlistMode) row.addView(CheckBox(host).apply {
-                isChecked=entry.sourceIndex in selected;contentDescription="Выбрать ${song.optString("title")}"
-                setOnCheckedChangeListener { _,checked -> selecting=true;if(checked)selected+=entry.sourceIndex else selected-=entry.sourceIndex;updateSelection() }
+                isChecked=entry.sourceIndex in selected;isEnabled=!busy;contentDescription="Выбрать ${song.optString("title")}"
+                setOnCheckedChangeListener { _,checked -> if(busy)return@setOnCheckedChangeListener;selecting=true;if(checked)selected+=entry.sourceIndex else selected-=entry.sourceIndex;updateSelection() }
             })
             val image=ImageView(host).apply { setImageResource(android.R.drawable.ic_menu_gallery) }
             row.addView(image,LinearLayout.LayoutParams(dp(40),dp(40)))
@@ -79,36 +84,52 @@ internal class OnlineSection(
                     (if(!song.optBoolean("available",true))" · недоступен" else "")
             },LinearLayout.LayoutParams(0,-2,1f))
             if(playlistMode) row.addView(Button(host).apply {
-                text="Открыть";isFocusable=false
+                text="Открыть";isFocusable=false;isEnabled=!busy
                 setOnClickListener { if(!busy)openPlaylist(song) }
             })
             row.setOnClickListener { if(!busy) { if(playlistMode)openPlaylist(song) else if(selecting || operation=="hidden") { selecting=true;toggle(entry.sourceIndex) } else prepare("play",entry.sourceIndex) } }
             if(!playlistMode)row.setOnLongClickListener { if(!busy) { selecting=true;toggle(entry.sourceIndex) };true }
+            row.setBackgroundColor(PlayerScreens.surface)
             row.alpha=if(song.optBoolean("available",true))1f else .5f
             val cover=song.optString("cover");image.tag=cover
+            val coverGeneration=generation
             if(cover.isNotEmpty() && !closed)covers.execute {
+                if(closed || coverGeneration!=generation || dialog?.isShowing!=true)return@execute
                 val bitmap=artwork.load(cover)
-                main.post { if(!closed && dialog?.isShowing==true && image.tag==cover && bitmap!=null)image.setImageBitmap(bitmap) }
+                main.post { if(!closed && coverGeneration==generation && dialog?.isShowing==true && image.tag==cover && bitmap!=null)image.setImageBitmap(bitmap) }
             }
             return row
         }
     }
     fun show() {
         if(closed || dialog?.isShowing==true)return
+        dialog?.let { it.show();return }
         if(!extension.installed()) { AlertDialog.Builder(host).setTitle("Яндекс Музыка").setMessage("Установи AFP Online из того же тестового комплекта.").setPositiveButton("Закрыть",null).show();return }
         val screen=Dialog(host,android.R.style.Theme_Material_NoActionBar)
         dialog=screen;generation++;busy=false;buttons.clear();selected.clear();selecting=false;query="";sort=0;rows=JSONArray();shown=emptyList()
-        val root=LinearLayout(host).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(8),dp(4),dp(8),dp(4));setBackgroundColor(Color.rgb(15,21,32)) }
+        val root=LinearLayout(host).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(8),dp(4),dp(8),dp(4));setBackgroundColor(PlayerScreens.bg) }
         fun button(label:String,action:()->Unit)=Button(host).apply { text=label;setOnClickListener { if(!busy)action() };buttons+=this }
         fun pair(a:View,b:View) { root.addView(LinearLayout(host).apply { addView(a,LinearLayout.LayoutParams(0,-2,1f));addView(b,LinearLayout.LayoutParams(0,-2,1f)) }) }
-        pair(Button(host).apply { text="← Назад";setOnClickListener { if(operation=="playlistPage" && !busy)choose("playlists","","Плейлисты") else screen.dismiss() } },
-            Button(host).apply { text="Вход / аккаунт";setOnClickListener { openLogin() } })
+        pair(Button(host).apply { text="← Назад";setOnClickListener { if(busy)cancelWork() else if(operation=="playlistPage")choose("playlists","","Плейлисты") else screen.dismiss() } },
+            Button(host).apply { text="Вход / аккаунт";setOnClickListener { if(!busy)openLogin() } })
         title=TextView(host).apply { textSize=22f;setTextColor(Color.WHITE) };root.addView(title)
         status=TextView(host).apply { textSize=13f;setTextColor(Color.LTGRAY) };root.addView(status)
         val tabs=LinearLayout(host)
-        tabs.addView(button("Коллекция") { choose("collectionPage","","Мне нравится в Яндексе") },LinearLayout.LayoutParams(0,-2,1f))
-        tabs.addView(button("Плейлисты") { choose("playlists","","Плейлисты") },LinearLayout.LayoutParams(0,-2,1f))
-        tabs.addView(button("⋮") { sourceMenu() },LinearLayout.LayoutParams(dp(56),-2));root.addView(tabs)
+        fun tool(kind:IconButton.Kind,label:String,action:()->Unit) {
+            val view=IconButton(host,kind,label) { if(!busy)action() };buttons+=view
+            tabs.addView(view,LinearLayout.LayoutParams(0,dp(48),1f))
+        }
+        tool(IconButton.Kind.LIBRARY,"Коллекция") { choose("collectionPage","","Мне нравится в Яндексе") }
+        tool(IconButton.Kind.PLAYLIST,"Плейлисты") { choose("playlists","","Плейлисты") }
+        tool(IconButton.Kind.SORT,"Сортировка") {
+            val token=generation
+            AlertDialog.Builder(host).setTitle("Сортировка").setSingleChoiceItems(arrayOf("Исходный порядок","По названию","По исполнителю","По длительности"),sort) { menu,index ->
+                if(!busy && token==generation) { sort=index;sortView.setSelection(index);render() };menu.dismiss()
+            }.show()
+        }
+        tool(IconButton.Kind.SELECT,"Выбрать треки") { selecting=!selecting;selected.clear();render() }
+        tool(IconButton.Kind.MENU,"⋮") { sourceMenu() }
+        root.addView(tabs)
         search=EditText(host).apply { hint="Фильтр списка / поиск";isSingleLine=true;setTextColor(Color.WHITE);setHintTextColor(Color.GRAY) }
         search.addTextChangedListener(object:TextWatcher {
             override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
@@ -122,17 +143,19 @@ internal class OnlineSection(
             override fun onNothingSelected(parent:AdapterView<*>?){}
             override fun onItemSelected(parent:AdapterView<*>?,view:View?,position:Int,id:Long) { sort=position;render() }
         }
-        pair(sortView,button("Действия") { actionsMenu() })
-        selection=TextView(host).apply { setTextColor(Color.CYAN);setOnClickListener { selected.clear();selecting=false;render() } };root.addView(selection)
+        sortView.visibility=View.GONE;root.addView(sortView)
+        root.addView(button("Действия") { actionsMenu() })
+        selection=TextView(host).apply { setTextColor(Color.CYAN);setOnClickListener { if(!busy) { selected.clear();selecting=false;render() } } };root.addView(selection)
         playAll=button("▶ Играть список целиком") { prepare("play",null) };root.addView(playAll)
         list=ListView(host).apply { adapter=this@OnlineSection.adapter;descendantFocusability=ViewGroup.FOCUS_BLOCK_DESCENDANTS }
         list.setOnItemClickListener { _,_,position,_ -> shown.getOrNull(position)?.let { if(!busy) { if(playlistMode)openPlaylist(it.song) else if(selecting || operation=="hidden") { selecting=true;toggle(it.sourceIndex) } else prepare("play",it.sourceIndex) } } }
         root.addView(list,LinearLayout.LayoutParams(-1,0,1f))
         more=button("Показать ещё") { next()?.let { fetch(it,false) } };root.addView(more)
         retry=button("Повторить загрузку") { fetch(0,true) };root.addView(retry)
-        cancel=Button(host).apply { text="Отменить загрузку";setOnClickListener { generation++;busy=false;status.text="Загрузка отменена";update() } };root.addView(cancel)
+        cancel=Button(host).apply { text="Отменить загрузку";setOnClickListener { cancelWork() } };root.addView(cancel)
+        now=NowPlayingStrip(host) { if(!busy) { screen.hide();openPlayer() } }.also { root.addView(it,LinearLayout.LayoutParams(-1,-2)) }
         SystemBarInsets.apply(root);screen.setContentView(root)
-        screen.setOnDismissListener { generation++;dialog=null;busy=false }
+        screen.setOnDismissListener { generation++;pending?.cancel(true);pending=null;dialog=null;busy=false;handingOff=false }
         screen.show();screen.window?.setLayout(-1,-1)
         update();checkStatus()
     }
@@ -141,19 +164,23 @@ internal class OnlineSection(
     private fun cacheKey()=if(operation=="collectionPage")"likes" else OnlineLibraryStore.playlistKey(sourceId)
     private fun openPlaylist(song:JSONObject) { choose("playlistPage",song.optString("id"),song.optString("title")) }
     private fun choose(op:String,id:String,label:String) {
+        if(busy)return
+        pending?.cancel(true)
         generation++;operation=op;sourceId=id;sourceTitle=label;selected.clear();selecting=false
         rows=JSONArray();data=JSONObject().put("tracks",rows);playlistMode=op=="playlists";search.setText("")
         render()
         if(op in listOf("favorites","hidden")) { apply(JSONObject().put("tracks",decisions.rows(op)));return }
-        val token=generation;busy=true;status.text="Загрузка…";retry.visibility=View.GONE;update()
-        worker.execute {
-            val cached=if(op in listOf("collectionPage","playlistPage"))store.read(cacheKey()) else null
+        val token=generation;val key=cacheKey();busy=true;status.text="Загрузка…";retry.visibility=View.GONE;update()
+        pending=worker.submit {
+            if(closed || token!=generation || Thread.currentThread().isInterrupted)return@submit
+            val cached=if(op in listOf("collectionPage","playlistPage"))store.read(key) else null
             main.post { if(!closed && token==generation) { busy=false;if(cached!=null)apply(cached) else fetch(0,false) } }
         }
     }
     private fun checkStatus() {
         val token=generation;busy=true;status.text="Проверяем сохранённый вход…";update()
-        worker.execute {
+        pending=worker.submit {
+            if(closed || token!=generation || Thread.currentThread().isInterrupted)return@submit
             val result=runCatching { extension.request("status").also { store.setSession(it.optString("sessionKey")) } }
             main.post { if(!closed && token==generation) {
                 busy=false
@@ -166,10 +193,12 @@ internal class OnlineSection(
         if(busy)return
         val token=generation;val op=operation;val id=sourceId;val key=cacheKey();val prior=JSONArray(rows.toString())
         busy=true;retry.visibility=View.GONE;status.text="Загрузка…";update()
-        worker.execute {
+        pending=worker.submit {
+            if(closed || token!=generation || Thread.currentThread().isInterrupted)return@submit
             val result=runCatching {
                 val value=if(op in listOf("collectionPage","playlistPage"))loader.page(op,id,offset,refresh) else extension.request(op,if(op=="search")id else "")
                 if(offset>0)value.put("tracks",merge(prior,value.getJSONArray("tracks")))
+                check(!closed && token==generation && !Thread.currentThread().isInterrupted) { "Загрузка отменена" }
                 if(op in listOf("collectionPage","playlistPage"))store.write(key,value)
                 value
             }
@@ -195,28 +224,33 @@ internal class OnlineSection(
         buttons.forEach { it.isEnabled=!busy };sortView.isEnabled=!busy;search.isEnabled=!busy
         more.visibility=if(!playlistMode && next()!=null)View.VISIBLE else View.GONE
         playAll.visibility=if(!playlistMode && operation!="hidden" && shown.isNotEmpty())View.VISIBLE else View.GONE
-        cancel.visibility=if(busy)View.VISIBLE else View.GONE
+        dialog?.setCancelable(!handingOff)
+        cancel.visibility=if(busy && !handingOff)View.VISIBLE else View.GONE
         updateSelection()
     }
     private fun fail(error:Throwable) {
         status.text="Не удалось загрузить: "+(error.message?.take(180) ?: "неизвестная ошибка")
         retry.visibility=View.VISIBLE;update()
-        AlertDialog.Builder(host).setTitle("$sourceTitle · ошибка").setMessage(status.text).setPositiveButton("Закрыть",null).show()
+        // Keep one inline error and retry; repeated taps must not stack modal windows.
     }
     private fun toggle(index:Int) { if(!selected.add(index))selected.remove(index);render() }
     private fun sourceMenu() {
+        val menuGeneration=generation
         AlertDialog.Builder(host).setTitle("Онлайн-библиотека").setItems(arrayOf("Избранное в плеере","Скрытые в плеере","Обновить список","Сеть и качество")) { _,i ->
+            if(busy || menuGeneration!=generation || dialog?.isShowing!=true)return@setItems
             when(i) { 0->choose("favorites","","Избранное в плеере");1->choose("hidden","","Скрытые в плеере");2->if(operation in listOf("favorites","hidden"))choose(operation,"",sourceTitle) else fetch(0,true);3->OnlineSettings(host).show(host) }
         }.show()
     }
     private fun selectedRows():JSONArray=JSONArray(shown.filter { it.sourceIndex in selected }.map { it.song })
     private fun actionsMenu() {
+        val menuGeneration=generation
         if(playlistMode) { status.text="Сначала открой плейлист";return }
         val has=selected.isNotEmpty()
         val labels=mutableListOf("Выбрать все показанные","Снять выбор")
         if(has)labels+=listOf("Воспроизвести выбранные","Играть выбранные далее","Выбранные в конец очереди","В избранное плеера","Убрать из избранного",if(operation=="hidden")"Вернуть в библиотеку" else "Скрыть в плеере")
         else labels+=listOf("Воспроизвести список целиком","Весь список — играть далее","Весь список — в конец очереди")
         AlertDialog.Builder(host).setTitle(if(has)"Выбрано: ${selected.size}" else "Действия со списком").setItems(labels.toTypedArray()) { _,i ->
+            if(busy || menuGeneration!=generation || dialog?.isShowing!=true)return@setItems
             when(i) {
                 0->{ selecting=true;selected.clear();selected+=shown.map { it.sourceIndex };render() }
                 1->{ selecting=false;selected.clear();render() }
@@ -230,9 +264,11 @@ internal class OnlineSection(
         }.setNegativeButton("Закрыть",null).show()
     }
     private fun changeDecision(kind:String,enabled:Boolean) {
+        if(busy)return
         val snapshot=selectedRows();if(snapshot.length()==0)return
         val token=generation;busy=true;update()
-        worker.execute {
+        pending=worker.submit {
+            if(closed || token!=generation || Thread.currentThread().isInterrupted)return@submit
             val result=runCatching { decisions.set(kind,snapshot,enabled);if(kind=="hidden" && enabled)store.saveQueue(snapshot) else null }
             main.post { if(!closed && token==generation) {
                 busy=false
@@ -245,11 +281,12 @@ internal class OnlineSection(
         }
     }
     private fun prepare(mode:String,start:Int?) {
-        if(busy || playlistMode)return
-        val token=generation;val op=operation;val id=sourceId;val key=cacheKey()
+        if(busy || playlistMode || dialog?.isShowing!=true)return
+        val token=++generation;val op=operation;val id=sourceId;val key=cacheKey()
         val initial=JSONObject(data.toString());val selectionSnapshot=selected.toSet();val q=query;val sorting=sort;val label=sourceTitle
         busy=true;status.text="Подготовка очереди…";update()
-        worker.execute {
+        pending=worker.submit {
+            if(closed || token!=generation || Thread.currentThread().isInterrupted)return@submit
             val result=runCatching {
                 val full=if(selectionSnapshot.isEmpty() && op in listOf("collectionPage","playlistPage")) {
                     loader.complete(op,id,initial,{ !closed && token==generation }) { n,total -> main.post { if(!closed && token==generation)status.text="Подготовка очереди: $n из $total" } }.also { store.write(key,it) }
@@ -265,18 +302,24 @@ internal class OnlineSection(
             main.post { if(!closed && token==generation) {
                 busy=false
                 result.onSuccess { (handle,index,full) ->
-                    data=full;rows=full.optJSONArray("tracks") ?: rows;busy=true;status.text="Передаём очередь плееру…";render();cancel.visibility=View.GONE
+                    data=full;rows=full.optJSONArray("tracks") ?: rows;busy=true;handingOff=true;status.text="Передаём очередь плееру…";render();cancel.visibility=View.GONE
                     play(handle,index,mode) { error ->
                         if(!closed && token==generation) {
-                            busy=false
+                            busy=false;handingOff=false
                             if(error!=null)fail(IllegalStateException(error))
-                            else { render();if(mode=="play")dialog?.dismiss() else status.text="Добавлено в очередь" }
+                            else { render();if(mode=="play")dialog?.hide() else status.text="Добавлено в очередь" }
                         }
                     }
                 }.onFailure { fail(it) }
             } }
         }
     }
+    private fun cancelWork() {
+        if(handingOff)return
+        generation++;pending?.cancel(true);pending=null;busy=false
+        status.text="Загрузка отменена";update()
+    }
+    fun updateNowPlaying(label:String,time:String) { now?.title?.text=label;now?.time?.text=time }
     private fun openLogin() {
         returning=true;dialog?.dismiss()
         runCatching { host.startActivity(Intent().setComponent(ComponentName(onlinePackage(host),"dev.alex.afponline.YandexAccountActivity"))) }
