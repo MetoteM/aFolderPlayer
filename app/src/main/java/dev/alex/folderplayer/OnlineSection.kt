@@ -55,7 +55,7 @@ internal class OnlineSection(private val host:Activity, private val updates:()->
             val image=root.getChildAt(0) as ImageView
             val text=root.getChildAt(1) as TextView
             val uri=song.optString("cover")
-            image.tag=uri;image.setImageDrawable(NoteArtwork())
+            image.tag=uri;image.setImageResource(android.R.drawable.ic_menu_gallery)
             text.text=if(playlistMode) song.optString("title")+"\n"+song.optInt("count")+" треков" else song.optString("title")+"\n"+song.optString("artist")+
                 if(!song.optBoolean("available",true)) " · недоступен" else ""
             root.alpha=if(!playlistMode && !song.optBoolean("available",true)) .5f else 1f
