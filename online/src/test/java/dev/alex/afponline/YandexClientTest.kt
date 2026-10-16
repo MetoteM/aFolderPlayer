@@ -45,7 +45,7 @@ class YandexClientTest {
         }
     }
     @Test fun malformedXmlHasSafeError() {
-        try { YandexClient.resolve("<download-info>private-token"); fail() }
+        try { YandexClient.resolve("<download-info><host>private-token</download-info>"); fail() }
         catch(e:YandexClient.Problem) { assertEquals("Аудиодескриптор: некорректный XML", e.reason) }
     }
     @Test fun rejectsUnsafeHostsAndEntities() {
