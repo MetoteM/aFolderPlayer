@@ -2,7 +2,7 @@ name: Yandex Music experiment checks
 on:
   push:
     branches: [prerelease/yandex-spike]
-    paths: ['online/**', 'tools/yandex-spike/**', '.github/workflows/yandex-spike.yml']
+    paths: ['app/**', 'online/**', 'tools/yandex-spike/**', '.github/workflows/yandex-spike.yml']
 permissions:
   contents: read
 jobs:
@@ -25,13 +25,15 @@ jobs:
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
         with:
           packages: 'platforms;android-36 build-tools;36.0.0'
-      - name: Build laboratory and verify Android tests and lint
-        run: bash gradlew --no-daemon :online:assembleDebug :online:assembleRelease :online:testDebugUnitTest :online:lintDebug --max-workers=2
+      - name: Build integrated player and extension; verify tests and lint
+        run: bash gradlew --no-daemon :app:assembleDebug :online:assembleDebug :app:testDebugUnitTest :online:testDebugUnitTest :app:lintDebug :online:lintDebug --max-workers=2
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: yandex-android-lab
           path: |
+            app/build/outputs/apk/
+            app/build/reports/
             online/build/outputs/apk/
             online/build/reports/
           retention-days: 7

@@ -5,11 +5,11 @@ import org.junit.Test
 
 class ConnectorRegistryTest {
     @Test
-    fun firstConnectorIsZvukAndDoesNotPretendToPlay() {
+    fun onlyActiveConnectorIsYandexExperiment() {
         val connector = ConnectorRegistry().connectors.single()
-        assertEquals("zvuk", connector.id)
-        assertEquals("unavailable", connector.status)
-        assertTrue(connector.capabilities.isEmpty())
+        assertEquals("yandex", connector.id)
+        assertEquals("experimental", connector.status)
+        assertEquals(setOf("search", "collection", "stream"),connector.capabilities)
     }
 
     @Test

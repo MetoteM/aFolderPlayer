@@ -2533,7 +2533,14 @@ class MainActivity : Activity() {
         extensionManager.show()
     }
 
-    private val onlineSection: OnlineSection by lazy { OnlineSection(this) { appUpdates.check() } }
+    private val onlineSection: OnlineSection by lazy { OnlineSection(this, { appUpdates.check() }) { raw, index ->
+        val c = controller
+        if (c == null) toast("Плеер ещё подключается")
+        else {
+            sendPlaybackCommand(c, PlaybackCommands.START_ONLINE_QUEUE, Bundle().apply { putString("tracks", raw); putInt("index", index) })
+            showPage("player")
+        }
+    } }
 
     private val appUpdates: AppUpdates by lazy { AppUpdates(this, extensionManager) }
 

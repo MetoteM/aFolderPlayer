@@ -23,6 +23,7 @@ import org.json.JSONArray
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class PlaybackService : MediaSessionService() {
+    private val online by lazy { OnlinePlayback(this) }
     private lateinit var player: ExoPlayer
     private var session: MediaSession? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -122,6 +123,17 @@ class PlaybackService : MediaSessionService() {
             }
         player =
             ExoPlayer.Builder(this, renderers)
+                .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                    androidx.media3.datasource.ResolvingDataSource.Factory(
+                        androidx.media3.datasource.DefaultDataSource.Factory(this),
+                        object : androidx.media3.datasource.ResolvingDataSource.Resolver {
+                            override fun resolveDataSpec(dataSpec: androidx.media3.datasource.DataSpec): androidx.media3.datasource.DataSpec {
+                                if (dataSpec.uri.scheme != "afp-yandex") return dataSpec
+                                return dataSpec.withUri(online.resolve(dataSpec.uri))
+                            }
+                        }
+                    )
+                ))
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(C.USAGE_MEDIA)
@@ -168,6 +180,12 @@ class PlaybackService : MediaSessionService() {
                                 return MediaSession.ConnectionResult.accept(
                                     MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS
                                         .buildUpon()
+                                        .add(
+                                            SessionCommand(
+                                                PlaybackCommands.START_ONLINE_QUEUE,
+                                                Bundle.EMPTY,
+                                            )
+                                        )
                                         .add(
                                             SessionCommand(
                                                 PlaybackCommands.START_QUEUE,
@@ -237,8 +255,9 @@ class PlaybackService : MediaSessionService() {
                 .getInt("requestedRepeat", prefs.getInt("repeat", Player.REPEAT_MODE_OFF))
                 .coerceIn(0, 2)
         val savedShuffle = prefs.getBoolean("shuffle", false)
+        val onlineSaved = runCatching { OnlinePlayback.items(prefs.getString("onlineQueue", "[]")!!) }.getOrDefault(emptyList()).associateBy { it.mediaId }
         val saved =
-            Library.strings(prefs.getString("queue", "[]")!!).mapNotNull { tracks[it]?.item() }
+            Library.strings(prefs.getString("queue", "[]")!!).mapNotNull { tracks[it]?.item() ?: onlineSaved[it] }
         val positionIndex = positionPrefs.getInt("index", -1)
         if (
             positionIndex in saved.indices &&
@@ -266,6 +285,19 @@ class PlaybackService : MediaSessionService() {
 
     internal fun applyPlaybackCommand(action: String, args: Bundle): Int {
         return when (action) {
+            PlaybackCommands.START_ONLINE_QUEUE -> {
+                val raw = args.getString("tracks").orEmpty()
+                val items = runCatching { OnlinePlayback.items(raw) }.getOrNull()
+                val index = args.getInt("index", -1)
+                if (items == null || index !in items.indices) SessionError.ERROR_BAD_VALUE
+                else {
+                    prefs.edit().putString("queueSource", "Яндекс Музыка").putString("onlineQueue", raw).apply()
+                    player.setMediaItems(items, index, 0)
+                    player.setPauseAtEndOfMediaItems(false)
+                    player.prepare();player.play()
+                    SessionResult.RESULT_SUCCESS
+                }
+            }
             PlaybackCommands.START_QUEUE -> {
                 val library = Library(this)
                 val source = args.getString("source").orEmpty()

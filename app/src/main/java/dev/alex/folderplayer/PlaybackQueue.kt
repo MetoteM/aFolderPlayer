@@ -28,6 +28,7 @@ internal fun playbackTracks(
 }
 
 internal object PlaybackCommands {
+    const val START_ONLINE_QUEUE = "dev.alex.folderplayer.START_ONLINE_QUEUE"
     const val START_QUEUE = "dev.alex.folderplayer.START_QUEUE"
     const val REORDER_QUEUE = "dev.alex.folderplayer.REORDER_QUEUE"
     const val SET_REPEAT = "dev.alex.folderplayer.SET_REPEAT"

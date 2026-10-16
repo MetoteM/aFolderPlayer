@@ -6,12 +6,13 @@
  <uses-permission android:name="android.permission.WAKE_LOCK" />
  <uses-permission android:name="dev.alex.afptranslate.USE_TRANSLATOR" />
  <uses-permission android:name="dev.alex.afponline.USE_ONLINE" />
+ <uses-permission android:name="dev.alex.afponline.yandexlab.USE_ONLINE" />
  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
- <queries><package android:name="dev.alex.afptranslate" /><package android:name="dev.alex.afponline" /></queries>
+ <queries><package android:name="dev.alex.afptranslate" /><package android:name="dev.alex.afponline" /><package android:name="dev.alex.afponline.yandexlab" /></queries>
  <application android:label="aFolderPlayer" android:icon="@drawable/ic_player" android:theme="@style/AppTheme" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true">
   <activity android:name=".SongTextActivity" android:exported="false" />
   <activity android:name=".RecognitionActivity" android:exported="false" />
-  <provider android:name=".ExtensionFileProvider" android:authorities="dev.alex.folderplayer.extensions" android:exported="false" android:grantUriPermissions="true" />
+  <provider android:name=".ExtensionFileProvider" android:authorities="${applicationId}.extensions" android:exported="false" android:grantUriPermissions="true" />
   <activity android:name=".DocumentActivity" android:exported="false" />
   <activity android:name=".MainActivity" android:exported="true">
    <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>

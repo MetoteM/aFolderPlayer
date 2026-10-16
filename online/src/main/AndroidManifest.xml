@@ -2,8 +2,11 @@
  <uses-permission android:name="android.permission.INTERNET" />
  <permission android:name="${applicationId}.USE_ONLINE" android:protectionLevel="signature" />
  <application android:usesCleartextTraffic="false" android:label="AFP Online · эксперимент" android:allowBackup="false" android:supportsRtl="true">
-  <activity android:name=".YandexLabActivity" android:theme="@android:style/Theme.Material.NoActionBar" android:exported="true" android:label="Яндекс Музыка · лаборатория">
+  <activity android:name=".YandexAuthActivity" android:exported="false" android:theme="@android:style/Theme.Material.NoActionBar" />
+  <activity android:name=".YandexAccountActivity" android:exported="true" android:theme="@android:style/Theme.Material.NoActionBar" android:label="Яндекс Музыка">
    <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+  </activity>
+  <activity android:name=".YandexLabActivity" android:theme="@android:style/Theme.Material.NoActionBar" android:exported="true" android:label="Яндекс Музыка · лаборатория">
   </activity>
   <activity android:name=".ZvukLabActivity" android:theme="@android:style/Theme.Material.NoActionBar" android:exported="true" android:label="Звук · эксперимент">
    </activity>
