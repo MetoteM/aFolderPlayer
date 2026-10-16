@@ -17,13 +17,16 @@ class OnlineSettingsTest {
     @Test fun wifiOnlyRejectsCellularAndChoosesSeparateQuality() {
         val context=RuntimeEnvironment.getApplication()
         val cm=context.getSystemService(ConnectivityManager::class.java)
-        val caps=NetworkCapabilities().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+        val caps=org.robolectric.shadows.ShadowNetworkCapabilities.newInstance()
+        shadowOf(caps).addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        shadowOf(caps).addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
         shadowOf(cm).setNetworkCapabilities(cm.activeNetwork,caps)
         val prefs=context.getSharedPreferences("online",Context.MODE_PRIVATE)
         prefs.edit().clear().putBoolean("wifiOnly",true).putString("wifiQuality","high").putString("mobileQuality","economy").commit()
         val settings=OnlineSettings(context)
         settings.requireNetwork();assertEquals("high",settings.quality())
-        caps.removeTransportType(NetworkCapabilities.TRANSPORT_WIFI).addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
+        shadowOf(caps).removeTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+        shadowOf(caps).addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
         shadowOf(cm).setNetworkCapabilities(cm.activeNetwork,caps)
         assertEquals("economy",settings.quality())
         try { settings.requireNetwork();fail("Mobile must be blocked") } catch(_:OnlinePlayback.Problem) { }

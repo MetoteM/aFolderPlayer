@@ -80,7 +80,7 @@ internal class OnlineSection(private val host:Activity, private val updates:()->
         fun button(title:String,action:()->Unit):Button=Button(host).apply { text=title;setOnClickListener { if(!busy)action() };actions+=this }
         val top=LinearLayout(host)
         top.addView(button("← Библиотека") { screen.dismiss() },LinearLayout.LayoutParams(0,-2,1f))
-        login=button("Войти / аккаунт") { openLogin(false) }
+        login=Button(host).apply { text="Войти / аккаунт";setOnClickListener { openLogin(false) } }
         top.addView(login,LinearLayout.LayoutParams(0,-2,1f));root.addView(top)
         root.addView(Button(host).apply { text="Сеть и качество";setOnClickListener { OnlineSettings(host).show(host) } })
         root.addView(TextView(host).apply { text="Яндекс Музыка";textSize=24f;setTextColor(Color.WHITE) })
@@ -97,7 +97,7 @@ internal class OnlineSection(private val host:Activity, private val updates:()->
             val q=query.text.toString().trim()
             if(q.isBlank()) { status.text="Введи поисковый запрос" } else { operation="search";playlistId=q;load(0,false) }
         });root.addView(search)
-        playAll=button("▶ Играть список") { if(rows.length()>0)selectRow(0) };root.addView(playAll)
+        playAll=button("▶ Играть список") { val first=(0 until rows.length()).firstOrNull { rows.optJSONObject(it)?.optBoolean("available",true)==true };if(first!=null)selectRow(first) };root.addView(playAll)
         list=ListView(host).apply { adapter=this@OnlineSection.adapter }
         list.setOnItemClickListener { _,_,position,_-> selectRow(position) }
         root.addView(list,LinearLayout.LayoutParams(-1,0,1f))
@@ -113,14 +113,19 @@ internal class OnlineSection(private val host:Activity, private val updates:()->
             if(playlistMode) choose("playlistPage",row.optString("id"))
             else if(!row.optBoolean("available",true)) status.text="Этот трек недоступен в сервисе"
             else {
-                val snapshot=JSONArray(rows.toString());val id=generation
+                val snapshot=JSONArray();var selected=0
+                for(i in 0 until rows.length()) {
+                    val song=rows.optJSONObject(i) ?: continue
+                    if(song.optBoolean("available",true)) { if(i==position)selected=snapshot.length();snapshot.put(song) }
+                }
+                val id=generation
                 busy=true;update()
                 worker.execute {
                     val result=runCatching { store.saveQueue(snapshot) }
                     main.post {
                         if(closed || id!=generation)return@post
                         busy=false;update()
-                        result.onSuccess { play(it,position);dialog?.dismiss() }.onFailure { status.text="Не удалось подготовить очередь" }
+                        result.onSuccess { play(it,selected);dialog?.dismiss() }.onFailure { status.text="Не удалось подготовить очередь" }
                     }
                 }
             }
@@ -129,6 +134,7 @@ internal class OnlineSection(private val host:Activity, private val updates:()->
         actions.forEach { it.isEnabled=!busy }
         progress.visibility=if(busy)View.VISIBLE else View.GONE
         more.visibility=if(next!=null && !playlistMode)View.VISIBLE else View.GONE
+        playAll.text="▶ Играть загруженные · ${rows.length()}"
         playAll.visibility=if(!playlistMode && rows.length()>0)View.VISIBLE else View.GONE
         login.text="Войти / аккаунт"
     }

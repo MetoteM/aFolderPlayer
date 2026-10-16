@@ -153,7 +153,7 @@ class MainActivity : Activity() {
                     }
 
                     override fun toggle() {
-                        controller?.let { if (it.isPlaying) it.pause() else it.play() }
+                        controller?.let { if (it.isPlaying) it.pause() else { if(it.playbackState==Player.STATE_IDLE)it.prepare();it.play() } }
                         updatePlayer()
                     }
 
@@ -423,7 +423,7 @@ class MainActivity : Activity() {
         val controls = row()
         controls.addView(button("⏮") { controller?.seekToPreviousMediaItem() }, weight())
 
-        play = button("▶") { controller?.let { if (it.isPlaying) it.pause() else it.play() } }
+        play = button("▶") { controller?.let { if (it.isPlaying) it.pause() else { if(it.playbackState==Player.STATE_IDLE)it.prepare();it.play() } } }
         controls.addView(play, weight())
         controls.addView(button("⏭") { controller?.seekToNextMediaItem() }, weight())
         layout.addView(controls)
@@ -715,7 +715,8 @@ class MainActivity : Activity() {
         highlightTrack(false)
         now.text = c.currentMediaItem?.mediaMetadata?.title?.toString() ?: "Выбери песню"
         play.text = if (c.isPlaying) "❚❚" else "▶"
-        val d = c.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0
+        val d = c.duration.takeIf { it != C.TIME_UNSET && it > 0 }
+            ?: c.currentMediaItem?.mediaMetadata?.extras?.getLong("onlineDuration") ?: 0L
         position.text =
             getString(
                 dev.alex.folderplayer.R.string.duration_format,
@@ -2258,7 +2259,7 @@ class MainActivity : Activity() {
             weight(),
         )
         controls.addView(
-            button("Пауза / ▶") { controller?.let { if (it.isPlaying) it.pause() else it.play() } },
+            button("Пауза / ▶") { controller?.let { if (it.isPlaying) it.pause() else { if(it.playbackState==Player.STATE_IDLE)it.prepare();it.play() } } },
             weight(),
         )
         val next = button("Отметить строку") {}

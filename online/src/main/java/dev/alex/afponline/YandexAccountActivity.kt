@@ -43,7 +43,7 @@ class YandexAccountActivity : androidx.activity.ComponentActivity() {
         sdkLauncher=registerForActivityResult(sdk.contract) { sdkResult(it) }
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         val root = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(24,24,24,24) }
-        setContentView(root)
+        setContentView(ScrollView(this).apply { addView(root) })
         root.addView(TextView(this).apply { text="Яндекс Музыка · эксперимент\nВход хранится только в расширении. Музыку воспроизводит aFolderPlayer." })
         status=TextView(this);root.addView(status)
         fun button(title:String,action:()->Unit) { root.addView(Button(this).apply { text=title;setOnClickListener { action() } }) }
@@ -78,12 +78,12 @@ class YandexAccountActivity : androidx.activity.ComponentActivity() {
         button("Вернуться в плеер") { finish() }
         if(savedInstanceState==null && intent.getBooleanExtra("loginNow",false)) openAuth()
     }
-    private fun openAuth() { startActivityForResult(Intent(this,YandexAuthActivity::class.java),71) }
+    private fun openAuth() { generation++;startActivityForResult(Intent(this,YandexAuthActivity::class.java),71) }
     @Deprecated("Activity result callback")
     override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
         super.onActivityResult(requestCode,resultCode,data)
         if(requestCode==71 && resultCode==RESULT_OK) { setResult(RESULT_OK);finish() }
     }
-    override fun onResume() { super.onResume();status.text=if(YandexSession(this).read()!=null) "Подключено · Яндекс Музыка" else "Вход не выполнен" }
+    override fun onResume() { super.onResume();if(status.text.isBlank())status.text=if(YandexSession(this).read()!=null) "Подключено · Яндекс Музыка" else "Вход не выполнен" }
     override fun onDestroy() { dead=true;worker.shutdownNow();super.onDestroy() }
 }
