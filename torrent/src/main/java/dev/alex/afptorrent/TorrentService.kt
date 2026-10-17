@@ -156,7 +156,7 @@ class TorrentService:Service() {
     private fun payloadDir(id:String)=File(jobDir(id),"data")
     private fun acceptMetadata(t:TorrentTask,data:ByteArray) {
         require(data.size<=TorrentRules.MAX_METADATA)
-        val info=TorrentInfo(data);val files=TorrentEngine().describe(info)
+        val info=TorrentMetadata.load(data).torrentInfo ?: error("В раздаче нет описания файлов");val files=TorrentEngine().describe(info)
         require(files.any { it.audio }) { "В раздаче нет поддерживаемых аудиофайлов" }
         require(tasks.values.none { it.id!=t.id && it.hash==info.infoHash().toString() }) { "Эта раздача уже добавлена" }
         File(jobDir(t.id),"info.torrent").writeBytes(data);infos[t.id]=info;t.hash=info.infoHash().toString();t.files=files;t.title=info.name().take(150)
@@ -174,7 +174,7 @@ class TorrentService:Service() {
                 sp.setBoolean(org.libtorrent4j.swig.settings_pack.bool_types.enable_natpmp.swigValue(),false)
                 TorrentEngine.noUploadSettings(sp)
                 session.start(SessionParams(sp));TorrentEngine.noUploadPeers(session)
-                session.fetchMagnet(File(jobDir(t.id),"magnet").readText(),90,File(jobDir(t.id),"metadata").apply { mkdirs() }) ?: error("Метаданные не получены за 90 секунд. Проверь участников и сеть; можно повторить")
+                TorrentMetadata.fetch(session,File(jobDir(t.id),"magnet").readText(),File(jobDir(t.id),"metadata"),90)
             }
             runCatching { session.stop() };metadataSession=null
             runCatching { worker.execute {
@@ -212,7 +212,7 @@ class TorrentService:Service() {
                 if(!File(jobDir(t.id),"info.torrent").exists()){beginMetadata(t);continue}
                 if(t.selected.isEmpty()){t.wanted=false;t.state="ready";continue}
                 if(t.id!=payloadTask){t.state="queued";t.down=0;infos[t.id]?.let { engine?.handle(it)?.pause() };continue}
-                if(!infos.containsKey(t.id))infos[t.id]=TorrentInfo(File(jobDir(t.id),"info.torrent"))
+                if(!infos.containsKey(t.id))infos[t.id]=TorrentMetadata.load(File(jobDir(t.id),"info.torrent").readBytes()).torrentInfo
                 val info=infos.getValue(t.id)
                 val e=startEngine();e.session.downloadRateLimit(prefs.getInt("downKB",0)*1024)
                 var h=e.handle(info)
@@ -221,7 +221,7 @@ class TorrentService:Service() {
                     val staged=storage.walkTopDown().filter { it.isFile }.sumOf { it.length() }
                     check(staged+remaining+16*1024*1024 <= prefs.getInt("maxMB",2048)*1024L*1024) { "Превышен лимит временного места. Удали старые временные данные или увеличь лимит" }
                     check(storage.usableSpace>remaining+64*1024*1024) { "Недостаточно места для временных файлов" }
-                    e.add(info,payloadDir(t.id),t.selected);t.state="checking";continue
+                    e.add(info,payloadDir(t.id),t.selected,File(jobDir(t.id),"info.torrent").readBytes(),File(jobDir(t.id),"magnet").takeIf { it.exists() }?.readText());t.state="checking";continue
                 }
                 h.unsetFlags(TorrentFlags.AUTO_MANAGED);h.resume();e.session.resume()
                 val status=h.status(true);check(status.errorCode().value==0) { "Ошибка чтения или записи торрент-файлов" }
@@ -243,7 +243,7 @@ class TorrentService:Service() {
         if(!active && metadataId==null){if(engine!=null)stopEngine();if(boundNetwork!=null){getSystemService(ConnectivityManager::class.java).bindProcessToNetwork(null);boundNetwork=null};if(foreground)main.post { if(!activeView && pendingStarts.get()==0 && foreground){foreground=false;stopForeground(STOP_FOREGROUND_REMOVE);stopSelf()} }}
         if(active && (net || exporting!=null) && foreground && wake?.isHeld==false)wake?.acquire(10*60*1000L)
         if((!active || !net && exporting==null) && wake?.isHeld==true)wake?.release()
-        if(foreground){val t=tasks.values.firstOrNull { it.wanted || it.id==exporting };getSystemService(NotificationManager::class.java).notify(701,notification(t?.let { "${it.title}: ${if(it.total>0)it.done*100/it.total else 0}% · ${it.state}" } ?: "Ожидание"))}
+        if(foreground){val t=tasks.values.firstOrNull { it.wanted || it.id==exporting };if(Build.VERSION.SDK_INT<33 || checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)==android.content.pm.PackageManager.PERMISSION_GRANTED)getSystemService(NotificationManager::class.java).notify(701,notification(t?.let { "${it.title}: ${if(it.total>0)it.done*100/it.total else 0}% · ${it.state}" } ?: "Ожидание"))}
         publish(++ticks%5==0)
     }
     private fun export(t:TorrentTask) {

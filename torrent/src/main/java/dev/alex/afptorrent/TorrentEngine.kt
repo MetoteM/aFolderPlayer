@@ -29,10 +29,16 @@ internal class TorrentEngine {
             TorrentFile(i,path,fs.fileSize(i),!fs.padFileAt(i) && TorrentRules.music(path))
         }
     }
-    fun add(info:TorrentInfo,root:File,selected:Set<Int>) {
+    fun add(info:TorrentInfo,root:File,selected:Set<Int>,metadata:ByteArray?=null,magnet:String?=null) {
         root.mkdirs()
-        val priorities=Array(info.numFiles()) { if(it in selected) Priority.DEFAULT else Priority.IGNORE }
-        session.download(info,root,null,priorities,null,torrent_flags_t())
+        val params=if(metadata!=null)TorrentMetadata.load(metadata) else AddTorrentParams().apply { torrentInfo=info }
+        params.setSavePath(root.absolutePath)
+        params.flags=params.flags.and_(TorrentFlags.AUTO_MANAGED.inv()).and_(TorrentFlags.PAUSED.inv()).and_(TorrentFlags.UPLOAD_MODE.inv()).and_(TorrentFlags.STOP_WHEN_READY.inv())
+        val priorities=org.libtorrent4j.swig.byte_vector()
+        for(i in 0 until info.numFiles())priorities.add((if(i in selected)Priority.DEFAULT else Priority.IGNORE).swig())
+        params.swig().set_file_priorities(priorities)
+        if(magnet!=null){val original=AddTorrentParams.parseMagnetUri(magnet);params.peers(original.peers());params.trackers=(params.trackers+original.trackers).distinct();params.urlSeeds=(params.urlSeeds+original.urlSeeds).distinct()}
+        session.swig().async_add_torrent(params.swig())
     }
     fun handle(info:TorrentInfo):TorrentHandle?=session.find(info.infoHash())?.takeIf { it.isValid }
     fun close()=session.stop()
