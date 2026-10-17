@@ -21,6 +21,8 @@ class TorrentActivity:Activity() {
     private var snapshot=JSONObject()
     private var pendingSource:String?=null
     private var displayed=""
+    private val taskTexts=hashMapOf<String,TextView>()
+    private val taskProgress=hashMapOf<String,ProgressBar>()
     private val labels=mapOf("metadata" to "Описание раздачи","ready" to "Выбор файлов","queued" to "В очереди","checking" to "Проверка файлов","downloading" to "Загрузка","exporting" to "Сохранение в папку","complete" to "Готово","paused" to "Пауза","cancelled" to "Отменено","error" to "Ошибка","network" to "Ожидание сети")
     private val callback=object:ITorrentCallback.Stub(){override fun changed(state:String){handler.post { if(!isFinishing){snapshot=JSONObject(state);renderTasks()} }}}
     private val connection=object:ServiceConnection {
@@ -71,13 +73,15 @@ class TorrentActivity:Activity() {
         destination.text="Папка: "+settings.optString("destination").ifBlank { "не выбрана" }
         val a=snapshot.optJSONArray("tasks")?:JSONArray()
         // Only rebuild task rows. Input, keyboard, settings and scroll position stay intact.
-        val signature=a.toString();if(signature==displayed)return;displayed=signature;rows.removeAllViews()
+        val signature=(0 until a.length()).joinToString("|"){val t=a.getJSONObject(it);"${t.optString("id")}:${t.optString("title")}:${t.optString("state")}:${t.optBoolean("wanted")}:${t.optInt("exportedCount")}"}
+        if(signature==displayed){for(i in 0 until a.length())updateProgress(a.getJSONObject(i));return}
+        displayed=signature;rows.removeAllViews();taskTexts.clear();taskProgress.clear()
         if(a.length()==0)rows.addView(TextView(this).apply { text="Задач пока нет" })
         for(i in 0 until a.length()) {
             val t=a.getJSONObject(i);val id=t.getString("id")
             val card=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(0,dp(18),0,dp(8)) };rows.addView(card)
-            card.addView(TextView(this).apply { text="${t.optString("title")}\n${labels[t.optString("state")] ?: t.optString("state")} · ${size(t.optLong("done"))} / ${size(t.optLong("total"))}\n↓ ${size(t.optLong("down"))}/с · участников ${t.optInt("peers")}\n${t.optString("detail")}";textSize=17f })
-            val progress=ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply { max=100;progress=if(t.optLong("total")>0)(100*t.optLong("done")/t.optLong("total")).coerceIn(0,100).toInt() else 0 };card.addView(progress)
+            val text=TextView(this).apply { textSize=17f };taskTexts[id]=text;card.addView(text)
+            val progress=ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply { max=100 };taskProgress[id]=progress;card.addView(progress);updateProgress(t)
             val controls=LinearLayout(this);card.addView(controls)
             if(!t.optBoolean("wanted") && t.optInt("exportedCount")==0)button(controls,"Файлы") { selectFiles(id) }
             if(t.optString("state") !in setOf("complete","cancelled"))button(controls,if(t.optBoolean("wanted"))"Пауза" else "Загрузить") { send(if(t.optBoolean("wanted"))"pause" else "run",JSONObject().put("id",id),!t.optBoolean("wanted")) }
@@ -86,6 +90,11 @@ class TorrentActivity:Activity() {
                 else AlertDialog.Builder(this).setMessage("Готовые файлы в выбранной папке останутся. Удалить задачу и временные данные?").setPositiveButton("Удалить") { _,_->send("remove",JSONObject().put("id",id)) }.setNegativeButton("Назад",null).show()
             }.show() }
         }
+    }
+    private fun updateProgress(t:JSONObject){
+        val id=t.getString("id")
+        taskTexts[id]?.text="${t.optString("title")}\n${labels[t.optString("state")] ?: t.optString("state")} · ${size(t.optLong("done"))} / ${size(t.optLong("total"))}\n↓ ${size(t.optLong("down"))}/с · участников ${t.optInt("peers")}\nОтдано содержимого: ${t.optLong("uploaded")} Б\n${t.optString("detail")}" 
+        taskProgress[id]?.progress=if(t.optLong("total")>0)(100*t.optLong("done")/t.optLong("total")).coerceIn(0,100).toInt() else 0
     }
     private fun selectFiles(id:String) {
         val task=JSONObject(remote?.detail(id) ?: "{}");val all=task.optJSONArray("files")?:return message("Сначала получи описание раздачи")

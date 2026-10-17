@@ -12,6 +12,13 @@ import org.libtorrent4j.swig.torrent_flags_t
 
 /** Owned random fixture, loopback peers only: no public tracker or copyrighted media. */
 class TorrentTransferTest {
+ companion object {
+  @JvmStatic @org.junit.BeforeClass fun loadLinuxNative(){
+   val binary=Files.createTempFile("afp-torrent-jni-", ".so").toFile();binary.deleteOnExit()
+   TorrentTransferTest::class.java.getResourceAsStream("/lib/x86_64/libtorrent4j.so")!!.use { input->binary.outputStream().use { input.copyTo(it) } }
+   System.setProperty("libtorrent4j.jni.path",binary.absolutePath)
+  }
+ }
  private fun waitFor(seconds:Int=45,condition:()->Boolean){val end=System.nanoTime()+seconds*1_000_000_000L;while(System.nanoTime()<end){if(condition())return;Thread.sleep(100)};assertTrue("Timed out waiting for BitTorrent state",condition())}
  private fun isolated(port:Int):SettingsPack=SettingsPack().listenInterfaces("127.0.0.1:$port").apply {
   setEnableDht(false);setEnableLsd(false);setBoolean(settings_pack.bool_types.enable_upnp.swigValue(),false);setBoolean(settings_pack.bool_types.enable_natpmp.swigValue(),false)
@@ -37,7 +44,13 @@ class TorrentTransferTest {
    engine.start(isolated(49172))
    engine.add(info,download,setOf(chosen));engine.session.resume();waitFor { engine.handle(info)!=null };handle=engine.handle(info)!!;handle.unsetFlags(TorrentFlags.AUTO_MANAGED);handle.resume()
    handle.swig().connect_peer(TcpEndpoint("127.0.0.1",49171).swig())
-   waitFor { handle.status(true).isFinished };handle.flushCache()
+   waitFor { handle.status(true).isFinished }
+   val flushed=java.util.concurrent.CountDownLatch(1)
+   engine.session.addListener(object:org.libtorrent4j.AlertListener {
+    override fun types()=intArrayOf(org.libtorrent4j.alerts.AlertType.CACHE_FLUSHED.swig())
+    override fun alert(a:org.libtorrent4j.alerts.Alert<*>){if(a is org.libtorrent4j.alerts.CacheFlushedAlert)flushed.countDown()}
+   })
+   handle.flushCache();assertTrue("Native disk flush acknowledgement",flushed.await(10,java.util.concurrent.TimeUnit.SECONDS))
    val finished=TorrentRules.file(download,files[chosen].path)
    waitFor { finished.isFile && finished.length()==data.size.toLong() }
    assertArrayEquals(MessageDigest.getInstance("SHA-256").digest(data),MessageDigest.getInstance("SHA-256").digest(finished.readBytes()))

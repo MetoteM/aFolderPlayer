@@ -34,6 +34,10 @@ class TorrentService:Service() {
     @Volatile private var view="{\"tasks\":[],\"settings\":{}}"
     @Volatile private var foreground=false
     private var lastError=""
+    private var lastSaved=""
+    private val pendingStarts=java.util.concurrent.atomic.AtomicInteger()
+    @Volatile private var activeView=false
+    private val main=Handler(Looper.getMainLooper())
     private var exporting:String?=null
     private var ticks=0
     private lateinit var storage:File
@@ -73,8 +77,9 @@ class TorrentService:Service() {
         if(intent?.action=="PAUSE_ALL"){
             worker.execute { pauseAll("Приостановлено пользователем");publish(true) };return START_NOT_STICKY
         }
-        foreground=true;startForeground(701,notification("Подготовка загрузки"))
+        pendingStarts.incrementAndGet();foreground=true;startForeground(701,notification("Подготовка загрузки"))
         intent?.getStringExtra("operation")?.let { op->val arguments=intent.getStringExtra("arguments").orEmpty();if(arguments.length<=40000)binder.command(op,arguments) }
+        worker.execute { pendingStarts.decrementAndGet() }
         return START_NOT_STICKY
     }
     private fun notification(text:String):Notification {
@@ -132,7 +137,8 @@ class TorrentService:Service() {
                 require(task!=null && task.state!="cancelled" && exporting!=id);require(foreground) { "Начни из окна расширения" }
                 if(File(jobDir(id),"info.torrent").exists()){
                     task.total=TorrentRules.selectedSize(task.files,task.selected,prefs.getInt("maxMB",2048)*1024L*1024)
-                    if(task.tree.isBlank())task.tree=prefs.getString("destination","").orEmpty()
+                    if(task.exported.keys.containsAll(task.selected)){task.wanted=false;task.state="complete";task.detail="Файлы уже сохранены";return}
+                    if(task.exported.isEmpty())task.tree=prefs.getString("destination",task.tree).orEmpty()
                     require(task.tree.isNotBlank()) { "Выбери папку назначения" }
                 }
                 flushStarted.remove(id);flushed.remove(task.hash);cancelled.remove(id);task.wanted=true;task.detail="";task.state="queued"
@@ -201,15 +207,17 @@ class TorrentService:Service() {
             metadataId?.let { pauseMetadata(it) }
             tasks.values.filter { it.wanted }.forEach { it.state="network";it.detail="Ожидание разрешённой сети";it.down=0;it.up=0 }
         } else if(foreground) {
+            val payloadTask=if(exporting==null)tasks.values.firstOrNull { it.wanted && File(jobDir(it.id),"info.torrent").exists() && it.selected.isNotEmpty() }?.id else null
             for(t in tasks.values.filter { it.wanted && it.id!=exporting }) {
                 if(!File(jobDir(t.id),"info.torrent").exists()){beginMetadata(t);continue}
                 if(t.selected.isEmpty()){t.wanted=false;t.state="ready";continue}
+                if(t.id!=payloadTask){t.state="queued";t.down=0;infos[t.id]?.let { engine?.handle(it)?.pause() };continue}
                 if(!infos.containsKey(t.id))infos[t.id]=TorrentInfo(File(jobDir(t.id),"info.torrent"))
                 val info=infos.getValue(t.id)
                 val e=startEngine();e.session.downloadRateLimit(prefs.getInt("downKB",0)*1024)
                 var h=e.handle(info)
                 if(h==null){
-                    val remaining=tasks.values.filter { it.wanted }.sumOf { (it.total-it.done).coerceAtLeast(0) }
+                    val remaining=(t.total-t.done).coerceAtLeast(0)
                     val staged=storage.walkTopDown().filter { it.isFile }.sumOf { it.length() }
                     check(staged+remaining+16*1024*1024 <= prefs.getInt("maxMB",2048)*1024L*1024) { "Превышен лимит временного места. Удали старые временные данные или увеличь лимит" }
                     check(storage.usableSpace>remaining+64*1024*1024) { "Недостаточно места для временных файлов" }
@@ -225,14 +233,14 @@ class TorrentService:Service() {
                         val hash=info.infoHash().toString();h.pause()
                         if(!flushStarted.containsKey(t.id)){flushed.remove(hash);flushStarted[t.id]=System.currentTimeMillis();h.flushCache()}
                         t.state="checking";t.detail="Запись проверенных файлов на диск"
-                        if(hash in flushed){flushStarted.remove(t.id);export(t)}
+                        if(hash in flushed){stopEngine();export(t)}
                         else if(System.currentTimeMillis()-flushStarted.getValue(t.id)>30000){t.wanted=false;t.state="error";t.detail="Не удалось завершить запись; нажми продолжить"}
                     }
                 } else { t.state="downloading";t.detail="" }
             }
             engine?.let { e->tasks.values.filter { !it.wanted || it.id==exporting }.forEach { t->infos[t.id]?.let { e.handle(it)?.pause() } } }
         }
-        if(!active && metadataId==null){if(engine!=null)stopEngine();if(boundNetwork!=null){getSystemService(ConnectivityManager::class.java).bindProcessToNetwork(null);boundNetwork=null};if(foreground){foreground=false;stopForeground(STOP_FOREGROUND_REMOVE);stopSelf()}}
+        if(!active && metadataId==null){if(engine!=null)stopEngine();if(boundNetwork!=null){getSystemService(ConnectivityManager::class.java).bindProcessToNetwork(null);boundNetwork=null};if(foreground)main.post { if(!activeView && pendingStarts.get()==0 && foreground){foreground=false;stopForeground(STOP_FOREGROUND_REMOVE);stopSelf()} }}
         if(active && (net || exporting!=null) && foreground && wake?.isHeld==false)wake?.acquire(10*60*1000L)
         if((!active || !net && exporting==null) && wake?.isHeld==true)wake?.release()
         if(foreground){val t=tasks.values.firstOrNull { it.wanted || it.id==exporting };getSystemService(NotificationManager::class.java).notify(701,notification(t?.let { "${it.title}: ${if(it.total>0)it.done*100/it.total else 0}% · ${it.state}" } ?: "Ожидание"))}
@@ -246,7 +254,7 @@ class TorrentService:Service() {
             runCatching { worker.execute {
                 exporting=null
                 if(t.id in cancelled){t.wanted=false;if(t.state!="cancelled")t.state="paused"}
-                else result.onSuccess { t.state="complete";t.detail="Сохранено ${t.exported.size} файлов";t.wanted=false }
+                else result.onSuccess { t.state="complete";t.detail="Сохранено ${t.exported.size} файлов";t.wanted=false;payloadDir(t.id).deleteRecursively() }
                     .onFailure {t.wanted=false;t.state="error";t.detail="Не удалось сохранить в папку. Проверь доступ и место, затем продолжи"}
                 publish(true)
             } }
@@ -254,9 +262,10 @@ class TorrentService:Service() {
     }
     private fun pauseAll(reason:String){tasks.values.forEach { cancelled.add(it.id);it.wanted=false;if(it.state !in setOf("complete","cancelled")){it.state="paused";it.detail=reason} };metadataId?.let { pauseMetadata(it) };stopEngine()}
     private fun publish(save:Boolean) {
+        activeView=tasks.values.any { it.wanted } || exporting!=null
         tasks.values.forEach { details[it.id]=it.json(true).toString() };details.keys.retainAll(tasks.keys)
         view=JSONObject().put("tasks",JSONArray(tasks.values.map { it.json(false) })).put("settings",settings()).put("networkAllowed",allowed()).put("error",lastError).toString()
-        if(save){val bytes=JSONArray(tasks.values.map { it.json(true) }).toString().toByteArray();val stream=state.startWrite();try { stream.write(bytes);state.finishWrite(stream) }catch(e:Exception){state.failWrite(stream)}}
+        if(save){val saved=JSONArray(tasks.values.map { it.json(true) }).toString();if(saved!=lastSaved){val stream=state.startWrite();try { stream.write(saved.toByteArray());state.finishWrite(stream);lastSaved=saved }catch(e:Exception){state.failWrite(stream)}}}
         val n=callbacks.beginBroadcast();try { for(i in 0 until n)runCatching { callbacks.getBroadcastItem(i).changed(view) } }finally { callbacks.finishBroadcast() }
     }
     override fun onTimeout(startId:Int,fgsType:Int) {
@@ -264,7 +273,7 @@ class TorrentService:Service() {
         foreground=false;stopForeground(STOP_FOREGROUND_REMOVE);stopSelf()
     }
     override fun onDestroy(){
-        destroyed=true;metadataFuture?.cancel(true);metadataWorker.shutdownNow();exporter.shutdownNow()
+        destroyed=true;foreground=false;metadataFuture?.cancel(true);metadataWorker.shutdownNow();exporter.shutdownNow()
         worker.execute { runCatching { stopEngine() };callbacks.kill() };worker.shutdown()
         if(wake?.isHeld==true)wake?.release();getSystemService(ConnectivityManager::class.java).bindProcessToNetwork(null);super.onDestroy()
     }

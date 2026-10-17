@@ -30,20 +30,21 @@ There is no upload/ratio/seeding preference. The native session starts with fixe
 choking and zero upload slots, allowed-fast set disabled. The default LAN bypass
 is removed by applying only the global peer class for IPv4/IPv6/socket types.
 The same policy applies to magnet metadata sessions. Payload upload counters are
-checked; violation stops the engine. Completion pauses and closes the swarm.
+checked; violation stops the engine. Completion pauses and closes the swarm before copying to SAF.
 BitTorrent protocol/metadata/ACK traffic is still outbound; this is not zero
 outbound traffic or IP anonymity. No ratio spoofing, and private tracker rules
 are not bypassed; a source may refuse such a client.
 
 ## Runtime and storage
 
-Default: unmetered Wi-Fi, no roaming, configurable download cap and staging budget.
+Default: unmetered Wi-Fi/Ethernet, no roaming, configurable download cap and global staging budget. One payload transfer/export at a time. Sockets are pinned to the allowed network so Wi-Fi loss cannot silently reroute them through cellular. Unknown VPN transports are treated conservatively by the Wi-Fi-only policy.
 Android foreground dataSync service has visible progress/pause notification.
 No boot receiver. Android timeout pauses persistently and stops foreground work;
 resume is user initiated. No wakelock while waiting for permitted networking.
 Task/selection/output receipts survive process restart; partial content is
 rechecked on resume. Storage requires temporary plus exported copies. Completed
-temporary files can be removed through the task menu. OS may kill a service;
+payload staging is removed after successful export; cancelled/failed staging can
+be removed through the task menu. OS may kill a service;
 manual continuation reuses partial data. SAF permission loss/export failure
 keeps staging for retry. Downloading does not depend on keeping AFP open.
 
