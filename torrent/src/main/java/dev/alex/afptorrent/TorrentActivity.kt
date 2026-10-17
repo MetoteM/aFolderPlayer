@@ -17,6 +17,7 @@ class TorrentActivity:Activity() {
     private lateinit var rows:LinearLayout
     private lateinit var source:EditText
     private lateinit var destination:TextView
+    private lateinit var status:TextView
     private var snapshot=JSONObject()
     private var pendingSource:String?=null
     private var displayed=""
@@ -44,6 +45,7 @@ class TorrentActivity:Activity() {
         button(root,"Сеть, скорость и место") { settings() }
         button(root,"Добавить готовую папку в AFP") { importFolder() }
         button(root,"Лицензии") { AlertDialog.Builder(this).setTitle("libtorrent4j / libtorrent").setMessage(assets.open("LIBTORRENT_LICENSES.txt").bufferedReader().use { it.readText() }).setPositiveButton("Закрыть",null).show() }
+        status=TextView(this);root.addView(status)
         rows=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL };root.addView(rows)
         pendingSource=externalSource(intent)
         bound=bindService(Intent(this,TorrentService::class.java),connection,BIND_AUTO_CREATE)
@@ -64,6 +66,7 @@ class TorrentActivity:Activity() {
     }
     private fun prepare(input:String){if(input.isBlank())return message("Вставь magnet-ссылку или выбери .torrent");send("prepare",JSONObject().put("source",input),true)}
     private fun renderTasks() {
+        status.text=snapshot.optString("error")
         val settings=snapshot.optJSONObject("settings")?:JSONObject()
         destination.text="Папка: "+settings.optString("destination").ifBlank { "не выбрана" }
         val a=snapshot.optJSONArray("tasks")?:JSONArray()
@@ -96,10 +99,10 @@ class TorrentActivity:Activity() {
     }
     private fun settings() {
         val s=snapshot.optJSONObject("settings")?:JSONObject();val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(16),0,dp(16),0) }
-        val wifi=CheckBox(this).apply { text="Только Wi-Fi без оплаты за трафик";isChecked=s.optBoolean("wifiOnly",true) };box.addView(wifi)
+        val wifi=CheckBox(this).apply { text="Только Wi-Fi (не лимитное подключение)";isChecked=s.optBoolean("wifiOnly",true) };box.addView(wifi)
         val roaming=CheckBox(this).apply { text="Разрешить роуминг";isChecked=s.optBoolean("roaming",false) };box.addView(roaming)
         fun number(label:String,value:Int)=EditText(this).apply { hint=label;inputType=android.text.InputType.TYPE_CLASS_NUMBER;setText(value.toString());box.addView(TextView(this@TorrentActivity).apply { text=label });box.addView(this) }
-        val down=number("Скачивание, КиБ/с (0 — без лимита)",s.optInt("downKB",0));val max=number("Максимум выбранных файлов на задачу, МиБ",s.optInt("maxMB",2048))
+        val down=number("Скачивание, КиБ/с (0 — без лимита)",s.optInt("downKB",0));val max=number("Лимит временного места для всех задач, МиБ",s.optInt("maxMB",2048))
         box.addView(TextView(this).apply { text="Отдача аудиоданных отключена постоянно. Для загрузки нужно место и под временные данные, и под готовую копию. После проверки готовые файлы остаются в выбранной папке; временные удаляются через меню задачи." })
         AlertDialog.Builder(this).setTitle("Сеть и ограничения").setView(box).setPositiveButton("Сохранить") { _,_->send("settings",JSONObject().put("wifiOnly",wifi.isChecked).put("roaming",roaming.isChecked).put("downKB",down.text.toString().toIntOrNull()?:0).put("maxMB",max.text.toString().toIntOrNull()?:2048)) }.setNegativeButton("Отмена",null).show()
     }
@@ -107,7 +110,7 @@ class TorrentActivity:Activity() {
         val all=snapshot.optJSONArray("tasks")?:JSONArray();val trees=(0 until all.length()).map { all.getJSONObject(it) }.filter { it.optInt("exportedCount")>0 }.map { it.getString("tree") }.distinct()
         if(trees.isEmpty())return message("Пока нет сохранённых файлов")
         fun done(tree:String){
-            val uri=Uri.parse(tree);val result=Intent().setData(uri).setClipData(ClipData.newRawUri("Папка музыки",uri)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            val uri=Uri.parse(tree);val result=Intent().setData(uri).apply { clipData=ClipData.newRawUri("Папка музыки",uri);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) }
             if(callingActivity!=null){setResult(RESULT_OK,result);finish()}
             else { val pkg="dev.alex.folderplayer.torrentlab";if(packageManager.checkSignatures(packageName,pkg)!=PackageManager.SIGNATURE_MATCH)return message("Установи экспериментальный AFP из комплекта")
                 startActivity(result.setComponent(ComponentName(pkg,"dev.alex.folderplayer.MainActivity")).setAction("dev.alex.afp.IMPORT_TORRENT_FOLDER")) }

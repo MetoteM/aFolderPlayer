@@ -22,7 +22,7 @@ internal class TorrentTask(val id:String) {
             val f=o.optJSONArray("files")?:JSONArray();files=(0 until f.length()).map { f.getJSONObject(it).let { r->TorrentFile(r.getInt("index"),r.getString("path"),r.getLong("size"),r.getBoolean("audio")) } }
             val s=o.optJSONArray("selected")?:JSONArray();selected=(0 until s.length()).map { s.getInt(it) }.toSet()
             val e=o.optJSONArray("exported")?:JSONArray();(0 until e.length()).forEach { e.getJSONObject(it).let { r->exported[r.getInt("index")]=r.getString("uri") } }
-            if(state in setOf("metadata","exporting")){wanted=false;state="paused";detail="Продолжи задачу после перезапуска"}
+            if(wanted || state in setOf("metadata","exporting")){wanted=false;state="paused";detail="Продолжи задачу после перезапуска"}
         }
     }
 }

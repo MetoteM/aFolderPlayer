@@ -28,9 +28,12 @@ class TorrentService:Service() {
     private var metadataFuture:Future<*>?=null
     private var metadataId:String?=null
     private var metadataToken=""
+    private var metadataRun=""
+    private var boundNetwork:Network?=null
     @Volatile private var metadataSession:SessionManager?=null
     @Volatile private var view="{\"tasks\":[],\"settings\":{}}"
     @Volatile private var foreground=false
+    private var lastError=""
     private var exporting:String?=null
     private var ticks=0
     private lateinit var storage:File
@@ -47,7 +50,8 @@ class TorrentService:Service() {
             val input=runCatching { JSONObject(arguments) }.getOrElse { return "{\"error\":\"Некорректный запрос\"}" }
             val id=input.optString("id")
             if(operation in setOf("pause","cancel"))cancelled.add(id)
-            worker.execute { runCatching { execute(operation,input) }.onFailure { e ->
+            worker.execute { lastError="";runCatching { execute(operation,input) }.onFailure { e ->
+                if(tasks[id]==null)lastError=e.message?.takeIf { !it.contains("://") }?.take(180) ?: "Не удалось выполнить действие"
                 tasks[id]?.apply { wanted=false;state="error";detail=e.message?.takeIf { !it.contains("://") }?.take(180) ?: "Не удалось выполнить действие" }
             };publish(true) }
             return "{\"accepted\":true}"
@@ -71,7 +75,7 @@ class TorrentService:Service() {
         }
         foreground=true;startForeground(701,notification("Подготовка загрузки"))
         intent?.getStringExtra("operation")?.let { op->val arguments=intent.getStringExtra("arguments").orEmpty();if(arguments.length<=40000)binder.command(op,arguments) }
-        return START_STICKY
+        return START_NOT_STICKY
     }
     private fun notification(text:String):Notification {
         val open=PendingIntent.getActivity(this,0,Intent(this,TorrentActivity::class.java),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -82,7 +86,7 @@ class TorrentService:Service() {
     private fun allowed():Boolean {
         val cm=getSystemService(ConnectivityManager::class.java);val cap=cm.getNetworkCapabilities(cm.activeNetwork)
         val connected=cap?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)==true
-        val wifi=cap?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)==true || (cap?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)==false && !cm.isActiveNetworkMetered)
+        val wifi=cap?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)==true || cap?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)==true
         val roaming=if(Build.VERSION.SDK_INT>=28)cap!=null && !cap.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING) else cm.activeNetworkInfo?.isRoaming==true
         return TorrentRules.allowed(connected,wifi,cm.isActiveNetworkMetered,roaming,prefs.getBoolean("wifiOnly",true),prefs.getBoolean("roaming",false))
     }
@@ -106,7 +110,7 @@ class TorrentService:Service() {
                 val t=TorrentTask(UUID.randomUUID().toString());tasks[t.id]=t;jobDir(t.id).mkdirs()
                 try {
                     if(input.startsWith("magnet:?",true)){
-                        require(input.contains("xt=urn:btih:",true) || input.contains("xt=urn:btmh:",true)) { "Некорректная magnet-ссылка" }
+                        require(Uri.parse(input).getQueryParameters("xt").any { it.startsWith("urn:btih:",true) || it.startsWith("urn:btmh:",true) }) { "Некорректная magnet-ссылка" }
                         File(jobDir(t.id),"magnet").writeText(input);t.wanted=true;t.detail="Ожидание метаданных и доступных участников"
                     } else {
                         val uri=Uri.parse(input);require(uri.scheme=="content") { "Выбери .torrent через системное окно" }
@@ -155,7 +159,7 @@ class TorrentService:Service() {
     private fun pauseMetadata(id:String) { if(metadataId==id){metadataToken="";metadataFuture?.cancel(true)} }
     private fun beginMetadata(t:TorrentTask) {
         if(metadataId!=null)return
-        val token=UUID.randomUUID().toString();metadataToken=token;metadataId=t.id;t.state="metadata"
+        val token=UUID.randomUUID().toString();metadataToken=token;metadataRun=token;metadataId=t.id;t.state="metadata"
         metadataFuture=metadataWorker.submit {
             val session=SessionManager(false);metadataSession=session
             val result=runCatching {
@@ -168,7 +172,7 @@ class TorrentService:Service() {
             }
             runCatching { session.stop() };metadataSession=null
             runCatching { worker.execute {
-                metadataId=null;metadataFuture=null
+                if(metadataRun==token){metadataId=null;metadataFuture=null;metadataRun=""}
                 if(metadataToken==token && t.wanted)result.onSuccess { runCatching { acceptMetadata(t,it) }.onFailure { t.state="error";t.detail=it.message.orEmpty().take(180);t.wanted=false } }
                     .onFailure { t.state="error";t.detail="Метаданные не получены. Проверь сеть и доступность участников; затем повтори";t.wanted=false }
                 publish(true)
@@ -186,7 +190,12 @@ class TorrentService:Service() {
     }
     private fun stopEngine(){engine?.close();engine=null;flushStarted.clear();flushed.clear()}
     private fun tick() {
+        if(metadataFuture?.isCancelled==true && metadataSession==null){metadataId=null;metadataFuture=null;metadataRun=""}
         val net=allowed();val active=tasks.values.any { it.wanted } || exporting!=null
+        if(net && active){
+            val cm=getSystemService(ConnectivityManager::class.java);val current=cm.activeNetwork
+            if(current!=boundNetwork){check(cm.bindProcessToNetwork(current)) { "Не удалось закрепить разрешённую сеть" };boundNetwork=current}
+        }
         if(!net){
             if(engine!=null)stopEngine()
             metadataId?.let { pauseMetadata(it) }
@@ -200,11 +209,14 @@ class TorrentService:Service() {
                 val e=startEngine();e.session.downloadRateLimit(prefs.getInt("downKB",0)*1024)
                 var h=e.handle(info)
                 if(h==null){
-                    check(storage.usableSpace>(t.total-t.done).coerceAtLeast(0)+64*1024*1024) { "Недостаточно места для временных файлов" }
+                    val remaining=tasks.values.filter { it.wanted }.sumOf { (it.total-it.done).coerceAtLeast(0) }
+                    val staged=storage.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+                    check(staged+remaining+16*1024*1024 <= prefs.getInt("maxMB",2048)*1024L*1024) { "Превышен лимит временного места. Удали старые временные данные или увеличь лимит" }
+                    check(storage.usableSpace>remaining+64*1024*1024) { "Недостаточно места для временных файлов" }
                     e.add(info,payloadDir(t.id),t.selected);t.state="checking";continue
                 }
                 h.unsetFlags(TorrentFlags.AUTO_MANAGED);h.resume();e.session.resume()
-                val status=h.status(true);check(status.errorCode().value()==0) { "Ошибка чтения или записи торрент-файлов" }
+                val status=h.status(true);check(status.errorCode().value==0) { "Ошибка чтения или записи торрент-файлов" }
                 t.done=status.totalWantedDone();t.down=status.downloadRate();t.up=status.uploadRate();t.peers=status.numPeers();t.uploaded=status.totalPayloadUpload();check(t.uploaded==0L) { "Движок нарушил запрет отдачи; передача остановлена" }
                 if(status.isFinished){
                     if(t.exported.keys.containsAll(t.selected)){
@@ -220,7 +232,7 @@ class TorrentService:Service() {
             }
             engine?.let { e->tasks.values.filter { !it.wanted || it.id==exporting }.forEach { t->infos[t.id]?.let { e.handle(it)?.pause() } } }
         }
-        if(!active && metadataId==null){if(engine!=null)stopEngine();if(foreground){foreground=false;stopForeground(STOP_FOREGROUND_REMOVE);stopSelf()}}
+        if(!active && metadataId==null){if(engine!=null)stopEngine();if(boundNetwork!=null){getSystemService(ConnectivityManager::class.java).bindProcessToNetwork(null);boundNetwork=null};if(foreground){foreground=false;stopForeground(STOP_FOREGROUND_REMOVE);stopSelf()}}
         if(active && (net || exporting!=null) && foreground && wake?.isHeld==false)wake?.acquire(10*60*1000L)
         if((!active || !net && exporting==null) && wake?.isHeld==true)wake?.release()
         if(foreground){val t=tasks.values.firstOrNull { it.wanted || it.id==exporting };getSystemService(NotificationManager::class.java).notify(701,notification(t?.let { "${it.title}: ${if(it.total>0)it.done*100/it.total else 0}% · ${it.state}" } ?: "Ожидание"))}
@@ -243,7 +255,7 @@ class TorrentService:Service() {
     private fun pauseAll(reason:String){tasks.values.forEach { cancelled.add(it.id);it.wanted=false;if(it.state !in setOf("complete","cancelled")){it.state="paused";it.detail=reason} };metadataId?.let { pauseMetadata(it) };stopEngine()}
     private fun publish(save:Boolean) {
         tasks.values.forEach { details[it.id]=it.json(true).toString() };details.keys.retainAll(tasks.keys)
-        view=JSONObject().put("tasks",JSONArray(tasks.values.map { it.json(false) })).put("settings",settings()).put("networkAllowed",allowed()).toString()
+        view=JSONObject().put("tasks",JSONArray(tasks.values.map { it.json(false) })).put("settings",settings()).put("networkAllowed",allowed()).put("error",lastError).toString()
         if(save){val bytes=JSONArray(tasks.values.map { it.json(true) }).toString().toByteArray();val stream=state.startWrite();try { stream.write(bytes);state.finishWrite(stream) }catch(e:Exception){state.failWrite(stream)}}
         val n=callbacks.beginBroadcast();try { for(i in 0 until n)runCatching { callbacks.getBroadcastItem(i).changed(view) } }finally { callbacks.finishBroadcast() }
     }
@@ -254,6 +266,6 @@ class TorrentService:Service() {
     override fun onDestroy(){
         destroyed=true;metadataFuture?.cancel(true);metadataWorker.shutdownNow();exporter.shutdownNow()
         worker.execute { runCatching { stopEngine() };callbacks.kill() };worker.shutdown()
-        if(wake?.isHeld==true)wake?.release();super.onDestroy()
+        if(wake?.isHeld==true)wake?.release();getSystemService(ConnectivityManager::class.java).bindProcessToNetwork(null);super.onDestroy()
     }
 }

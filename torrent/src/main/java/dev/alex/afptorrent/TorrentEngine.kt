@@ -8,9 +8,9 @@ import org.libtorrent4j.swig.torrent_flags_t
 /** No Android dependency: exercised with real peers in the Linux JNI integration test. */
 internal class TorrentEngine {
     val session=SessionManager(false)
-    fun start() {
+    fun start(overrides:SettingsPack?=null) {
         if(session.isRunning)return
-        val settings=SettingsPack().connectionsLimit(60).activeDownloads(2).activeSeeds(0)
+        val settings=(overrides ?: SettingsPack()).connectionsLimit(60).activeDownloads(2).activeSeeds(0)
         settings.setMaxMetadataSize(TorrentRules.MAX_METADATA)
         settings.setBoolean(settings_pack.bool_types.enable_upnp.swigValue(),false)
         settings.setBoolean(settings_pack.bool_types.enable_natpmp.swigValue(),false)

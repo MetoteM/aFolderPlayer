@@ -26,7 +26,7 @@ class TorrentTransferTest {
    val files=engine.describe(info);val chosen=files.single { it.path.endsWith("owned-audio.mp3") }.index
    seed.start(SessionParams(isolated(49171)));seed.download(info,input.parentFile)
    waitFor { seed.find(info.infoHash())?.status(true)?.isSeeding==true }
-   engine.start();engine.session.applySettings(isolated(49172));TorrentEngine.noUploadPeers(engine.session)
+   engine.start(isolated(49172))
    val download=File(base,"download");engine.add(info,download,setOf(chosen));engine.session.resume()
    waitFor { engine.handle(info)!=null }
    var handle=engine.handle(info)!!;handle.unsetFlags(TorrentFlags.AUTO_MANAGED);handle.resume();handle.setDownloadLimit(128*1024)
@@ -34,7 +34,7 @@ class TorrentTransferTest {
    waitFor { handle.status(true).totalWantedDone()>16384 }
    handle.pause();engine.close()
    // Restart using the same verified metadata and partial files; recheck then finish.
-   engine.start();engine.session.applySettings(isolated(49172));TorrentEngine.noUploadPeers(engine.session)
+   engine.start(isolated(49172))
    engine.add(info,download,setOf(chosen));engine.session.resume();waitFor { engine.handle(info)!=null };handle=engine.handle(info)!!;handle.unsetFlags(TorrentFlags.AUTO_MANAGED);handle.resume()
    handle.swig().connect_peer(TcpEndpoint("127.0.0.1",49171).swig())
    waitFor { handle.status(true).isFinished };handle.flushCache()
@@ -47,7 +47,7 @@ class TorrentTransferTest {
    consumer.start(SessionParams(isolated(49173)));consumer.download(info,File(base,"consumer"));waitFor { consumer.find(info.infoHash())!=null }
    val other=consumer.find(info.infoHash())!!;other.unsetFlags(TorrentFlags.AUTO_MANAGED);other.resume()
    other.swig().connect_peer(TcpEndpoint("127.0.0.1",49172).swig())
-   waitFor { handle.status(true).numPeers()>0 }
+   waitFor { other.status(true).numPeers()>0 }
    val until=System.nanoTime()+35_000_000_000L
    while(System.nanoTime()<until){assertEquals("Payload upload is forbidden",0,handle.status(true).totalPayloadUpload());assertEquals(0,other.status(true).totalPayloadDownload());Thread.sleep(200)}
    handle.pause();assertEquals(0,handle.status(true).totalPayloadUpload())
