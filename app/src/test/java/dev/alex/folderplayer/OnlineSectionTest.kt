@@ -210,4 +210,36 @@ class OnlineSectionTest {
         } finally { ui.close();host.pause().stop().destroy() }
     }
 
+    @Test fun openingHiddenListDoesNotDispatchPlaybackAndStaleAdapterPositionsAreSafe() {
+        val host=Robolectric.buildActivity(Activity::class.java).setup()
+        val context=host.get();OnlineLibraryStore(context).setSession("hidden-browse")
+        OnlineLibraryActions(context).set("hidden",JSONArray("""[{"id":"999","title":"Hidden","artist":"A","duration":45000}]"""),true)
+        val api=object:OnlineCatalogue {
+            override fun installed()=true
+            override fun request(operation:String,argument:String)=when(operation) {
+                "status"->JSONObject().put("connected",true).put("sessionKey","hidden-browse")
+                "collectionPage"->JSONObject().put("tracks",JSONArray((1..50).map { JSONObject().put("id",it).put("title","Song $it") }))
+                else->error("Unexpected network request")
+            }
+        }
+        val service=Robolectric.buildService(PlaybackService::class.java).create()
+        val player=PlaybackService::class.java.getDeclaredField("player").apply { isAccessible=true }.get(service.get()) as androidx.media3.common.Player
+        player.setMediaItems(OnlinePlayback.items("""[{"id":"1","title":"Playing"},{"id":"2","title":"Next"}]"""));player.seekTo(0,1234);player.playWhenReady=true
+        val ui=OnlineSection(context,{ _,_,_,_->throw AssertionError("Browsing hidden must never alter playback") },api,Direct())
+        try {
+            ui.show();idle();val root=ShadowDialog.getLatestDialog().window!!.decorView
+            val list=all(root).filterIsInstance<ListView>().single();assertEquals(50,list.count)
+            list.setSelection(49)
+            all(root).filterIsInstance<Button>().single { it.contentDescription=="⋮" }.performClick()
+            val menu=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog().listView
+            menu.performItemClick(menu.adapter.getView(1,null,menu),1,1);idle()
+            assertEquals(1,list.count);assertFalse(context.isFinishing)
+            assertEquals("Hidden",(list.adapter.getItem(0) as JSONObject).getString("title"))
+            // An OEM ListView can request a previously visible position during the switch.
+            assertNotNull(list.adapter.getView(49,null,list));assertEquals(-1L,list.adapter.getItemId(49));assertNull(list.adapter.getItem(49))
+            assertEquals(setOf("999"),OnlineLibraryActions(context).ids("hidden"))
+            assertEquals(2,player.mediaItemCount);assertEquals(0,player.currentMediaItemIndex);assertEquals(1234L,player.currentPosition);assertTrue(player.playWhenReady)
+        } finally { ui.close();service.destroy();host.pause().stop().destroy() }
+    }
+
 }

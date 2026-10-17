@@ -83,6 +83,7 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        CrashNotes.install(this)
         if (prefs.getInt("eqFormatVersion", 0) < 2) {
             val edit =
                 prefs

@@ -115,6 +115,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
+        CrashNotes.install(this)
         val retained = lastNonConfigurationInstance as? MainOperations
         translationWork = retained?.translation ?: RetainedOperation()
         lyricsWork = retained?.lyrics ?: RetainedOperation()
@@ -1243,6 +1244,7 @@ class MainActivity : Activity() {
                 "Расширения",
                 "О приложении",
                 "История текстов",
+                "Диагностика последнего сбоя",
             )
         optionMenu(this, "Настройки", names) { i ->
             when (i) {
@@ -1287,6 +1289,7 @@ class MainActivity : Activity() {
                         .show()
                 5 -> extensions()
                 6 -> about()
+                8 -> CrashNotes.show(this)
             }
         }
     }
@@ -1472,7 +1475,7 @@ class MainActivity : Activity() {
         stopDirectLyrics()
         SongMenu.show(this, track.title, track.uri.startsWith("afp-yandex://")) { action ->
             when (action) {
-                SongMenu.Action.SAVE_MP3 -> YandexSaveActivity.open(this,track.uri,track.title,track.artist)
+                SongMenu.Action.SAVE_MP3 -> YandexSaveActivity.open(this,track.uri,track.title,track.artist,controller?.currentMediaItem?.takeIf { it.mediaId==track.uri }?.mediaMetadata?.artworkUri?.toString().orEmpty())
                 SongMenu.Action.SHARE -> YandexTrackShare.show(this,track.uri,track.title)
                 SongMenu.Action.SEARCH -> {
                     showPage("lyrics")

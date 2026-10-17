@@ -67,10 +67,10 @@ internal class OnlineSection(
     private val buttons=mutableListOf<Button>()
     private val adapter=object:BaseAdapter() {
         override fun getCount()=shown.size
-        override fun getItem(position:Int)=shown[position].song
-        override fun getItemId(position:Int)=shown[position].sourceIndex.toLong()
+        override fun getItem(position:Int)=shown.getOrNull(position)?.song
+        override fun getItemId(position:Int)=shown.getOrNull(position)?.sourceIndex?.toLong() ?: -1L
         override fun getView(position:Int,convertView:View?,parent:ViewGroup):View {
-            val entry=shown[position];val song=entry.song
+            val entry=shown.getOrNull(position) ?: return TextView(host).apply { layoutParams=AbsListView.LayoutParams(-1,1) };val song=entry.song
             val row=LinearLayout(host).apply { orientation=LinearLayout.HORIZONTAL;gravity=android.view.Gravity.CENTER_VERTICAL;setPadding(8,8,8,8) }
             if(!playlistMode) row.addView(CheckBox(host).apply {
                 isChecked=entry.sourceIndex in selected;isEnabled=!busy;contentDescription="Выбрать ${song.optString("title")}"
@@ -171,12 +171,20 @@ internal class OnlineSection(
         generation++;operation=op;sourceId=id;sourceTitle=label;selected.clear();selecting=false
         rows=JSONArray();data=JSONObject().put("tracks",rows);playlistMode=op=="playlists";search.setText("")
         render()
-        if(op in listOf("favorites","hidden")) { apply(JSONObject().put("tracks",decisions.rows(op)));return }
         val token=generation;val key=cacheKey();busy=true;status.text="Загрузка…";retry.visibility=View.GONE;update()
         pending=worker.submit {
             if(closed || token!=generation || Thread.currentThread().isInterrupted)return@submit
-            val cached=if(op in listOf("collectionPage","playlistPage"))store.read(key) else null
-            main.post { if(!closed && token==generation) { busy=false;if(cached!=null)apply(cached) else fetch(0,false) } }
+            val result=runCatching {
+                when(op) {
+                    "favorites","hidden"->JSONObject().put("tracks",decisions.rows(op))
+                    "collectionPage","playlistPage"->store.read(key)
+                    else->null
+                }
+            }
+            main.post { if(!closed && token==generation) {
+                busy=false
+                result.onSuccess { cached -> runCatching { if(cached!=null)apply(cached) else fetch(0,false) }.onFailure { fail(it) } }.onFailure { fail(it) }
+            } }
         }
     }
     private fun checkStatus() {
@@ -233,6 +241,7 @@ internal class OnlineSection(
         updateSelection()
     }
     private fun fail(error:Throwable) {
+        CrashNotes.record(host,error)
         status.text="Не удалось загрузить: "+(error.message?.take(180) ?: "неизвестная ошибка")
         retry.visibility=View.VISIBLE;update()
         // Keep one inline error and retry; repeated taps must not stack modal windows.
@@ -240,9 +249,9 @@ internal class OnlineSection(
     private fun toggle(index:Int) { if(!selected.add(index))selected.remove(index);render() }
     private fun sourceMenu() {
         val menuGeneration=generation
-        AlertDialog.Builder(host).setTitle("Онлайн-библиотека").setItems(arrayOf("Избранное в плеере","Скрытые в плеере","Обновить список","Сеть и качество")) { _,i ->
+        AlertDialog.Builder(host).setTitle("Онлайн-библиотека").setItems(arrayOf("Избранное в плеере","Скрытые в плеере","Обновить список","Сеть и качество","Диагностика последнего сбоя")) { _,i ->
             if(busy || menuGeneration!=generation || (suspended || dialog?.isShowing!=true))return@setItems
-            when(i) { 0->choose("favorites","","Избранное в плеере");1->choose("hidden","","Скрытые в плеере");2->if(operation in listOf("favorites","hidden"))choose(operation,"",sourceTitle) else fetch(0,true);3->OnlineSettings(host).show(host) }
+            when(i) { 0->choose("favorites","","Избранное в плеере");1->choose("hidden","","Скрытые в плеере");2->if(operation in listOf("favorites","hidden"))choose(operation,"",sourceTitle) else fetch(0,true);3->OnlineSettings(host).show(host);4->CrashNotes.show(host) }
         }.show()
     }
     private fun selectedRows():JSONArray=JSONArray(shown.filter { it.sourceIndex in selected }.map { it.song })
@@ -265,7 +274,7 @@ internal class OnlineSection(
                 5->changeDecision("favorites",true)
                 6->changeDecision("favorites",false)
                 7->changeDecision("hidden",operation!="hidden")
-                9->selectedRows().optJSONObject(0)?.let { YandexSaveActivity.open(host,"afp-yandex://track/${it.optString("id")}",it.optString("title"),it.optString("artist")) }
+                9->selectedRows().optJSONObject(0)?.let { YandexSaveActivity.open(host,"afp-yandex://track/${it.optString("id")}",it.optString("title"),it.optString("artist"),it.optString("cover")) }
                 8->selectedRows().optJSONObject(0)?.let { YandexTrackShare.show(host,"afp-yandex://track/${it.optString("id")}",it.optString("title")) }
             }
         }.setNegativeButton("Закрыть",null).show()

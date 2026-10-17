@@ -8,7 +8,7 @@ import org.json.JSONObject
 internal class OnlineLibraryActions(context:Context) {
     private val store=OnlineLibraryStore(context)
     private val prefs=context.getSharedPreferences("online_actions",Context.MODE_PRIVATE)
-    fun ids(kind:String):Set<String> = prefs.getStringSet(kind,emptySet()).orEmpty().toSet()
+    fun ids(kind:String):Set<String> = (prefs.all[kind] as? Set<*>)?.filterIsInstance<String>()?.toSet().orEmpty()
     fun contains(kind:String,id:String)=id in ids(kind)
     fun rows(kind:String):JSONArray=store.read(kind)?.optJSONArray("tracks") ?: JSONArray()
     fun set(kind:String,rows:JSONArray,enabled:Boolean) = synchronized(lock) {

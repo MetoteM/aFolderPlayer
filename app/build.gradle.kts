@@ -5,7 +5,7 @@ android {
  namespace = "dev.alex.folderplayer"
  compileSdk = 36
  buildToolsVersion = "36.0.0"
- defaultConfig { applicationId = "dev.alex.folderplayer"; minSdk = 26; targetSdk = 36; versionCode = 49; versionName = "0.8.4-yandex.8"; ndk { abiFilters += "arm64-v8a" } }
+ defaultConfig { applicationId = "dev.alex.folderplayer"; minSdk = 26; targetSdk = 36; versionCode = 50; versionName = "0.8.4-yandex.9"; ndk { abiFilters += "arm64-v8a" } }
  signingConfigs { create("personalRelease") {
   storeFile = rootProject.file("signing/folder-player.p12")
   storePassword = signingProps.getProperty("storePassword")

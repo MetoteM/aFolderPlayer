@@ -20,7 +20,9 @@ class YandexSaveActivity:Activity() {
     @Volatile private var closed=false
     @Volatile private var connection:HttpURLConnection?=null
     private var destination:Uri?=null
-    private var completed=false
+    @Volatile private var completed=false
+    private var missingCover=false
+    private var coverEmbedded=false
     private lateinit var status:TextView
     private lateinit var progress:ProgressBar
     private lateinit var cancel:Button
@@ -75,6 +77,18 @@ class YandexSaveActivity:Activity() {
                     }
                 } finally { c.disconnect();connection=null }
                 checkActive()
+                runOnUiThread { if(!closed) { status.text="Добавляем обложку и теги…";progress.isIndeterminate=true } }
+                val coverUrl=intent.getStringExtra("cover").orEmpty()
+                val bitmap=if(coverUrl.isBlank())null else OnlineArtwork(this).load(coverUrl)
+                val cover=bitmap?.let { image -> java.io.ByteArrayOutputStream().use { bytes -> image.compress(android.graphics.Bitmap.CompressFormat.JPEG,90,bytes);bytes.toByteArray() } }
+                bitmap?.recycle();checkActive()
+                val tagged=File.createTempFile("ym-tags-",".part",cacheDir)
+                try {
+                    val hasCover=Mp3Tags.write(temp!!,tagged,intent.getStringExtra("title").orEmpty(),intent.getStringExtra("artist").orEmpty(),cover) { !cancelled && !closed }
+                    coverEmbedded=hasCover;missingCover=coverUrl.isNotBlank() && !hasCover
+                    temp!!.delete();temp=tagged
+                } catch(e:Exception) { tagged.delete();throw e }
+                runOnUiThread { if(!closed)status.text="Записываем файл в выбранное место…" }
                 contentResolver.openOutputStream(uri,"wt")?.use { output ->
                     temp!!.inputStream().use { input ->
                         val bytes=ByteArray(32768)
@@ -89,7 +103,7 @@ class YandexSaveActivity:Activity() {
             runOnUiThread {
                 if(!closed) {
                     window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                    if(result.isSuccess) { Toast.makeText(this,"MP3 сохранён в выбранное место",Toast.LENGTH_LONG).show();finish() }
+                    if(result.isSuccess) { Toast.makeText(this,if(missingCover)"MP3 сохранён с тегами, но обложку загрузить не удалось" else if(coverEmbedded)"MP3 сохранён с тегами и обложкой" else "MP3 сохранён с тегами",Toast.LENGTH_LONG).show();finish() }
                     else if(cancelled) { Toast.makeText(this,"Сохранение отменено",Toast.LENGTH_SHORT).show();finish() }
                     else {
                         val e=result.exceptionOrNull()
@@ -108,9 +122,13 @@ class YandexSaveActivity:Activity() {
     private fun stop() { cancelled=true;connection?.disconnect() }
     override fun onDestroy() { closed=true;stop();worker.shutdown();super.onDestroy() }
     companion object {
-        fun open(host:Activity,mediaId:String,title:String,artist:String="") {
+        fun open(host:Activity,mediaId:String,title:String,artist:String="",cover:String="") {
             if(OnlinePlayback.trackId(Uri.parse(mediaId))==null)return
-            host.startActivity(Intent(host,YandexSaveActivity::class.java).putExtra("mediaId",mediaId).putExtra("title",title)
+            val id=OnlinePlayback.trackId(Uri.parse(mediaId))!!
+            val rows=if(cover.isBlank())OnlineLibraryStore(host).read("playing")?.optJSONArray("tracks") else null
+            val cached=(0 until (rows?.length() ?: 0)).firstNotNullOfOrNull { i -> rows?.optJSONObject(i)?.takeIf { it.optString("id")==id } }
+            val artwork=cover.ifBlank { cached?.optString("cover").orEmpty() }
+            host.startActivity(Intent(host,YandexSaveActivity::class.java).putExtra("mediaId",mediaId).putExtra("title",title).putExtra("artist",artist).putExtra("cover",artwork)
                 .putExtra("filename",listOf(artist,title).filter { it.isNotBlank() }.joinToString(" — ")))
         }
     }
