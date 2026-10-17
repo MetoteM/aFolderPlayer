@@ -5,7 +5,7 @@ android {
  namespace = "dev.alex.folderplayer"
  compileSdk = 36
  buildToolsVersion = "36.0.0"
- defaultConfig { applicationId = "dev.alex.folderplayer"; minSdk = 26; targetSdk = 36; versionCode = 41; versionName = "0.8.3"; ndk { abiFilters += "arm64-v8a" } }
+ defaultConfig { applicationId = "dev.alex.folderplayer"; minSdk = 26; targetSdk = 36; versionCode = 52; versionName = "0.9.0"; ndk { abiFilters += "arm64-v8a" } }
  signingConfigs { create("personalRelease") {
   storeFile = rootProject.file("signing/folder-player.p12")
   storePassword = signingProps.getProperty("storePassword")
@@ -13,7 +13,7 @@ android {
   keyPassword = signingProps.getProperty("storePassword")
   storeType = "PKCS12"
  } }
- buildTypes { getByName("release") { if(rootProject.file("signing/folder-player.p12").exists())signingConfig = signingConfigs.getByName("personalRelease"); isMinifyEnabled = false } }
+ buildTypes { getByName("debug") { applicationIdSuffix = ".yandexlab" }; getByName("release") { if(rootProject.file("signing/folder-player.p12").exists())signingConfig = signingConfigs.getByName("personalRelease"); isMinifyEnabled = false } }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  buildFeatures { aidl = true }
  kotlinOptions { jvmTarget = "17" }

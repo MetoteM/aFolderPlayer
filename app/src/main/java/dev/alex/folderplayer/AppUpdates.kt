@@ -40,6 +40,9 @@ internal class AppUpdates(
             return value.split('.').map { it.toIntOrNull() ?: return null }
         }
 
+        fun releaseCandidateBase(value:String):String? = Regex("""([0-9]+\.[0-9]+\.[0-9]+)-rc\.[1-9][0-9]*""").matchEntire(value)?.groupValues?.get(1)
+        fun installedVersionParts(value:String):List<Int>? = version(value) ?: releaseCandidateBase(value)?.let(::version)
+
         fun compare(a: List<Int>, b: List<Int>): Int {
             for (i in 0..2) {
                 val c = a[i].compareTo(b[i])
@@ -72,7 +75,7 @@ internal class AppUpdates(
         }
 
         fun candidate(bytes: ByteArray, current: String): Release? {
-            val installed = version(current) ?: error("Не удалось определить установленную версию")
+            val installed = installedVersionParts(current) ?: error("Не удалось определить установленную версию")
             val releases = JSONArray(String(bytes, Charsets.UTF_8))
             var best: Release? = null
             for (i in 0 until releases.length()) {
@@ -88,7 +91,7 @@ internal class AppUpdates(
                 val name = tag.removePrefix("v")
                 val v = version(name) ?: continue
                 if (
-                    compare(v, installed) <= 0 ||
+                    (compare(v, installed) < 0 || (compare(v, installed)==0 && releaseCandidateBase(current)==null)) ||
                         best?.let { compare(v, version(it.version)!!) <= 0 } == true
                 )
                     continue
@@ -177,7 +180,7 @@ internal class AppUpdates(
 
     @Suppress("DEPRECATION")
     private fun installedExtensions(): Map<String, ExtensionUpdates.Installed> =
-        listOf(ExtensionModules.translation)
+        ExtensionModules.all
             .mapNotNull { module ->
                 runCatching {
                         val info = host.packageManager.getPackageInfo(module.pkg, 0)
@@ -232,7 +235,7 @@ internal class AppUpdates(
                     .getOrNull()
                     ?.let { result ->
                         ExtensionUpdates.plan(
-                            result.catalog.entries.filter { it.kind != "online" },
+                            result.catalog.entries,
                             installed,
                             models,
                             code,

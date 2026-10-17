@@ -5,7 +5,7 @@ android {
  namespace = "dev.alex.afponline"
  compileSdk = 36
  buildToolsVersion = "36.0.0"
- defaultConfig { applicationId = "dev.alex.afponline"; minSdk = 26; targetSdk = 36; versionCode = 1; versionName = "0.1.0"; ndk { abiFilters += "arm64-v8a" } }
+ defaultConfig { applicationId = "dev.alex.afponline"; minSdk = 26; targetSdk = 36; versionCode = 13; versionName = "0.2.1"; ndk { abiFilters += "arm64-v8a" } }
  signingConfigs { create("personalRelease") {
   storeFile = rootProject.file("signing/folder-player.p12")
   storePassword = signingProps.getProperty("storePassword")
@@ -13,7 +13,7 @@ android {
   keyPassword = signingProps.getProperty("storePassword")
   storeType = "PKCS12"
  } }
- buildTypes { getByName("release") { if(rootProject.file("signing/folder-player.p12").exists())signingConfig = signingConfigs.getByName("personalRelease"); isMinifyEnabled = false } }
+ buildTypes { getByName("debug") { applicationIdSuffix = ".yandexlab" }; getByName("release") { if(rootProject.file("signing/folder-player.p12").exists())signingConfig = signingConfigs.getByName("personalRelease"); isMinifyEnabled = false } }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  buildFeatures { aidl = true }
  kotlinOptions { jvmTarget = "17" }
@@ -21,5 +21,7 @@ android {
 }
 dependencies {
  testImplementation("junit:junit:4.13.2")
+ testImplementation("org.json:json:20240303")
+ testImplementation("org.robolectric:robolectric:4.14.1")
 }
 

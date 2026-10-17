@@ -18,11 +18,14 @@ internal object LocalAudio {
         durationMs: Long,
         checkActive: () -> Unit,
     ): ShortArray {
-        require(uri.startsWith("content:") || uri.startsWith("file:")) { "Нужен локальный файл" }
+        val remote=OnlineArtwork.valid(uri)!=null
+        require(uri.startsWith("content:") || uri.startsWith("file:") || remote) { "Неподдерживаемый источник аудио" }
+        if(remote)OnlineSettings(context).requireNetwork()
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
         try {
-            extractor.setDataSource(context, Uri.parse(uri), null)
+            if(remote)extractor.setDataSource(uri, emptyMap<String,String>())
+            else extractor.setDataSource(context, Uri.parse(uri), null)
             val track =
                 (0 until extractor.trackCount).firstOrNull {
                     extractor
@@ -52,6 +55,7 @@ internal object LocalAudio {
             val deadline = SystemClock.elapsedRealtime() + 45000
             while (!ended && count < output.size) {
                 checkActive()
+                if(remote)OnlineSettings(context).requireNetwork()
                 check(SystemClock.elapsedRealtime() < deadline) {
                     "Чтение фрагмента заняло слишком долго"
                 }

@@ -14,6 +14,7 @@ internal class SongContent(context: Context) {
             LyricsDocument(it)
             return it
         }
+        if(track.uri.startsWith("afp-yandex://") && prefs.getString("lyrics:${track.uri}",null)==null) return null
         val attached = prefs.getString("lyrics:${track.uri}", null)
         val source =
             attached?.let { Uri.parse(it) }

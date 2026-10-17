@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+ <uses-permission android:name="dev.alex.afponline.yandexlab.USE_ONLINE" />
+ <queries><package android:name="dev.alex.afponline.yandexlab" /></queries>
+ <application android:label="aFolderPlayer · Яндекс тест" tools:replace="android:label" />
+</manifest>

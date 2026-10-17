@@ -1,0 +1,22 @@
+{
+  "source_commit": "b53e65cd4d9316c183392118e0a9d9615dac8cf2",
+  "certificate_sha256": "36efde603967282debd976200c92acf46b68144b2704d61930ebdd9c171302cd",
+  "apks": [
+    {
+      "name": "AFP_Online_0.1.2.apk",
+      "size": 660815,
+      "sha256": "5c11e377005a4c6c888aaeeb556c0578f077f110a55d0b11ccf7424b15850a4b",
+      "package": "dev.alex.afponline",
+      "version_code": 3,
+      "version_name": "0.1.2",
+      "parts": [
+        "deployment/releases/0.8.3-preview.3/online.apk.gz"
+      ],
+      "compression": "gzip",
+      "compressed_sha256": "db1099b5fd46d33b0c963d2d56c28fd1b862b8e4144315af832948aa29e2356d"
+    }
+  ],
+  "models": [],
+  "release_status": "prerelease",
+  "validation": "source-CI-and-signature; live-music-API-pending"
+}

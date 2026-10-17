@@ -24,6 +24,7 @@ internal class ExtensionManager(
     private val message: (String) -> Unit,
     private val importModel: () -> Unit,
     private val changed: () -> Unit = {},
+    private val online: () -> Unit = {},
     private val updates: () -> Unit = {},
 ) {
     companion object {
@@ -57,6 +58,7 @@ internal class ExtensionManager(
         choices.add("Скачать расширения")
         choices.add("Проверить обновления")
         choices.add("Источник загрузки")
+        choices.add("Онлайн")
         choices.add("Установить переводчик из файла")
         if (installed) {
             choices.add("Пакет для отдельных документов")
@@ -80,6 +82,7 @@ internal class ExtensionManager(
                 "Скачать расширения" -> fetchCatalog()
                 "Проверить обновления" -> updates()
                 "Источник загрузки" -> address()
+                "Онлайн" -> online()
                 "Установить переводчик из файла" ->
                     host.startActivityForResult(
                         Intent(Intent.ACTION_OPEN_DOCUMENT)
@@ -328,6 +331,10 @@ internal class ExtensionManager(
     }
 
     private fun confirm(base: java.net.URI, entry: ExtensionCatalog.Entry) {
+        if(!ExtensionUpdates.compatible(entry)) {
+            message("В источнике нет совместимой версии расширения. Проверь обновления или выбери другой источник")
+            return
+        }
         @Suppress("DEPRECATION")
         val installedCode =
             runCatching {
@@ -487,6 +494,7 @@ internal class ExtensionManager(
         require(expectedVersion == null || info.versionName == expectedVersion) {
             "Версия APK не соответствует каталогу"
         }
+        require(info.versionCode.toLong()>=module.minimumCode) { "Версия расширения несовместима с этим плеером" }
         require(info.packageName == module.pkg) { "Это не ${module.title}" }
         val own = pm.getPackageInfo(host.packageName, PackageManager.GET_SIGNATURES)
         require(

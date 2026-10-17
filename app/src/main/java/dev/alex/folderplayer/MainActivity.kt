@@ -118,6 +118,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
+        CrashNotes.install(this)
         val retained = lastNonConfigurationInstance as? MainOperations
         translationWork = retained?.translation ?: RetainedOperation()
         lyricsWork = retained?.lyrics ?: RetainedOperation()
@@ -156,7 +157,7 @@ class MainActivity : Activity() {
                     }
 
                     override fun toggle() {
-                        controller?.let { if (it.isPlaying) it.pause() else it.play() }
+                        controller?.let { if (it.isPlaying) it.pause() else { if(it.playbackState==Player.STATE_IDLE)it.prepare();it.play() } }
                         updatePlayer()
                     }
 
@@ -181,7 +182,12 @@ class MainActivity : Activity() {
 
                     override fun favorite() {
                         currentTrack()?.let {
-                            library.toggleFavorite(it)
+                            val item=controller?.currentMediaItem
+                            val online=item?.let { media -> OnlineQueueMetadata.row(media) }
+                            if(online!=null) {
+                                val actions=OnlineLibraryActions(this@MainActivity)
+                                actions.set("favorites",org.json.JSONArray().put(online),!actions.contains("favorites",online.optString("id")))
+                            } else library.toggleFavorite(it)
                             render()
                             updatePlayer()
                         }
@@ -312,6 +318,10 @@ class MainActivity : Activity() {
         layout.addView(browserTitle)
         browserCount = label("", 13f).apply { setTextColor(PlayerScreens.muted) }
         layout.addView(browserCount)
+        val sources = row()
+        sources.addView(button("На устройстве") { selectedPlaylist=null;render() },weight())
+        sources.addView(button("Яндекс Музыка") { onlineSection.show() },weight())
+        layout.addView(sources)
         val tools = row()
         moreTools = row()
         fun command(kind: IconButton.Kind, label: String, action: () -> Unit) =
@@ -427,7 +437,7 @@ class MainActivity : Activity() {
         val controls = row()
         controls.addView(button("⏮") { controller?.seekToPreviousMediaItem() }, weight())
 
-        play = button("▶") { controller?.let { if (it.isPlaying) it.pause() else it.play() } }
+        play = button("▶") { controller?.let { if (it.isPlaying) it.pause() else { if(it.playbackState==Player.STATE_IDLE)it.prepare();it.play() } } }
         controls.addView(play, weight())
         controls.addView(button("⏭") { controller?.seekToNextMediaItem() }, weight())
         layout.addView(controls)
@@ -447,9 +457,9 @@ class MainActivity : Activity() {
                                     }
 
                                     override fun onPlayerError(error: PlaybackException) {
-                                        toast(
-                                            "Не удалось воспроизвести файл: ${error.errorCodeName}"
-                                        )
+                                        val onlineError = generateSequence(error as Throwable?) { it.cause }
+                                            .take(8).filterIsInstance<OnlinePlayback.Problem>().firstOrNull()
+                                        toast(onlineError?.message ?: "Не удалось воспроизвести трек: ${error.errorCodeName}")
                                     }
                                 }
                             )
@@ -656,9 +666,10 @@ class MainActivity : Activity() {
 
     private fun removeUnavailableFromQueue() {
         val playable = library.playableTracks().map { it.uri }.toSet()
+        val onlineHidden=OnlineLibraryActions(this).ids("hidden")
         controller?.let { c ->
             for (index in c.mediaItemCount - 1 downTo 0) {
-                if (c.getMediaItemAt(index).mediaId !in playable) c.removeMediaItem(index)
+                if (!QueueEligibility.playable(c.getMediaItemAt(index).mediaId,playable,onlineHidden)) c.removeMediaItem(index)
             }
         }
     }
@@ -695,6 +706,7 @@ class MainActivity : Activity() {
             return
         }
         val c = controller ?: return toast("Плеер ещё подключается")
+        prefs.edit().putBoolean("onlinePlayerOrigin",false).apply()
         sendPlaybackCommand(
             c,
             PlaybackCommands.START_QUEUE,
@@ -766,15 +778,17 @@ class MainActivity : Activity() {
         if (!screenStarted) return
         val c = controller ?: return
         highlightTrack(false)
-        now.text = c.mediaMetadata.title?.toString() ?: "Выбери песню"
+        now.text = c.currentMediaItem?.mediaMetadata?.title?.toString() ?: "Выбери песню"
         play.text = if (c.isPlaying) "❚❚" else "▶"
-        val d = c.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0
+        val d = c.duration.takeIf { it != C.TIME_UNSET && it > 0 }
+            ?: c.currentMediaItem?.mediaMetadata?.extras?.getLong("onlineDuration") ?: 0L
         position.text =
             getString(
                 dev.alex.folderplayer.R.string.duration_format,
                 clock(c.currentPosition),
                 clock(d),
             )
+        onlineSection.updateNowPlaying(now.text.toString(),position.text.toString())
         if (!dragging)
             seek.progress =
                 if (d > 0) (c.currentPosition * 1000 / d).toInt().coerceIn(0, 1000) else 0
@@ -790,7 +804,8 @@ class MainActivity : Activity() {
                     .joinToString(" · "),
                 prefs.getString("queueSource", "").orEmpty().ifBlank { "Библиотека" },
                 c.isPlaying,
-                id != null && id in library.playlist("Избранное"),
+                if(id?.startsWith("afp-yandex://")==true) OnlineLibraryActions(this).contains("favorites",Uri.parse(id).lastPathSegment.orEmpty())
+                else id != null && id in library.playlist("Избранное"),
                 c.repeatMode,
                 c.currentPosition,
                 d,
@@ -809,7 +824,7 @@ class MainActivity : Activity() {
                         item.mediaId,
                         local?.title ?: item.mediaMetadata.title?.toString().orEmpty(),
                         local?.artist ?: item.mediaMetadata.artist?.toString().orEmpty(),
-                        local?.duration ?: 0,
+                        local?.duration ?: item.mediaMetadata.extras?.getLong("onlineDuration") ?: 0L,
                     )
                 }
             screens.setQueue(entries)
@@ -1161,6 +1176,7 @@ class MainActivity : Activity() {
     }
 
     private fun addToPlaylists(track: Track) {
+        if(track.uri.startsWith("afp-yandex://")) { toast("Смешанные сохраняемые плейлисты — следующий этап. Избранное доступно кнопкой ♥");return }
         val names = (listOf("Избранное") + library.playlistNames()).distinct()
         val checked = names.map { track.uri in library.playlist(it) }.toBooleanArray()
         AlertDialog.Builder(this)
@@ -1290,6 +1306,7 @@ class MainActivity : Activity() {
                 "Расширения",
                 "О приложении",
                 "История текстов",
+                "Диагностика последнего сбоя",
             )
         optionMenu(this, "Настройки", names) { i ->
             when (i) {
@@ -1334,6 +1351,7 @@ class MainActivity : Activity() {
                         .show()
                 5 -> extensions()
                 6 -> about()
+                8 -> CrashNotes.show(this)
             }
         }
     }
@@ -1517,8 +1535,10 @@ class MainActivity : Activity() {
 
     private fun currentSongMenu(track: Track) {
         stopDirectLyrics()
-        SongMenu.show(this, track.title) { action ->
+        SongMenu.show(this, track.title, track.uri.startsWith("afp-yandex://")) { action ->
             when (action) {
+                SongMenu.Action.SAVE_MP3 -> YandexSaveActivity.open(this,track.uri,track.title,track.artist,controller?.currentMediaItem?.takeIf { it.mediaId==track.uri }?.mediaMetadata?.artworkUri?.toString().orEmpty())
+                SongMenu.Action.SHARE -> YandexTrackShare.show(this,track.uri,track.title)
                 SongMenu.Action.SEARCH -> {
                     showPage("lyrics")
                     directLyrics(track)
@@ -1576,7 +1596,16 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun currentTrack() = tracks.find { it.uri == controller?.currentMediaItem?.mediaId }
+    private val artworkWorker=java.util.concurrent.Executors.newSingleThreadExecutor()
+
+    private fun currentTrack(): Track? {
+        val item=controller?.currentMediaItem ?: return null
+        tracks.find { it.uri==item.mediaId }?.let { return it }
+        if(OnlinePlayback.trackId(Uri.parse(item.mediaId))==null)return null
+        val meta=item.mediaMetadata
+        return Track(item.mediaId,meta.title?.toString().orEmpty(),meta.artist?.toString().orEmpty(),
+            meta.extras?.getLong("onlineDuration") ?: 0L,"Яндекс Музыка")
+    }
 
     private fun backPage() {
         val target =
@@ -1586,7 +1615,10 @@ class MainActivity : Activity() {
                 "translation" -> "lyrics"
                 else -> "player"
             }
-        if (page == "player") showPage(target)
+        if (page == "player") {
+            showPage(target)
+            if(prefs.getBoolean("onlinePlayerOrigin",false))onlineSection.show()
+        }
         else pageMotion.leavePage { if (alive) showPage(target) }
     }
 
@@ -1652,8 +1684,13 @@ class MainActivity : Activity() {
         val generation = ++mediaGeneration
         screens.setArtwork(track.uri, null)
         screens.lyricsSearching(track.uri, false, "Читаем локальный текст…")
+        // Capture artwork from this queue item, never the aggregated (possibly previous) metadata.
+        val cover=controller?.currentMediaItem?.mediaMetadata?.artworkUri?.toString().orEmpty()
         executor.execute {
-            val bitmap = runCatching { LocalArtwork.read(this, track.uri) }.getOrNull()
+            val bitmap = runCatching {
+                if(track.uri.startsWith("afp-yandex://")) OnlineArtwork(applicationContext).load(cover)
+                else LocalArtwork.read(this, track.uri)
+            }.getOrNull()
             val lyrics = runCatching { loadLyrics(track)?.let { LyricsDocument(it) } }
             handler.post {
                 if (
@@ -2305,7 +2342,7 @@ class MainActivity : Activity() {
             weight(),
         )
         controls.addView(
-            button("Пауза / ▶") { controller?.let { if (it.isPlaying) it.pause() else it.play() } },
+            button("Пауза / ▶") { controller?.let { if (it.isPlaying) it.pause() else { if(it.playbackState==Player.STATE_IDLE)it.prepare();it.play() } } },
             weight(),
         )
         val next = button("Отметить строку") {}
@@ -2573,6 +2610,7 @@ class MainActivity : Activity() {
         translationForeground = true
         extensionManager.resume()
         appUpdates.resume()
+        onlineSection.resume()
     }
 
     private val extensionManager: ExtensionManager by lazy {
@@ -2589,6 +2627,7 @@ class MainActivity : Activity() {
                 )
             },
             { if (alive && page == "translation") currentTrack()?.let { translate(it, true) } },
+            online = { onlineSection.show() },
             updates = { appUpdates.check() },
         )
     }
@@ -2596,6 +2635,29 @@ class MainActivity : Activity() {
     private fun extensions() {
         extensionManager.show()
     }
+
+    private val onlineSection: OnlineSection by lazy { OnlineSection(this, { raw,index,mode,done ->
+        val c=controller
+        if(c==null)done(if(mode=="remove")null else "Плеер ещё подключается. Повтори запуск")
+        else {
+            val request=c.sendCustomCommand(SessionCommand(PlaybackCommands.START_ONLINE_QUEUE,Bundle.EMPTY),Bundle().apply {
+                putString("queueId",raw);putInt("index",index);putString("mode",mode)
+            })
+            request.addListener({
+                if(alive) {
+                    val error=runCatching { request.get().resultCode }.fold(
+                        { if(it==SessionResult.RESULT_SUCCESS)null else "Плеер отклонил очередь. Повтори действие" },
+                        { "Не удалось передать очередь плееру. Повтори действие" })
+                    done(error)
+                    if(error==null && mode=="play") {
+                        prefs.edit().putBoolean("onlinePlayerOrigin",true).apply()
+                        showPage("player")
+                    }
+                    updatePlayer()
+                }
+            },java.util.concurrent.Executor { handler.post(it) })
+        }
+    },openPlayer={ prefs.edit().putBoolean("onlinePlayerOrigin",true).apply();showPage("player") }) }
 
     private val appUpdates: AppUpdates by lazy { AppUpdates(this, extensionManager) }
 
@@ -2639,6 +2701,8 @@ class MainActivity : Activity() {
         if (!isChangingConfigurations) translationWork.close()
         extensionManager.close()
         appUpdates.close()
+        onlineSection.close()
+        artworkWorker.shutdownNow()
         lyricsWork.detach()
         if (!isChangingConfigurations) lyricsWork.close()
         albumYears.close()

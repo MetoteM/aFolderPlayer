@@ -126,10 +126,10 @@ class ExtensionUpdatesTest {
                 .put("id", "online")
                 .put("kind", "online")
                 .put("title", "Онлайн")
-                .put("file", "AFP_Online_0.1.1.apk")
+                .put("file", "AFP_Online_0.2.2.apk")
                 .put("sha256", "a".repeat(64))
                 .put("size", 100)
-        val installed = mapOf("online" to ExtensionUpdates.Installed("0.1.0", 1, true))
+        val installed = mapOf("online" to ExtensionUpdates.Installed("0.2.1", 12, true))
         assertEquals(
             ExtensionUpdates.State.AVAILABLE,
             ExtensionUpdates.plan(
@@ -160,4 +160,19 @@ class ExtensionUpdatesTest {
     fun legacyCatalogueFilenameStillSuppliesEngineVersion() {
         assertEquals("0.3.5", ExtensionUpdates.targetVersion(engine()))
     }
+    @Test fun legacyOnlineRequiresCompatibleProtocolAndRcCanMoveToStable() {
+        fun entry(version:String)=ExtensionCatalog.Entry(JSONObject().put("id","online").put("kind","online").put("title","Online")
+            .put("file","AFP_Online_$version.apk").put("sha256","a".repeat(64)).put("size",100))
+        val fresh=ExtensionUpdates.plan(listOf(entry("0.1.1")),emptyMap(),emptySet(),51,false).single()
+        assertEquals(ExtensionUpdates.State.OPTIONAL,fresh.state);assertNull(fresh.entry)
+        assertFalse(ExtensionUpdates.compatible(entry("0.1.1")));assertTrue(ExtensionUpdates.compatible(entry("0.2.1")))
+        val legacy=mapOf("online" to ExtensionUpdates.Installed("0.1.0",1,true))
+        val incompatible=ExtensionUpdates.plan(listOf(entry("0.1.1")),legacy,emptySet(),51,false).single()
+        assertEquals(ExtensionUpdates.State.REQUIRED,incompatible.state);assertNull(incompatible.entry)
+        val compatible=ExtensionUpdates.plan(listOf(entry("0.2.1")),legacy,emptySet(),51,false).single()
+        assertEquals(ExtensionUpdates.State.REQUIRED,compatible.state);assertNotNull(compatible.entry)
+        val rc=mapOf("online" to ExtensionUpdates.Installed("0.2.1-rc.1",12,true))
+        assertEquals(ExtensionUpdates.State.AVAILABLE,ExtensionUpdates.plan(listOf(entry("0.2.1")),rc,emptySet(),51,false).single().state)
+    }
+
 }

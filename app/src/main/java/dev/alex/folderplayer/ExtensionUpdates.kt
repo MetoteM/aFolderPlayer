@@ -13,7 +13,7 @@ internal object ExtensionModules {
 
     val translation =
         Module("engine", "AFP Translate", TranslationClient.PACKAGE, "AFP_Translate_", 8, "0.3.5")
-    val online = Module("online", "Онлайн", "dev.alex.afponline", "AFP_Online_", 1, "0.1.0")
+    val online = Module("online", "Онлайн", "dev.alex.afponline", "AFP_Online_", 12, "0.2.1")
     val all = listOf(translation, online)
 
     fun find(kind: String) = all.firstOrNull { it.kind == kind }
@@ -47,10 +47,18 @@ internal object ExtensionUpdates {
         return value.takeIf { AppUpdates.version(it) != null }
     }
 
+    fun compatible(entry:ExtensionCatalog.Entry):Boolean {
+        val module=ExtensionModules.find(entry.kind) ?: return true
+        val target=targetVersion(entry)?.let(AppUpdates::version) ?: return false
+        val minimum=AppUpdates.version(module.minimumVersion) ?: return false
+        return AppUpdates.compare(target,minimum)>=0
+    }
+
     private fun newer(a: String, b: String): Boolean? {
         val av = AppUpdates.version(a) ?: return null
-        val bv = AppUpdates.version(b) ?: return null
-        return AppUpdates.compare(av, bv) > 0
+        val bv = AppUpdates.installedVersionParts(b) ?: return null
+        val relation=AppUpdates.compare(av,bv)
+        return relation>0 || (relation==0 && AppUpdates.releaseCandidateBase(b)!=null)
     }
 
     fun plan(
@@ -93,12 +101,11 @@ internal object ExtensionUpdates {
                         else "Не установлен · по желанию",
                         if (required) State.REQUIRED else State.OPTIONAL,
                         entry?.takeIf {
-                            target != null &&
-                                (!required || newer(module.minimumVersion, target) == false)
+                            target != null && compatible(it)
                         },
                     )
             } else if (required) {
-                val suitable = target != null && newer(module.minimumVersion, target) == false
+                val suitable = entry != null && compatible(entry)
                 rows +=
                     Row(
                         module.title,
