@@ -13,7 +13,7 @@ internal object ExtensionModules {
 
     val translation =
         Module("engine", "AFP Translate", TranslationClient.PACKAGE, "AFP_Translate_", 8, "0.3.5")
-    val online = Module("online", "Онлайн", "dev.alex.afponline", "AFP_Online_", 1, "0.1.0")
+    val online = Module("online", "Онлайн", "dev.alex.afponline", "AFP_Online_", 12, "0.2.1")
     val all = listOf(translation, online)
 
     fun find(kind: String) = all.firstOrNull { it.kind == kind }
@@ -49,8 +49,9 @@ internal object ExtensionUpdates {
 
     private fun newer(a: String, b: String): Boolean? {
         val av = AppUpdates.version(a) ?: return null
-        val bv = AppUpdates.version(b) ?: return null
-        return AppUpdates.compare(av, bv) > 0
+        val bv = AppUpdates.installedVersionParts(b) ?: return null
+        val relation=AppUpdates.compare(av,bv)
+        return relation>0 || (relation==0 && AppUpdates.releaseCandidateBase(b)!=null)
     }
 
     fun plan(

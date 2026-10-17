@@ -41,4 +41,11 @@ class AppUpdatesTest {
   val bad=listOf(info(signature=2),info(code=24),info(code=23),info(version="0.7.0"),info().apply { packageName="dev.alex.afptranslate" },info().apply { signatures=emptyArray() })
   for(apk in bad)assertThrows(IllegalArgumentException::class.java) { AppUpdates.validateInfo(apk,own,own.packageName,"0.6.0") }
  }
+ @Test fun installedRcCanUpgradeToMatchingStableButNeverSelectsOlderOrPrerelease() {
+  val bytes=JSONArray().put(release("0.8.3")).put(release("0.8.4")).put(release("0.8.5").put("prerelease",true)).toString().toByteArray()
+  assertEquals("0.8.4",AppUpdates.candidate(bytes,"0.8.4-rc.1")!!.version)
+  assertNull(AppUpdates.candidate(JSONArray().put(release("0.8.3")).toString().toByteArray(),"0.8.4-rc.1"))
+  assertNull(AppUpdates.candidate(bytes,"0.8.4"))
+ }
+
 }

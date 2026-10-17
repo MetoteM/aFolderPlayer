@@ -24,6 +24,7 @@ internal class ExtensionManager(
     private val message: (String) -> Unit,
     private val importModel: () -> Unit,
     private val changed: () -> Unit = {},
+    private val online: () -> Unit = {},
     private val updates: () -> Unit = {},
 ) {
     companion object {
@@ -57,6 +58,7 @@ internal class ExtensionManager(
         choices.add("Скачать расширения")
         choices.add("Проверить обновления")
         choices.add("Источник загрузки")
+        choices.add("Онлайн")
         choices.add("Установить переводчик из файла")
         if (installed) {
             choices.add("Пакет для отдельных документов")
@@ -80,6 +82,7 @@ internal class ExtensionManager(
                 "Скачать расширения" -> fetchCatalog()
                 "Проверить обновления" -> updates()
                 "Источник загрузки" -> address()
+                "Онлайн" -> online()
                 "Установить переводчик из файла" ->
                     host.startActivityForResult(
                         Intent(Intent.ACTION_OPEN_DOCUMENT)

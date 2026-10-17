@@ -104,7 +104,7 @@ class RecognitionActivity : Activity() {
                             (if (localUri.isBlank())
                                 "После нажатия «Слушать» микрофон записывает до 30 секунд."
                             else
-                                "Из текущего файла локально читается фрагмент до 30 секунд. Микрофон не используется.") +
+                                "Из текущего трека читается фрагмент до 30 секунд. Для онлайн-трека он запрашивается у Яндекса и обрабатывается на устройстве. Микрофон не используется.") +
                                 " На сервер Shazam отправляется звуковой отпечаток; сам звук, имя файла и геолокация не отправляются. Аудио не сохраняется. Используется неофициальный интерфейс сервиса: его доступность может меняться."
                         )
                         .setPositiveButton("Закрыть", null)
@@ -256,7 +256,7 @@ class RecognitionActivity : Activity() {
                     val samples =
                         LocalAudio.decode(
                             this,
-                            localUri,
+                            if(localUri.startsWith("afp-yandex://")) OnlinePlayback(this).resolve(android.net.Uri.parse(localUri)).toString() else localUri,
                             intent.getLongExtra("localPosition", 0),
                             intent.getLongExtra("localDuration", 0),
                         ) {

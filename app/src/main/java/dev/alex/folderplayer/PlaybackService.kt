@@ -23,6 +23,17 @@ import org.json.JSONArray
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class PlaybackService : MediaSessionService() {
+    private val onlinePreferences by lazy { getSharedPreferences("online_actions",0) }
+    private val hiddenListener=android.content.SharedPreferences.OnSharedPreferenceChangeListener { _,key ->
+        if(key=="hidden")handler.post {
+            if(::player.isInitialized) {
+                val hidden=OnlineLibraryActions(this).ids("hidden")
+                for(i in player.mediaItemCount-1 downTo 0)if(OnlinePlayback.trackId(android.net.Uri.parse(player.getMediaItemAt(i).mediaId)) in hidden)player.removeMediaItem(i)
+                saveState()
+            }
+        }
+    }
+    private val online by lazy { OnlinePlayback(this) }
     private lateinit var player: ExoPlayer
     private var session: MediaSession? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -72,6 +83,7 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        CrashNotes.install(this)
         if (prefs.getInt("eqFormatVersion", 0) < 2) {
             val edit =
                 prefs
@@ -122,6 +134,17 @@ class PlaybackService : MediaSessionService() {
             }
         player =
             ExoPlayer.Builder(this, renderers)
+                .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                    androidx.media3.datasource.ResolvingDataSource.Factory(
+                        OnlineDataSource.Factory(this),
+                        object : androidx.media3.datasource.ResolvingDataSource.Resolver {
+                            override fun resolveDataSpec(dataSpec: androidx.media3.datasource.DataSpec): androidx.media3.datasource.DataSpec {
+                                if (dataSpec.uri.scheme != "afp-yandex") return dataSpec
+                                return dataSpec.withUri(online.resolve(dataSpec.uri))
+                            }
+                        }
+                    )
+                ))
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(C.USAGE_MEDIA)
@@ -141,9 +164,11 @@ class PlaybackService : MediaSessionService() {
                 Intent(this, MainActivity::class.java),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
+        onlinePreferences.registerOnSharedPreferenceChangeListener(hiddenListener)
         session =
             MediaSession.Builder(this, player)
                 .setSessionActivity(activity)
+                .setBitmapLoader(OnlineBitmapLoader(this))
                 .setCallback(
                     object : MediaSession.Callback {
                         override fun onCustomCommand(
@@ -168,6 +193,12 @@ class PlaybackService : MediaSessionService() {
                                 return MediaSession.ConnectionResult.accept(
                                     MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS
                                         .buildUpon()
+                                        .add(
+                                            SessionCommand(
+                                                PlaybackCommands.START_ONLINE_QUEUE,
+                                                Bundle.EMPTY,
+                                            )
+                                        )
                                         .add(
                                             SessionCommand(
                                                 PlaybackCommands.START_QUEUE,
@@ -223,6 +254,9 @@ class PlaybackService : MediaSessionService() {
                 .build()
         player.addListener(
             object : Player.Listener {
+                override fun onMediaItemTransition(item: androidx.media3.common.MediaItem?, reason: Int) {
+                    this@PlaybackService.player.setWakeMode(if (item?.mediaId?.startsWith("afp-yandex://") == true) C.WAKE_MODE_NETWORK else C.WAKE_MODE_LOCAL)
+                }
                 override fun onEvents(player: Player, events: Player.Events) {
                     saveState(events.contains(Player.EVENT_TIMELINE_CHANGED))
                     scheduleCheckpoint()
@@ -237,8 +271,10 @@ class PlaybackService : MediaSessionService() {
                 .getInt("requestedRepeat", prefs.getInt("repeat", Player.REPEAT_MODE_OFF))
                 .coerceIn(0, 2)
         val savedShuffle = prefs.getBoolean("shuffle", false)
+        val store=OnlineLibraryStore(this)
+        val onlineSaved = runCatching { OnlinePlayback.items(store.read("playing")?.optJSONArray("tracks")?.toString() ?: store.queue(prefs.getString("onlineQueueId", "").orEmpty()) ?: prefs.getString("onlineQueue", "[]")!!) }.getOrDefault(emptyList()).filter { OnlinePlayback.trackId(android.net.Uri.parse(it.mediaId)) !in OnlineLibraryActions(this).ids("hidden") }.associateBy { it.mediaId }
         val saved =
-            Library.strings(prefs.getString("queue", "[]")!!).mapNotNull { tracks[it]?.item() }
+            Library.strings(prefs.getString("queue", "[]")!!).mapNotNull { tracks[it]?.item() ?: onlineSaved[it] }
         val positionIndex = positionPrefs.getInt("index", -1)
         if (
             positionIndex in saved.indices &&
@@ -266,6 +302,42 @@ class PlaybackService : MediaSessionService() {
 
     internal fun applyPlaybackCommand(action: String, args: Bundle): Int {
         return when (action) {
+            PlaybackCommands.START_ONLINE_QUEUE -> {
+                val store=OnlineLibraryStore(this)
+                val queueId=args.getString("queueId").orEmpty()
+                val parsed=runCatching { OnlinePlayback.items(store.queue(queueId) ?: "[]") }.getOrNull()
+                val mode=args.getString("mode","play").orEmpty()
+                val hidden=OnlineLibraryActions(this).ids("hidden")
+                val items=parsed?.filter { OnlinePlayback.trackId(android.net.Uri.parse(it.mediaId)) !in hidden }.orEmpty()
+                val index=args.getInt("index",0)
+                if(parsed==null || mode !in listOf("play","next","append","remove") || (mode!="remove" && (items.isEmpty() || (mode=="play" && index !in items.indices)))) SessionError.ERROR_BAD_VALUE
+                else {
+                    val old=(0 until player.mediaItemCount).map { player.getMediaItemAt(it) }
+                    val combined=if(mode=="play")items else old+items
+                    if(mode!="remove" && (combined.size>20000 || OnlineQueueMetadata.rows(combined).toString().length>8_000_000)) SessionError.ERROR_BAD_VALUE
+                    else {
+                        when(mode) {
+                            "play" -> {
+                                prefs.edit().putString("queueSource","Яндекс Музыка"+store.queueSource(queueId).takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()).remove("onlineQueueId").remove("onlineQueue").apply()
+                                player.setMediaItems(items,index,0);player.setPauseAtEndOfMediaItems(false);player.prepare();player.play()
+                            }
+                            "next", "append" -> {
+                                if(old.any { !it.mediaId.startsWith("afp-yandex://") })prefs.edit().putString("queueSource","Смешанная очередь").apply()
+                                else prefs.edit().putString("queueSource","Яндекс Музыка").apply()
+                                val at=if(mode=="next" && old.isNotEmpty())(player.currentMediaItemIndex+1).coerceAtMost(old.size) else old.size
+                                player.addMediaItems(at,items)
+                                if(old.isEmpty()) { player.prepare();player.play() }
+                            }
+                            "remove" -> {
+                                val ids=parsed.map { it.mediaId }.toSet()
+                                for(i in player.mediaItemCount-1 downTo 0)if(player.getMediaItemAt(i).mediaId in ids)player.removeMediaItem(i)
+                            }
+                        }
+                        saveState();store.dropQueue(queueId)
+                        SessionResult.RESULT_SUCCESS
+                    }
+                }
+            }
             PlaybackCommands.START_QUEUE -> {
                 val library = Library(this)
                 val source = args.getString("source").orEmpty()
@@ -307,7 +379,7 @@ class PlaybackService : MediaSessionService() {
                     val ordered =
                         (sourceIds + extraIds).distinct().flatMap {
                             byId[it] ?: listOf(known.getValue(it).item())
-                        } + old.filter { it.mediaId !in known && it.mediaId in playableIds }
+                        } + old.filter { it.mediaId !in known && QueueEligibility.playable(it.mediaId,playableIds,OnlineLibraryActions(this).ids("hidden")) }
                     val current = player.currentMediaItem?.mediaId
                     val occurrence =
                         old.take(player.currentMediaItemIndex.coerceAtLeast(0)).count {
@@ -377,6 +449,8 @@ class PlaybackService : MediaSessionService() {
         if (queueChanged || savedQueue == null) {
             val queue = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
             if (queue != savedQueue) {
+                val metadata=OnlineQueueMetadata.rows((0 until player.mediaItemCount).map { player.getMediaItemAt(it) })
+                OnlineLibraryStore(this).write("playing",org.json.JSONObject().put("tracks",metadata))
                 edit.putString("queue", JSONArray(queue).toString())
                 savedQueue = queue
                 changed = true
@@ -405,6 +479,7 @@ class PlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
     override fun onDestroy() {
+        onlinePreferences.unregisterOnSharedPreferenceChangeListener(hiddenListener)
         prefs.unregisterOnSharedPreferenceChangeListener(changeListener)
         handler.removeCallbacksAndMessages(null)
         saveState()

@@ -28,7 +28,16 @@ internal fun playbackTracks(
 }
 
 internal object PlaybackCommands {
+    const val START_ONLINE_QUEUE = "dev.alex.folderplayer.START_ONLINE_QUEUE"
     const val START_QUEUE = "dev.alex.folderplayer.START_QUEUE"
     const val REORDER_QUEUE = "dev.alex.folderplayer.REORDER_QUEUE"
     const val SET_REPEAT = "dev.alex.folderplayer.SET_REPEAT"
+}
+
+/** Source-aware eligibility: local library exclusions must not remove online items. */
+internal object QueueEligibility {
+    fun playable(id:String,localPlayable:Set<String>,onlineHidden:Set<String>):Boolean {
+        val online=OnlinePlayback.trackId(android.net.Uri.parse(id))
+        return if(online!=null)online !in onlineHidden else id in localPlayable
+    }
 }

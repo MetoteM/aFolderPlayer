@@ -1,0 +1,15 @@
+name: Zvuk prerelease probe checks
+on:
+  push:
+    branches: [prerelease/zvuk-spike]
+    paths: ['tools/zvuk-spike/**', '.github/workflows/zvuk-spike.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Check token isolation and failure handling without user accounts
+        run: python3 -m unittest discover -s tools/zvuk-spike -v

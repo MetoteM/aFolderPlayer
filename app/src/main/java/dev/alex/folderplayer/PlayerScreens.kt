@@ -532,6 +532,8 @@ internal class PlayerScreens(private val context: Context, private val actions: 
                 if (page == "queue") "${s.source} · ${queue.size} треков"
                 else "Плейлист · ${s.source}"
             play?.text = if (s.playing) "❚❚" else "▶"
+            heart?.isEnabled = true
+            heart?.alpha = if(heart?.isEnabled==false) .35f else 1f
             heart?.text = if (s.favorite) "♥" else "♡"
             heart?.setTextColor(if (s.favorite) accent else Color.WHITE)
             backward?.text = "−${s.step}"
