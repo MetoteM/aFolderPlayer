@@ -1295,6 +1295,31 @@ class MainActivity : Activity() {
         startActivity(Intent(this, RecognitionActivity::class.java))
     }
 
+    private var torrentLink:TorrentLink?=null
+    private fun torrentChanged(snapshot:String) {
+        runCatching {
+            val tasks=org.json.JSONObject(snapshot).optJSONArray("tasks") ?: return
+            val roots=library.roots().toSet()
+            val stamp=(0 until tasks.length()).map { tasks.getJSONObject(it) }
+                .filter { it.optInt("exportedCount")>0 && it.optString("tree") in roots }
+                .map { it.optString("id")+":"+it.optInt("exportedCount") }.sorted().joinToString("|")
+            if(stamp.isNotBlank() && stamp!=prefs.getString("torrentImported", "") && !scanning){prefs.edit().putString("torrentImported",stamp).apply();scan()}
+        }
+    }
+    private fun importTorrentFolder(uri:Uri) {
+        runCatching {
+            require(uri.scheme=="content")
+            contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            check(androidx.documentfile.provider.DocumentFile.fromTreeUri(this,uri)?.isDirectory==true)
+            library.setRoots((library.roots()+uri.toString()).distinct());scan()
+        }.onFailure {
+            toast("Подтверди папку скачанной музыки для доступа плеера")
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+                .putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI,uri)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION),100)
+        }
+    }
+
     private fun settings() {
         val names =
             mutableListOf(
@@ -1307,6 +1332,7 @@ class MainActivity : Activity() {
                 "О приложении",
                 "История текстов",
                 "Диагностика последнего сбоя",
+                "Торренты",
             )
         optionMenu(this, "Настройки", names) { i ->
             when (i) {
@@ -1352,6 +1378,7 @@ class MainActivity : Activity() {
                 5 -> extensions()
                 6 -> about()
                 8 -> CrashNotes.show(this)
+                9 -> TorrentLink.open(this)
             }
         }
     }
@@ -1424,6 +1451,7 @@ class MainActivity : Activity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if(requestCode==TorrentLink.REQUEST && resultCode==RESULT_OK)data?.data?.let { importTorrentFolder(it) }
         if (requestCode == 107) {
             if (page == "translation") currentTrack()?.let { translate(it, true) }
             return
@@ -2607,6 +2635,8 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        torrentLink?.close();torrentLink=TorrentLink(this,::torrentChanged)
+        if(intent?.action=="dev.alex.afp.IMPORT_TORRENT_FOLDER"){intent.action=null;intent.data?.let { importTorrentFolder(it) }}
         translationForeground = true
         extensionManager.resume()
         appUpdates.resume()
@@ -2695,6 +2725,8 @@ class MainActivity : Activity() {
         super.onStop()
     }
 
+    override fun onPause(){torrentLink?.close();torrentLink=null;super.onPause()}
+
     override fun onDestroy() {
         pageMotion.cancel()
         translationWork.detach()
@@ -2713,6 +2745,7 @@ class MainActivity : Activity() {
         handler.removeCallbacksAndMessages(null)
         executor.shutdown()
         future?.let { MediaController.releaseFuture(it) }
+        torrentLink?.close();torrentLink=null
         super.onDestroy()
     }
 }

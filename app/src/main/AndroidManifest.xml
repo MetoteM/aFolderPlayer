@@ -8,8 +8,9 @@
  <uses-permission android:name="dev.alex.afptranslate.USE_TRANSLATOR" />
  <uses-permission android:name="dev.alex.afponline.USE_ONLINE" />
  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
- <queries><package android:name="dev.alex.afptranslate" /><package android:name="dev.alex.afponline" /></queries>
- <application android:label="aFolderPlayer" android:icon="@drawable/ic_player" android:theme="@style/AppTheme" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true">
+ <uses-permission android:name="dev.alex.afptorrent.lab.USE_TORRENT" />
+ <queries><package android:name="dev.alex.afptorrent.lab" /><package android:name="dev.alex.afptranslate" /><package android:name="dev.alex.afponline" /></queries>
+ <application android:label="aFolderPlayer · Torrent" android:icon="@drawable/ic_player" android:theme="@style/AppTheme" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true">
   <activity android:name=".YandexSaveActivity" android:exported="false" android:configChanges="orientation|screenSize" />
   <activity android:name=".SongTextActivity" android:exported="false" />
   <activity android:name=".RecognitionActivity" android:exported="false" />

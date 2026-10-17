@@ -1,0 +1,38 @@
+name: Torrent prototype checks
+on:
+  push:
+    branches: ['experimental/0.9.0.1-torrent']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'platforms;android-36 build-tools;36.0.0'
+      - name: Build, regression tests, real loopback torrent transfer and lint
+        run: bash gradlew --no-daemon :app:assembleRelease :torrent:assembleRelease :app:testReleaseUnitTest :torrent:testReleaseUnitTest :app:lintRelease :torrent:lintRelease --max-workers=2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: torrent-prototype-unsigned
+          path: |
+            app/build/outputs/apk/release/
+            torrent/build/outputs/apk/release/
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: torrent-prototype-reports
+          path: |
+            app/build/reports/
+            torrent/build/reports/
+          retention-days: 7

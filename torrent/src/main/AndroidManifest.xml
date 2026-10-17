@@ -1,0 +1,18 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ <uses-permission android:name="android.permission.INTERNET" />
+ <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+ <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+ <uses-permission android:name="android.permission.WAKE_LOCK" />
+ <permission android:name="dev.alex.afptorrent.lab.USE_TORRENT" android:protectionLevel="signature" />
+ <queries><package android:name="dev.alex.folderplayer.torrentlab" /></queries>
+ <application android:label="AFP Torrent · прототип" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:supportsRtl="true" android:usesCleartextTraffic="false">
+  <activity android:name=".TorrentActivity" android:exported="true" android:configChanges="orientation|screenSize">
+   <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+   <intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="magnet"/></intent-filter>
+   <intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><data android:scheme="content" android:mimeType="application/x-bittorrent"/></intent-filter>
+  </activity>
+  <service android:name=".TorrentService" android:exported="true" android:permission="dev.alex.afptorrent.lab.USE_TORRENT" android:foregroundServiceType="dataSync" />
+ </application>
+</manifest>
