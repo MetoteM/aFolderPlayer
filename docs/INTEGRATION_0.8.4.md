@@ -42,3 +42,13 @@ Integration debug CI builds/tests/lints player and Online and runs both probe su
 New cross-source tests: local hide/exclusion keeps online IDs and duplicates; mixed reorder/restart retains online metadata/current position while removing unavailable local items; online account setup preserves stable local preferences; old Online protocols cannot be treated as current; RC-to-stable updates still enforce signature/identity/version rules.
 
 Pending device gate before main merge: upgrade stable app without uninstall; verify folders/playlists/hidden/excluded/preferences; local playback without Online/offline; Yandex browser login, full playlist boundary 50→51, mixed queue and restart, local hide during online playback, source navigation, MP3 tags/cover, lyrics/translation/EQ/headset/watch/background. No claim of physical-device PASS without user results.
+
+## Promotion to 0.9.0
+
+On 2026-10-17 the user accepted the candidate after device testing and authorized
+merging and publishing stable 0.9.0. This acceptance supersedes the pending device
+gate above; it is not a claim that every listed scenario was individually reported.
+Release identities: player 0.9.0 (52), AFP Online 0.2.1 (13), original packages/key.
+Translator and language models remain unchanged. The release publishes both a
+legacy schema-1 catalogue and a schema-2 catalogue with compatible Online, retaining
+the existing model URLs. All automated checks must pass for the final source.
