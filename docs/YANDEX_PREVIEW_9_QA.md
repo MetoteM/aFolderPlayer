@@ -11,3 +11,12 @@ A local diagnostic stores exception class names and stack code locations only, e
 QA: real generated tone MP3 + JPEG fixtures; ID3 Unicode/APIC parsed in tests, byte-for-byte audio comparison, retagging without duplicate tags, v2.4 album preservation and cancellation cleanup. Downloaded CI tagged fixture must also be inspected independently with ffprobe. Real-account export + offline cover display and device hidden-list reproduction remain user QA.
 
 ID3 reference: https://id3.org/id3v2.3.0 .
+
+## Final evidence
+
+Source: `2b0919c150d0facbda2d3ba5bfc088ea31fc2160`.
+CI: https://github.com/MetoteM/aFolderPlayer/actions/runs/39022532651 — app 223, online 29, Python 8 tests; lint passed.
+Independent ffprobe inspection of the CI-written MP3 confirmed Unicode title/artist and an embedded MJPEG attached-picture stream. ffmpeg decoded its audio successfully. Java tests verified the original audio bytes are unchanged.
+APK signatures match the original certificate; zipalign and ZIP CRCs passed. Saved ZIP and inner APK hashes/sizes rechecked after upload.
+Install archive SHA-256: `ae798e954f639423ab4cf2124e44baaec6ced1761180d22e4810992551ce298b`.
+Exact reproduction of the reported Honor-device crash remains unconfirmed; diagnostics are local and intended to resolve a recurrence.
