@@ -120,7 +120,11 @@ class TorrentActivity:Activity() {
         if(trees.isEmpty())return message("Пока нет сохранённых файлов")
         fun done(tree:String){
             val uri=Uri.parse(tree);val result=Intent().setData(uri).apply { clipData=ClipData.newRawUri("Папка музыки",uri);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) }
-            if(callingActivity!=null){setResult(RESULT_OK,result);finish()}
+            if(callingActivity!=null){
+                val caller=callingActivity!!.packageName
+                if(caller!="dev.alex.folderplayer.torrentlab" || packageManager.checkSignatures(packageName,caller)!=PackageManager.SIGNATURE_MATCH)return message("Передать папку можно только подписанному AFP из комплекта")
+                setResult(RESULT_OK,result);finish()
+            }
             else { val pkg="dev.alex.folderplayer.torrentlab";if(packageManager.checkSignatures(packageName,pkg)!=PackageManager.SIGNATURE_MATCH)return message("Установи экспериментальный AFP из комплекта")
                 startActivity(result.setComponent(ComponentName(pkg,"dev.alex.folderplayer.MainActivity")).setAction("dev.alex.afp.IMPORT_TORRENT_FOLDER")) }
         }

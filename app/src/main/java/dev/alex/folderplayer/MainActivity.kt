@@ -2636,7 +2636,11 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         torrentLink?.close();torrentLink=TorrentLink(this,::torrentChanged)
-        if(intent?.action=="dev.alex.afp.IMPORT_TORRENT_FOLDER"){intent.action=null;intent.data?.let { importTorrentFolder(it) }}
+        if(intent?.action=="dev.alex.afp.IMPORT_TORRENT_FOLDER"){intent.action=null;intent.data?.let { uri->
+            AlertDialog.Builder(this).setTitle("Добавить папку скачанной музыки?")
+                .setMessage("Плеер прочитает аудиофайлы в выбранной папке и её подпапках.")
+                .setPositiveButton("Добавить"){_,_->importTorrentFolder(uri)}.setNegativeButton("Отмена",null).show()
+        }}
         translationForeground = true
         extensionManager.resume()
         appUpdates.resume()

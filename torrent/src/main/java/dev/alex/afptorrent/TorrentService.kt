@@ -70,7 +70,7 @@ class TorrentService:Service() {
         state=AtomicFile(File(filesDir,"tasks.json"))
         runCatching { val a=JSONArray(state.readFully().toString(Charsets.UTF_8));for(i in 0 until a.length()){val t=TorrentTask.read(a.getJSONObject(i));tasks[t.id]=t} }
         getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("torrent","Загрузки музыки",NotificationManager.IMPORTANCE_LOW))
-        wake=getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"AFP:Torrent")
+        wake=getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"AFP:Torrent").apply { setReferenceCounted(false) }
         worker.scheduleWithFixedDelay({runCatching { tick() }.onFailure { tasks.values.filter { it.wanted }.forEach { t->t.wanted=false;t.state="error";t.detail="Загрузка остановлена из-за ошибки движка" };runCatching { stopEngine() };publish(true) }},0,1,TimeUnit.SECONDS)
     }
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
