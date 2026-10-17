@@ -68,41 +68,36 @@
 
 ## 0.7.2
 
-- Ordinary translation now uses the same sentence context as full-text translation.
-- Soft line breaks within phrases are joined; paragraph boundaries and repeated chorus are retained.
-- Language choice is captured for the whole request, and incomplete/cancelled results are not saved.
-- AFP Translate 0.3.0 and existing language packages are unchanged.
+- Перевод учитывает целые предложения, сохраняя куплеты и повторы припева.
+- Отменённый или неполный перевод не заменяет сохранённый результат.
 
 ## 0.7.1
 
-- Chinese → Russian offline, through English, in a self-contained package.
-- Installed-language selector and automatic model selection after manual ZIP import.
-- Chinese sentence boundaries, long unspaced text, Unicode and repeated chorus.
-- AFP Translate 0.3.0 supports audited multi-stage packages and English v1/v2.
+- Китайский → русский: отдельный автономный пакет с переводом через английский.
+- Выбор установленного языка и автоматический подбор пакета после ручного импорта.
+- Улучшена обработка китайского текста без пробелов и повторяющихся припевов.
 
 ## 0.7.0
 
 - Перенесены сравнение полного текста, выбор блока или предложений, копирование и история переводов из AFP Translate Lab в плеер.
 - Сохранённый выбранный результат отображается на обычном экране перевода песни. Прежние переводы остаются доступны.
 - Сравнение отправляет все уникальные части одним запросом; повторы сохраняются при сборке результата.
-- Отмена и неполный ответ блокируют сохранение. Исправлена гонка отмены при получении ответа движка.
+- Отмена и неполный ответ не заменяют сохранённый перевод.
 - AFP Translate 0.2.0 поддерживает пакеты v1 и v2 отдельно. В v2 перенесён проверенный исправленный токенизатор.
 
 ## 0.6.0
 
-- Added explicit update checks in About using stable GitHub releases.
-- APK downloads verify size, SHA-256, package, signing identity and increasing version code before opening Android installation.
-- About now displays the installed version. No background checks.
+- Проверка обновлений по кнопке в «О приложении».
+- Установка обновления поверх текущей версии после проверки файла.
+- В «О приложении» отображается установленная версия.
 
 ## 0.5.2
 
-- Fixed empty icon hints.
-- Coalesced equalizer preference updates and preserved filter state when settings are unchanged.
+- Исправлены пустые подсказки значков и сохранение настроек эквалайзера.
 
 ## 0.5.1
 
 - Источник расширений GitHub Releases по умолчанию.
-- Ограниченные HTTPS-перенаправления GitHub при скачивании.
 
 ## 0.5.0
 
