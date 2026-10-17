@@ -47,6 +47,13 @@ internal object ExtensionUpdates {
         return value.takeIf { AppUpdates.version(it) != null }
     }
 
+    fun compatible(entry:ExtensionCatalog.Entry):Boolean {
+        val module=ExtensionModules.find(entry.kind) ?: return true
+        val target=targetVersion(entry)?.let(AppUpdates::version) ?: return false
+        val minimum=AppUpdates.version(module.minimumVersion) ?: return false
+        return AppUpdates.compare(target,minimum)>=0
+    }
+
     private fun newer(a: String, b: String): Boolean? {
         val av = AppUpdates.version(a) ?: return null
         val bv = AppUpdates.installedVersionParts(b) ?: return null
@@ -94,12 +101,11 @@ internal object ExtensionUpdates {
                         else "Не установлен · по желанию",
                         if (required) State.REQUIRED else State.OPTIONAL,
                         entry?.takeIf {
-                            target != null &&
-                                (!required || newer(module.minimumVersion, target) == false)
+                            target != null && compatible(it)
                         },
                     )
             } else if (required) {
-                val suitable = target != null && newer(module.minimumVersion, target) == false
+                val suitable = entry != null && compatible(entry)
                 rows +=
                     Row(
                         module.title,

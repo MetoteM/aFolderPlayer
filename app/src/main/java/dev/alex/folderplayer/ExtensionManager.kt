@@ -331,6 +331,10 @@ internal class ExtensionManager(
     }
 
     private fun confirm(base: java.net.URI, entry: ExtensionCatalog.Entry) {
+        if(!ExtensionUpdates.compatible(entry)) {
+            message("В источнике нет совместимой версии расширения. Проверь обновления или выбери другой источник")
+            return
+        }
         @Suppress("DEPRECATION")
         val installedCode =
             runCatching {
@@ -490,6 +494,7 @@ internal class ExtensionManager(
         require(expectedVersion == null || info.versionName == expectedVersion) {
             "Версия APK не соответствует каталогу"
         }
+        require(info.versionCode.toLong()>=module.minimumCode) { "Версия расширения несовместима с этим плеером" }
         require(info.packageName == module.pkg) { "Это не ${module.title}" }
         val own = pm.getPackageInfo(host.packageName, PackageManager.GET_SIGNATURES)
         require(

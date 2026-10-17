@@ -163,6 +163,9 @@ class ExtensionUpdatesTest {
     @Test fun legacyOnlineRequiresCompatibleProtocolAndRcCanMoveToStable() {
         fun entry(version:String)=ExtensionCatalog.Entry(JSONObject().put("id","online").put("kind","online").put("title","Online")
             .put("file","AFP_Online_$version.apk").put("sha256","a".repeat(64)).put("size",100))
+        val fresh=ExtensionUpdates.plan(listOf(entry("0.1.1")),emptyMap(),emptySet(),51,false).single()
+        assertEquals(ExtensionUpdates.State.OPTIONAL,fresh.state);assertNull(fresh.entry)
+        assertFalse(ExtensionUpdates.compatible(entry("0.1.1")));assertTrue(ExtensionUpdates.compatible(entry("0.2.1")))
         val legacy=mapOf("online" to ExtensionUpdates.Installed("0.1.0",1,true))
         val incompatible=ExtensionUpdates.plan(listOf(entry("0.1.1")),legacy,emptySet(),51,false).single()
         assertEquals(ExtensionUpdates.State.REQUIRED,incompatible.state);assertNull(incompatible.entry)
