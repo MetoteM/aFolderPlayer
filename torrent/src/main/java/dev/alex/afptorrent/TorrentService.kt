@@ -262,10 +262,12 @@ class TorrentService:Service() {
     }
     private fun pauseAll(reason:String){tasks.values.forEach { cancelled.add(it.id);it.wanted=false;if(it.state !in setOf("complete","cancelled")){it.state="paused";it.detail=reason} };metadataId?.let { pauseMetadata(it) };stopEngine()}
     private fun publish(save:Boolean) {
+        val previous=view
         activeView=tasks.values.any { it.wanted } || exporting!=null
         tasks.values.forEach { details[it.id]=it.json(true).toString() };details.keys.retainAll(tasks.keys)
         view=JSONObject().put("tasks",JSONArray(tasks.values.map { it.json(false) })).put("settings",settings()).put("networkAllowed",allowed()).put("error",lastError).toString()
         if(save){val saved=JSONArray(tasks.values.map { it.json(true) }).toString();if(saved!=lastSaved){val stream=state.startWrite();try { stream.write(saved.toByteArray());state.finishWrite(stream);lastSaved=saved }catch(e:Exception){state.failWrite(stream)}}}
+        if(view==previous)return
         val n=callbacks.beginBroadcast();try { for(i in 0 until n)runCatching { callbacks.getBroadcastItem(i).changed(view) } }finally { callbacks.finishBroadcast() }
     }
     override fun onTimeout(startId:Int,fgsType:Int) {

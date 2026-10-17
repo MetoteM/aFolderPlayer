@@ -1301,7 +1301,7 @@ class MainActivity : Activity() {
             val tasks=org.json.JSONObject(snapshot).optJSONArray("tasks") ?: return
             val roots=library.roots().toSet()
             val stamp=(0 until tasks.length()).map { tasks.getJSONObject(it) }
-                .filter { it.optInt("exportedCount")>0 && it.optString("tree") in roots }
+                .filter { it.optInt("exportedCount")>0 && it.optString("tree") in roots && it.optString("state") in setOf("complete","paused","error","cancelled") }
                 .map { it.optString("id")+":"+it.optInt("exportedCount") }.sorted().joinToString("|")
             if(stamp.isNotBlank() && stamp!=prefs.getString("torrentImported", "") && !scanning){prefs.edit().putString("torrentImported",stamp).apply();scan()}
         }
