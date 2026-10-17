@@ -18,11 +18,11 @@ internal object CrashNotes {
     }
     private class LocalHandler(private val app:Context,private val previous:Thread.UncaughtExceptionHandler?):Thread.UncaughtExceptionHandler {
         override fun uncaughtException(thread:Thread,error:Throwable) {
-            record(app,error);previous?.uncaughtException(thread,error)
+            record(app,error,true);previous?.uncaughtException(thread,error)
         }
     }
 
-    fun record(context:Context,error:Throwable) {
+    fun record(context:Context,error:Throwable,fatal:Boolean=false) {
         runCatching {
             val text=buildString {
                 append("aFolderPlayer · ").append(System.currentTimeMillis()).append('\n')
@@ -34,11 +34,12 @@ internal object CrashNotes {
                     cause=value.cause?.takeIf { it!==value }
                 }
             }.take(12000)
-            context.getSharedPreferences("local_crash",0).edit().putString("trace",text).commit()
+            context.getSharedPreferences("local_crash",0).edit().putString(if(fatal)"fatal" else "trace",text).commit()
         }
     }
     fun show(host:Activity) {
-        val text=host.getSharedPreferences("local_crash",0).getString("trace",null) ?: "В этой версии сбоев пока не зафиксировано"
+        val prefs=host.getSharedPreferences("local_crash",0)
+        val text=prefs.getString("fatal",null) ?: prefs.getString("trace",null) ?: "В этой версии сбоев пока не зафиксировано"
         AlertDialog.Builder(host).setTitle("Последний сбой · локально").setMessage(text)
             .setPositiveButton("Закрыть",null).setNeutralButton("Копировать") { _,_->
                 host.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Сбой плеера",text))
