@@ -16,6 +16,7 @@ internal object LocalAudio {
         uri: String,
         startMs: Long,
         durationMs: Long,
+        sourceOffsetMs: Long = 0,
         checkActive: () -> Unit,
     ): ShortArray {
         val remote=OnlineArtwork.valid(uri)!=null
@@ -36,7 +37,8 @@ internal object LocalAudio {
             val format = extractor.getTrackFormat(track)
             extractor.selectTrack(track)
             val start = startMs.coerceAtLeast(0).coerceAtMost((durationMs - 30000).coerceAtLeast(0))
-            val startUs = start * 1000
+            val startUs = (sourceOffsetMs + start) * 1000
+            val endUs = if(durationMs>0)(sourceOffsetMs + durationMs) * 1000 else Long.MAX_VALUE
             extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
             format.setInteger(MediaFormat.KEY_PCM_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
             val decoder = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME)!!)
@@ -65,7 +67,7 @@ internal object LocalAudio {
                         val buffer =
                             decoder.getInputBuffer(index) ?: error("Не удалось прочитать аудио")
                         val size = extractor.readSampleData(buffer, 0)
-                        if (size < 0) {
+                        if (size < 0 || extractor.sampleTime>=endUs) {
                             decoder.queueInputBuffer(
                                 index,
                                 0,
@@ -120,7 +122,7 @@ internal object LocalAudio {
                                     else buffer.short.toDouble()
                             }
                             mono /= channels
-                            if (info.presentationTimeUs + frame * 1_000_000L / rate >= startUs)
+                            if (info.presentationTimeUs + frame * 1_000_000L / rate in startUs until endUs)
                                 resampler.add(mono) { sample ->
                                     if (count < output.size) output[count++] = sample
                                 }

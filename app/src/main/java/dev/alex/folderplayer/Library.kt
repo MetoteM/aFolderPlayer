@@ -26,11 +26,18 @@ internal data class Track(
     val trackNumber: Int? = null,
     val discNumber: Int? = null,
     val rootUri: String = "",
+    val sourceUri: String = uri,
+    val cueStartMs: Long = 0,
+    val cueEndMs: Long? = null,
+    val cueSheetUri: String = "",
 ) {
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun item(): MediaItem =
         MediaItem.Builder()
             .setMediaId(uri)
-            .setUri(uri)
+            .setUri(sourceUri)
+            .setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(cueStartMs)
+                .setEndPositionMs(cueEndMs ?: androidx.media3.common.C.TIME_END_OF_SOURCE).build())
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(title)
@@ -58,6 +65,10 @@ internal data class Track(
             .put("trackNumber", trackNumber)
             .put("discNumber", discNumber)
             .put("rootUri", rootUri)
+            .put("sourceUri", sourceUri)
+            .put("cueStartMs", cueStartMs)
+            .put("cueEndMs", cueEndMs)
+            .put("cueSheetUri", cueSheetUri)
 }
 
 internal class Library(private val context: Context) {
@@ -105,6 +116,10 @@ internal class Library(private val context: Context) {
                             it.optInt("trackNumber", 0).takeIf { n -> n > 0 },
                             it.optInt("discNumber", 0).takeIf { n -> n > 0 },
                             it.optString("rootUri", ""),
+                            it.optString("sourceUri", it.getString("uri")),
+                            it.optLong("cueStartMs", 0),
+                            it.optLong("cueEndMs", -1).takeIf { end -> end>0 },
+                            it.optString("cueSheetUri", ""),
                         )
                     }
                 }
@@ -117,6 +132,8 @@ internal class Library(private val context: Context) {
         val found = linkedMapOf<String, Track>()
         val visited = hashSetOf<String>()
         var errors = 0
+        data class CueDocument(val file:DocumentFile,val folder:String,val root:String)
+        val cues=mutableListOf<CueDocument>()
         val extensions = setOf("mp3", "flac", "m4a", "aac", "ogg", "opus", "wav")
         fun walk(file: DocumentFile, folder: String, root: String) {
             if (!visited.add(file.uri.toString())) return
@@ -127,10 +144,11 @@ internal class Library(private val context: Context) {
                             errors++
                             emptyArray()
                         }
-                children.forEach { walk(it, "$folder/${file.name.orEmpty()}", root) }
+                children.sortedBy { it.name }.forEach { walk(it, "$folder/${file.name.orEmpty()}", root) }
                 return
             }
             val name = file.name ?: return
+            if(name.endsWith(".cue",true)) { cues.add(CueDocument(file,folder.trimStart('/'),root));return }
             if (name.substringAfterLast('.', "").lowercase() !in extensions) return
             val retriever = MediaMetadataRetriever()
             try {
@@ -143,7 +161,6 @@ internal class Library(private val context: Context) {
                     errors++
                     return
                 }
-                if (!eligibleDuration(duration)) return
                 val title =
                     retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)?.takeIf {
                         it.isNotBlank()
@@ -193,10 +210,37 @@ internal class Library(private val context: Context) {
             }
             walk(tree, "", root)
         }
-        val sorted = found.values.sortedBy { it.title.lowercase() }
+        val original=found.values.toList()
+        val split=hashSetOf<String>()
+        for(cue in cues) {
+            runCatching {
+                val bytes=context.contentResolver.openInputStream(cue.file.uri)!!.use { input ->
+                    val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192)
+                    while(true) { val n=input.read(buffer);if(n<0)break;require(out.size()+n<=CueSheet.MAX_BYTES);out.write(buffer,0,n) };out.toByteArray()
+                }
+                val sheet=CueSheet.parse(CueSheet.decode(bytes))
+                val tracks=CueTracks.expand(sheet,cue.file.uri.toString(),cue.folder,cue.root,original)
+                val sources=tracks.map { it.sourceUri }.toSet()
+                require(sources.none { it in split }) { "Несколько CUE для одного файла" }
+                split.addAll(sources);sources.forEach { found.remove(it) };tracks.forEach { found[it.uri]=it }
+            }.onFailure { errors++ } // A broken sheet keeps the original audio playable.
+        }
+        val sorted = found.values.filter { it.cueSheetUri.isNotBlank() || eligibleDuration(it.duration) }.sortedBy { it.title.lowercase() }
+        migrateCueReferences(sorted)
         prefs.edit().putString("tracks", JSONArray(sorted.map { it.json() }).toString()).apply()
         syncFolderPlaylists(sorted)
         return tracks() to errors
+    }
+
+    private fun migrateCueReferences(tracks:List<Track>) {
+        val replacements=tracks.filter { it.cueSheetUri.isNotBlank() }.groupBy { it.sourceUri }
+        if(replacements.isEmpty())return
+        fun expand(ids:Collection<String>)=ids.flatMap { id->replacements[id]?.sortedBy { it.cueStartMs }?.map { it.uri } ?: listOf(id) }.distinct()
+        val lists=lists();val edit=prefs.edit()
+        for(name in lists.keys().asSequence().toList())lists.put(name,JSONArray(expand(strings(lists.getJSONArray(name).toString()))))
+        edit.putString("playlists",lists.toString())
+        for(key in listOf("hiddenTracks","excludedTracks"))edit.putStringSet(key,expand(prefs.getStringSet(key,emptySet())!!).toSet())
+        edit.apply()
     }
 
     fun isRandom(source: String) = prefs.contains("randomOrder:$source")

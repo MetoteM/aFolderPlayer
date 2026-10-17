@@ -28,14 +28,17 @@ class TorrentTransferTest {
   val base=Files.createTempDirectory("afp-transfer-").toFile();val seed=SessionManager(false);val consumer=SessionManager(false);val engine=TorrentEngine()
   try {
    val input=File(base,"seed/album").apply { mkdirs() };val data=ByteArray(2*1024*1024).apply { Random(7).nextBytes(this) }
+   val cue="FILE \"owned-audio.mp3\" MP3\nTRACK 01 AUDIO\nINDEX 01 00:00:00"
+   File(input,"album.cue").writeText(cue)
    File(input,"owned-audio.mp3").writeBytes(data);File(input,"unselected.bin").writeBytes(ByteArray(512*1024).apply { Random(8).nextBytes(this) })
    val encoded=TorrentBuilder().path(input).addTracker("http://127.0.0.1:49175/announce").pieceSize(16384).generate().entry().bencode();val info=TorrentInfo(encoded)
    assertTrue(TorrentMetadata.load(encoded).trackers.contains("http://127.0.0.1:49175/announce"))
    val files=engine.describe(info);val chosen=files.single { it.path.endsWith("owned-audio.mp3") }.index
+   val cueIndex=files.single { it.path.endsWith("album.cue") }.index;val selected=setOf(chosen,cueIndex)
    seed.start(SessionParams(isolated(49171)));seed.download(info,input.parentFile)
    waitFor { seed.find(info.infoHash())?.status(true)?.isSeeding==true }
    engine.start(isolated(49172))
-   val download=File(base,"download");engine.add(info,download,setOf(chosen),encoded);engine.session.resume()
+   val download=File(base,"download");engine.add(info,download,selected,encoded);engine.session.resume()
    waitFor { engine.handle(info)!=null }
    var handle=engine.handle(info)!!;handle.unsetFlags(TorrentFlags.AUTO_MANAGED);handle.resume();handle.setDownloadLimit(128*1024)
    handle.swig().connect_peer(TcpEndpoint("127.0.0.1",49171).swig())
@@ -43,7 +46,7 @@ class TorrentTransferTest {
    handle.pause();engine.close()
    // Restart using the same verified metadata and partial files; recheck then finish.
    engine.start(isolated(49172))
-   engine.add(info,download,setOf(chosen),encoded);engine.session.resume();waitFor { engine.handle(info)!=null };handle=engine.handle(info)!!;handle.unsetFlags(TorrentFlags.AUTO_MANAGED);handle.resume()
+   engine.add(info,download,selected,encoded);engine.session.resume();waitFor { engine.handle(info)!=null };handle=engine.handle(info)!!;handle.unsetFlags(TorrentFlags.AUTO_MANAGED);handle.resume()
    handle.swig().connect_peer(TcpEndpoint("127.0.0.1",49171).swig())
    waitFor { handle.status(true).isFinished }
    val flushed=java.util.concurrent.CountDownLatch(1)
@@ -55,6 +58,7 @@ class TorrentTransferTest {
    val finished=TorrentRules.file(download,files[chosen].path)
    waitFor { finished.isFile && finished.length()==data.size.toLong() }
    assertArrayEquals(MessageDigest.getInstance("SHA-256").digest(data),MessageDigest.getInstance("SHA-256").digest(finished.readBytes()))
+   assertEquals(cue,TorrentRules.file(download,files[cueIndex].path).readText())
    assertEquals(Priority.IGNORE,handle.filePriority(files.single { it.path.endsWith("unselected.bin") }.index))
    // A third peer is interested in data we own. It must receive zero payload,
    // including after the 30-second optimistic-unchoke interval and over LAN.
@@ -67,12 +71,12 @@ class TorrentTransferTest {
    handle.pause();assertEquals(0,handle.status(true).totalPayloadUpload())
    // Metadata retrieval is a real magnet exchange against our owned seeder.
    assertTrue(info.infoHashes().hasV1())
-   val magnet="magnet:?xt=urn:btih:${info.infoHashes().v1}&x.pe=127.0.0.1:49171"
+   val magnet=MagnetLink.normalize("Ссылка: <magnet:?xt=urn:btih:${info.infoHashes().v1}&amp;x.pe=127.0.0.1:49171>")
    val meta=SessionManager(false)
    try { val settings=isolated(49174);TorrentEngine.noUploadSettings(settings);meta.start(SessionParams(settings));TorrentEngine.noUploadPeers(meta)
     val bytes=TorrentMetadata.fetch(meta,magnet,File(base,"metadata"),30);assertEquals(info.infoHash(),TorrentMetadata.load(bytes).torrentInfo!!.infoHash())
     engine.close();engine.start(isolated(49172))
-    engine.add(info,File(base,"from-magnet"),setOf(chosen),bytes,magnet);engine.session.resume()
+    engine.add(info,File(base,"from-magnet"),selected,bytes,magnet);engine.session.resume()
     waitFor { engine.handle(info)!=null };val fromMagnet=engine.handle(info)!!;fromMagnet.resume()
     waitFor { fromMagnet.status(true).isFinished };assertEquals(0L,fromMagnet.status(true).totalPayloadUpload())
    }finally { meta.stop() }

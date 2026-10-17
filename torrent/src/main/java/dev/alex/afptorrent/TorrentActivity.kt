@@ -53,6 +53,7 @@ class TorrentActivity:Activity() {
         bound=bindService(Intent(this,TorrentService::class.java),connection,BIND_AUTO_CREATE)
     }
     private fun externalSource(intent:Intent):String? = intent.data?.takeIf { it.scheme in setOf("magnet","content") }?.toString()
+        ?: intent.getStringExtra(Intent.EXTRA_TEXT)?.takeIf { it.contains("magnet",true) }
     override fun onNewIntent(intent:Intent){super.onNewIntent(intent);externalSource(intent)?.let { source.setText(it) }}
     private fun dp(n:Int)=(n*resources.displayMetrics.density).toInt()
     private fun button(parent:LinearLayout,title:String,action:()->Unit){parent.addView(Button(this).apply { text=title;setOnClickListener { runCatching(action).onFailure { message(it.message ?: "Не удалось выполнить действие") } } })}
@@ -83,7 +84,7 @@ class TorrentActivity:Activity() {
             val text=TextView(this).apply { textSize=17f };taskTexts[id]=text;card.addView(text)
             val progress=ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply { max=100 };taskProgress[id]=progress;card.addView(progress);updateProgress(t)
             val controls=LinearLayout(this);card.addView(controls)
-            if(!t.optBoolean("wanted") && t.optInt("exportedCount")==0)button(controls,"Файлы") { selectFiles(id) }
+            if(!t.optBoolean("wanted"))button(controls,"Файлы") { selectFiles(id) }
             if(t.optString("state") !in setOf("complete","cancelled"))button(controls,if(t.optBoolean("wanted"))"Пауза" else "Загрузить") { send(if(t.optBoolean("wanted"))"pause" else "run",JSONObject().put("id",id),!t.optBoolean("wanted")) }
             button(controls,"⋯") { AlertDialog.Builder(this).setItems(arrayOf("Отменить загрузку","Убрать задачу и временные файлы")) { _,which->
                 if(which==0)send("cancel",JSONObject().put("id",id))
@@ -98,11 +99,11 @@ class TorrentActivity:Activity() {
     }
     private fun selectFiles(id:String) {
         val task=JSONObject(remote?.detail(id) ?: "{}");val all=task.optJSONArray("files")?:return message("Сначала получи описание раздачи")
-        val files=(0 until all.length()).map { all.getJSONObject(it) }.filter { it.optBoolean("audio") }
+        val files=(0 until all.length()).map { all.getJSONObject(it) }.filter { it.optBoolean("audio") || it.optString("path").endsWith(".cue",true) }
         if(files.isEmpty())return message("Поддерживаемых аудиофайлов пока нет")
         val old=task.optJSONArray("selected")?:JSONArray();val selected=(0 until old.length()).map { old.getInt(it) }.toSet()
         val flags=BooleanArray(files.size) { if(selected.isEmpty())true else files[it].getInt("index") in selected }
-        AlertDialog.Builder(this).setTitle("Какие файлы скачать?")
+        AlertDialog.Builder(this).setTitle("Аудиофайлы и CUE-разметка")
             .setMultiChoiceItems(files.map { it.getString("path")+" · "+size(it.getLong("size")) }.toTypedArray(),flags) { _,index,checked->flags[index]=checked }
             .setPositiveButton("Выбрать") { _,_->send("select",JSONObject().put("id",id).put("files",JSONArray(files.filterIndexed { index,_->flags[index] }.map { it.getInt("index") }))) }.setNegativeButton("Отмена",null).show()
     }

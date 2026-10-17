@@ -17,13 +17,15 @@ internal object TorrentRules {
         return target
     }
     fun music(path:String)=path.substringAfterLast('.',"").lowercase(Locale.ROOT) in audio
+    fun selectable(file:TorrentFile)=file.audio || file.path.endsWith(".cue",true)
     fun allowed(connected:Boolean,wifi:Boolean,metered:Boolean,roaming:Boolean,wifiOnly:Boolean,allowRoaming:Boolean)=
         connected && (!wifiOnly || wifi && !metered) && (!roaming || allowRoaming)
     fun selectedSize(files:List<TorrentFile>,selected:Set<Int>,limit:Long):Long {
-        require(selected.isNotEmpty()) { "Выбери хотя бы один аудиофайл" }
-        require(selected.all { i -> files.any { it.index==i && it.audio } }) { "Недопустимый выбор файлов" }
+        require(files.any { it.index in selected && it.audio }) { "Выбери хотя бы один аудиофайл" }
+        require(selected.all { i -> files.any { it.index==i && selectable(it) } }) { "Недопустимый выбор файлов" }
         var total=0L
         files.filter { it.index in selected }.forEach { f ->
+            require(!f.path.endsWith(".cue",true) || f.size<=1024*1024) { "CUE больше 1 МиБ" }
             require(f.size>0 && f.size<=limit-total) { "Выбрано больше установленного лимита места" };total+=f.size
         }
         return total

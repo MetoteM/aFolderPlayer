@@ -19,7 +19,10 @@ internal class SongContent(context: Context) {
         val source =
             attached?.let { Uri.parse(it) }
                 ?: run {
-                    val uri = Uri.parse(track.uri)
+                    // Album-image lyrics are not per-track lyrics. Only an explicitly
+                    // attached or cached lyric is used for a CUE segment.
+                    if(track.cueSheetUri.isNotBlank())return null
+                    val uri = Uri.parse(track.sourceUri)
                     val doc =
                         androidx.documentfile.provider.DocumentFile.fromSingleUri(context, uri)
                     val name =

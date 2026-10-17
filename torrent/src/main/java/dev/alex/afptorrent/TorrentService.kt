@@ -111,11 +111,11 @@ class TorrentService:Service() {
             "prepare"->{
                 require(tasks.size<20) { "Не больше 20 задач; удали завершённые из списка" }
                 require(foreground) { "Начни загрузку из окна AFP Torrent" }
-                val input=a.getString("source");require(input.length<=8000)
+                val raw=a.getString("source");require(raw.length<=32768)
+                val input=if(raw.trim().startsWith("content://"))raw.trim() else MagnetLink.normalize(raw)
                 val t=TorrentTask(UUID.randomUUID().toString());tasks[t.id]=t;jobDir(t.id).mkdirs()
                 try {
                     if(input.startsWith("magnet:?",true)){
-                        require(Uri.parse(input).getQueryParameters("xt").any { it.startsWith("urn:btih:",true) || it.startsWith("urn:btmh:",true) }) { "Некорректная magnet-ссылка" }
                         File(jobDir(t.id),"magnet").writeText(input);t.wanted=true;t.detail="Ожидание метаданных и доступных участников"
                     } else {
                         val uri=Uri.parse(input);require(uri.scheme=="content") { "Выбери .torrent через системное окно" }
@@ -129,9 +129,9 @@ class TorrentService:Service() {
             }
             "select"->{
                 require(task!=null && !task.wanted && exporting!=id) { "Сначала поставь загрузку на паузу" }
-                val array=a.getJSONArray("files");val selected=(0 until array.length()).map { array.getInt(it) }.toSet()
+                val array=a.getJSONArray("files");val selected=(0 until array.length()).map { array.getInt(it) }.toSet()+task.exported.keys
                 task.total=TorrentRules.selectedSize(task.files,selected,prefs.getInt("maxMB",2048)*1024L*1024)
-                require(task.exported.isEmpty()) { "После сохранения файлов выбор не меняется" };task.selected=selected;task.state="ready";task.detail="Выбери папку и нажми «Загрузить»"
+                task.done=task.files.filter { it.index in task.exported }.sumOf { it.size };task.selected=selected;task.state="ready";task.detail="Выбери папку и нажми «Загрузить»"
             }
             "run"->{
                 require(task!=null && task.state!="cancelled" && exporting!=id);require(foreground) { "Начни из окна расширения" }
@@ -152,6 +152,7 @@ class TorrentService:Service() {
             else->error("Неизвестное действие")
         }
     }
+    private fun taskExportedSize(t:TorrentTask)=t.files.filter { it.index in t.exported }.sumOf { it.size }
     private fun jobDir(id:String)=File(storage,id)
     private fun payloadDir(id:String)=File(jobDir(id),"data")
     private fun acceptMetadata(t:TorrentTask,data:ByteArray) {
@@ -221,11 +222,11 @@ class TorrentService:Service() {
                     val staged=storage.walkTopDown().filter { it.isFile }.sumOf { it.length() }
                     check(staged+remaining+16*1024*1024 <= prefs.getInt("maxMB",2048)*1024L*1024) { "Превышен лимит временного места. Удали старые временные данные или увеличь лимит" }
                     check(storage.usableSpace>remaining+64*1024*1024) { "Недостаточно места для временных файлов" }
-                    e.add(info,payloadDir(t.id),t.selected,File(jobDir(t.id),"info.torrent").readBytes(),File(jobDir(t.id),"magnet").takeIf { it.exists() }?.readText());t.state="checking";continue
+                    e.add(info,payloadDir(t.id),t.selected-t.exported.keys,File(jobDir(t.id),"info.torrent").readBytes(),File(jobDir(t.id),"magnet").takeIf { it.exists() }?.readText());t.state="checking";continue
                 }
                 h.unsetFlags(TorrentFlags.AUTO_MANAGED);h.resume();e.session.resume()
                 val status=h.status(true);check(status.errorCode().value==0) { "Ошибка чтения или записи торрент-файлов" }
-                t.done=status.totalWantedDone();t.down=status.downloadRate();t.up=status.uploadRate();t.peers=status.numPeers();t.uploaded=status.totalPayloadUpload();check(t.uploaded==0L) { "Движок нарушил запрет отдачи; передача остановлена" }
+                t.done=taskExportedSize(t)+status.totalWantedDone();t.down=status.downloadRate();t.up=status.uploadRate();t.peers=status.numPeers();t.uploaded=status.totalPayloadUpload();check(t.uploaded==0L) { "Движок нарушил запрет отдачи; передача остановлена" }
                 if(status.isFinished){
                     if(t.exported.keys.containsAll(t.selected)){
                         t.wanted=false;t.state="complete";h.pause()

@@ -864,7 +864,7 @@ class MainActivity : Activity() {
                             AlertDialog.Builder(this)
                                 .setTitle(track.title)
                                 .setMessage(
-                                    "${track.artist}\nФайл: ${track.filename.ifBlank { androidx.documentfile.provider.DocumentFile.fromSingleUri(this,Uri.parse(track.uri))?.name ?: "Неизвестно" }}\nПапка: ${track.folder}\n${clock(track.duration)}"
+                                    "${track.artist}\nФайл: ${track.filename.ifBlank { androidx.documentfile.provider.DocumentFile.fromSingleUri(this,Uri.parse(track.sourceUri))?.name ?: "Неизвестно" }}\nПапка: ${track.folder}\n${clock(track.duration)}"
                                 )
                                 .setPositiveButton("Закрыть", null)
                                 .show()
@@ -1717,7 +1717,7 @@ class MainActivity : Activity() {
         executor.execute {
             val bitmap = runCatching {
                 if(track.uri.startsWith("afp-yandex://")) OnlineArtwork(applicationContext).load(cover)
-                else LocalArtwork.read(this, track.uri)
+                else LocalArtwork.read(this, track.sourceUri)
             }.getOrNull()
             val lyrics = runCatching { loadLyrics(track)?.let { LyricsDocument(it) } }
             handler.post {
@@ -2152,7 +2152,7 @@ class MainActivity : Activity() {
             runCatching {
                 val retriever = android.media.MediaMetadataRetriever()
                 try {
-                    retriever.setDataSource(this, Uri.parse(track.uri))
+                    retriever.setDataSource(this, Uri.parse(track.sourceUri))
                     retriever.embeddedPicture?.let { bytes ->
                         val bounds =
                             android.graphics.BitmapFactory.Options().apply {
