@@ -257,10 +257,6 @@ class PlaybackService : MediaSessionService() {
                 .build()
         player.addListener(
             object : Player.Listener {
-                override fun onPositionDiscontinuity(oldPosition:Player.PositionInfo,newPosition:Player.PositionInfo,reason:Int) {
-                    val id=oldPosition.mediaItem?.mediaMetadata?.extras?.getString("bookId")
-                    if(id!=null)books.savePosition(id,oldPosition.mediaItem!!.mediaId,oldPosition.positionMs)
-                }
                 override fun onMediaItemTransition(item: androidx.media3.common.MediaItem?, reason: Int) {
                     this@PlaybackService.player.setWakeMode(if (item?.mediaId?.startsWith("afp-yandex://") == true) C.WAKE_MODE_NETWORK else C.WAKE_MODE_LOCAL)
                 }
@@ -491,7 +487,8 @@ class PlaybackService : MediaSessionService() {
         if(bookId!=null) {
             val book=books.book(bookId)
             val completed=player.playbackState==Player.STATE_ENDED && player.currentMediaItemIndex==player.mediaItemCount-1
-            val wasCompleted=book?.let { books.position(it).completed }==true && !player.playWhenReady
+            val previous=book?.let { books.position(it) }
+            val wasCompleted=previous?.completed==true && previous.uri==next.second && next.third>=previous.position && !player.playWhenReady
             books.savePosition(bookId,next.second,next.third,completed || wasCompleted)
         }
         if (next != savedPositionState) {

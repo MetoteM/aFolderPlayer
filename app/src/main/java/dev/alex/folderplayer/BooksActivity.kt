@@ -75,7 +75,7 @@ class BooksActivity:ThemedActivity() {
         play=button("Продолжить") {
             val b=selected?.let { books.book(it) } ?: return@button toast("Добавь или выбери книгу")
             val c=controller ?: return@button toast("Плеер ещё подключается")
-            if(active() && c.playbackState!=Player.STATE_ENDED){ if(c.isPlaying)c.pause() else { if(c.playbackState==Player.STATE_IDLE)c.prepare();c.play() } }
+            if(active() && c.playbackState!=Player.STATE_ENDED && !books.position(b).completed){ if(c.isPlaying)c.pause() else { if(c.playbackState==Player.STATE_IDLE)c.prepare();c.play() } }
             else start(b)
         };transport.addView(play,LinearLayout.LayoutParams(0,-2,1f))
         transport.addView(button("+15 с") { skip(15000) },LinearLayout.LayoutParams(0,-2,1f));controls.addView(transport)

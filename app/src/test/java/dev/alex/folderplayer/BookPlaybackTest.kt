@@ -60,4 +60,17 @@ class BookPlaybackTest {
             assertEquals(SessionResult.RESULT_ERROR_BAD_VALUE,s.applyPlaybackCommand(PlaybackCommands.BOOK_SPEED,Bundle().apply {putFloat("speed",Float.NaN)}))
         }finally { host.destroy() }
     }
+    @Test fun completedBookStaysCompletedWhenSwitchingAwayAndRestartsFromBeginning(){
+        val a=book("a");val b=book("b");books.put(a);books.put(b)
+        val host=Robolectric.buildService(PlaybackService::class.java).create()
+        try {
+            val service=host.get();val p=player(service)
+            start(service,a.id,a.chapters.last().uri,180000);p.pause()
+            books.savePosition(a.id,a.chapters.last().uri,180000,true)
+            start(service,b.id);p.pause()
+            assertTrue(books.position(a).completed)
+            start(service,a.id);p.pause()
+            assertEquals(0,p.currentMediaItemIndex);assertEquals(0L,p.currentPosition);assertFalse(books.position(a).completed)
+        }finally { host.destroy() }
+    }
 }
