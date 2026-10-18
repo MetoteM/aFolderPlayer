@@ -23,7 +23,7 @@ import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import java.util.concurrent.Executors
 
-class MainActivity : Activity() {
+class MainActivity : ThemedActivity() {
     private lateinit var root: FrameLayout
     private lateinit var screens: PlayerScreens
     private var page = "library"
@@ -374,8 +374,8 @@ class MainActivity : Activity() {
             EditText(this).apply {
                 setText(query)
                 hint = "Найти песню или исполнителя"
-                setTextColor(Color.WHITE)
-                setHintTextColor(Color.LTGRAY)
+                setTextColor(AppAppearance.textColor)
+                setHintTextColor(PlayerScreens.muted)
                 isSingleLine = true
             }
         search.addTextChangedListener(
@@ -492,7 +492,7 @@ class MainActivity : Activity() {
         TextView(this).apply {
             this.text = text
             textSize = size
-            setTextColor(Color.WHITE)
+            setTextColor(AppAppearance.textColor)
             setPadding(dp(8), dp(6), dp(8), dp(6))
         }
 
@@ -504,10 +504,10 @@ class MainActivity : Activity() {
             minWidth = 0
             minimumWidth = 0
             minimumHeight = dp(48)
-            setTextColor(Color.WHITE)
+            setTextColor(AppAppearance.textColor)
             background =
                 android.graphics.drawable.RippleDrawable(
-                    android.content.res.ColorStateList.valueOf(Color.rgb(45, 70, 73)),
+                    android.content.res.ColorStateList.valueOf(AppAppearance.palette.control),
                     android.graphics.drawable.GradientDrawable().apply {
                         setColor(PlayerScreens.surface)
                         cornerRadius = dp(16).toFloat()
@@ -1331,12 +1331,13 @@ class MainActivity : Activity() {
                 "Диагностика последнего сбоя",
             )
         val installed = ExternalExtensions.installed(this)
+        names.add("Тема оформления")
         names.addAll(installed.map { it.title })
         names.add("О приложении")
         optionMenu(this, "Настройки", names) { i ->
             if (i == names.lastIndex) { about(); return@optionMenu }
-            if (i >= 8) {
-                ExternalExtensions.open(this, installed[i - 8])
+            if (i >= 9) {
+                ExternalExtensions.open(this, installed[i - 9])
                 return@optionMenu
             }
             when (i) {
@@ -1381,6 +1382,7 @@ class MainActivity : Activity() {
                         .show()
                 5 -> extensions()
                 7 -> CrashNotes.show(this)
+                8 -> ThemePicker.show(this)
             }
         }
     }
@@ -2242,7 +2244,7 @@ class MainActivity : Activity() {
                                         if (document.cues[i].text.isNotEmpty()) {
                                             spans.setSpan(
                                                 android.text.style.ForegroundColorSpan(
-                                                    Color.rgb(103, 232, 193)
+                                                    PlayerScreens.accent
                                                 ),
                                                 offsets[i],
                                                 offsets[i] + document.cues[i].text.length,
@@ -2623,12 +2625,12 @@ class MainActivity : Activity() {
         highlightedId = currentId
         trackLabels.forEach { (uri, label) ->
             val current = uri == currentId
-            label.setTextColor(if (current) Color.rgb(103, 232, 193) else Color.WHITE)
+            label.setTextColor(if (current) PlayerScreens.accent else AppAppearance.textColor)
             label.setTypeface(null, if (current) Typeface.BOLD else Typeface.NORMAL)
             label.isSelected = current
             (label.parent as? View)?.background =
                 android.graphics.drawable.GradientDrawable().apply {
-                    setColor(if (current) Color.rgb(20, 52, 53) else PlayerScreens.bg)
+                    setColor(if (current) AppAppearance.palette.selected else PlayerScreens.bg)
                     cornerRadius = dp(14).toFloat()
                 }
         }

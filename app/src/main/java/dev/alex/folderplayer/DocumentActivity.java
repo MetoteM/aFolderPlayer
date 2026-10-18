@@ -13,7 +13,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import org.json.*;
 
-public final class DocumentActivity extends Activity {
+public final class DocumentActivity extends ThemedActivity {
   private RetainedOperation<DocumentResult> operation;
   private String appliedOperationId;
   private ScrollView reader;
@@ -29,7 +29,7 @@ public final class DocumentActivity extends Activity {
 
   private TextView label(String s) {
     TextView v = new TextView(this);
-    v.setTextColor(Color.WHITE);
+    v.setTextColor(AppAppearance.getTextColor());
     v.setTextSize(17);
     v.setText(s);
     v.setPadding(0, 12, 0, 12);
@@ -62,7 +62,7 @@ public final class DocumentActivity extends Activity {
     loadHistory();
     LinearLayout box = new LinearLayout(this);
     box.setOrientation(LinearLayout.VERTICAL);
-    box.setBackgroundColor(Color.rgb(15, 24, 29));
+    box.setBackgroundColor(AppAppearance.getPalette().getBackground());
     box.setPadding(24, 24, 24, 24);
     if (Build.VERSION.SDK_INT >= 30)
       box.setOnApplyWindowInsetsListener(

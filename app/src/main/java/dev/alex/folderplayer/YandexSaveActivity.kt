@@ -14,7 +14,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.CancellationException
 
 /** User-selected destination; no broad storage permission, automatic export, or credentials in output. */
-class YandexSaveActivity:Activity() {
+class YandexSaveActivity:ThemedActivity() {
     private val worker=Executors.newSingleThreadExecutor()
     @Volatile private var cancelled=false
     @Volatile private var closed=false
@@ -30,8 +30,8 @@ class YandexSaveActivity:Activity() {
     override fun onCreate(state:Bundle?) {
         super.onCreate(state)
         val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(24,24,24,24);setBackgroundColor(PlayerScreens.bg) }
-        root.addView(TextView(this).apply { text="Сохранить MP3 · эксперимент";textSize=22f;setTextColor(android.graphics.Color.WHITE) })
-        status=TextView(this).apply { text=intent.getStringExtra("title");setTextColor(android.graphics.Color.WHITE) };root.addView(status)
+        root.addView(TextView(this).apply { text="Сохранить MP3 · эксперимент";textSize=22f;setTextColor(AppAppearance.textColor) })
+        status=TextView(this).apply { text=intent.getStringExtra("title");setTextColor(AppAppearance.textColor) };root.addView(status)
         progress=ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply { max=100;isIndeterminate=true };root.addView(progress)
         cancel=Button(this).apply { text="Отменить";setOnClickListener { stop();status.text="Отменяем сохранение…";isEnabled=false } };root.addView(cancel)
         SystemBarInsets.apply(root);setContentView(root)

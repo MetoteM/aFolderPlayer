@@ -70,7 +70,7 @@ class PlayerScreensTest {
   ui.setQueue(listOf(PlayerScreens.Entry("a","Первая","Автор",10000),PlayerScreens.Entry("b","Вторая","Автор",10000)))
   val labels=all(ui.view).filterIsInstance<TextView>();val current=labels.first { it.text.toString().startsWith("Первая") };val second=labels.first { it.text.toString().startsWith("Вторая") }
   assertEquals(PlayerScreens.accent,current.currentTextColor);second.performClick();assertEquals(1,actions.chosen)
-  ui.update(state("b"));assertEquals(Color.WHITE,current.currentTextColor);assertEquals(PlayerScreens.accent,second.currentTextColor)
+  ui.update(state("b"));assertEquals(AppAppearance.textColor,current.currentTextColor);assertEquals(PlayerScreens.accent,second.currentTextColor)
  }
  @Test fun queueMoveMenuUsesDisplayedOrder() {
   val activity=Robolectric.buildActivity(Activity::class.java).setup().get();val actions=Actions();val ui=PlayerScreens(activity,actions);ui.show("queue");ui.update(state())

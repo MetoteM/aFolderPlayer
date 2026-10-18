@@ -49,7 +49,7 @@ internal class IconButton(context: Context, kind: Kind, label: String, action: (
         compoundDrawablePadding = 0
         background =
             RippleDrawable(
-                ColorStateList.valueOf(Color.rgb(45, 70, 73)),
+                ColorStateList.valueOf(AppAppearance.palette.control),
                 GradientDrawable().apply {
                     setColor(PlayerScreens.surface)
                     cornerRadius = dp(14).toFloat()
@@ -71,11 +71,11 @@ internal class IconButton(context: Context, kind: Kind, label: String, action: (
             TextView(context).apply {
                 text = this@IconButton.contentDescription
                 textSize = 14f
-                setTextColor(Color.WHITE)
+                setTextColor(AppAppearance.textColor)
                 setPadding(dp(12), dp(8), dp(12), dp(8))
                 background =
                     GradientDrawable().apply {
-                        setColor(Color.rgb(45, 61, 68))
+                        setColor(PlayerScreens.surface)
                         cornerRadius = dp(8).toFloat()
                     }
             }

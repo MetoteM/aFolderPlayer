@@ -20,7 +20,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** Explicit foreground-only recognition. Recording never touches disk. */
-class RecognitionActivity : Activity() {
+class RecognitionActivity : ThemedActivity() {
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var status: TextView

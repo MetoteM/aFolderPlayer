@@ -1,15 +1,139 @@
 <resources>
- <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
-  <item name="android:windowBackground">#10191E</item><item name="android:colorBackground">#10191E</item><item name="android:colorAccent">#69DFC2</item>
-  <item name="android:statusBarColor">#10191E</item><item name="android:navigationBarColor">#10191E</item>
-  <item name="android:textColorPrimary">#FFFFFF</item><item name="android:textColorSecondary">#A5B1B9</item>
-  <item name="android:alertDialogTheme">@style/AppDialogTheme</item><item name="android:buttonStyle">@style/AppButton</item>
- </style>
- <style name="AppDialogTheme" parent="android:style/Theme.Material.Dialog.Alert">
-  <item name="android:windowBackground">@drawable/dialog_background</item><item name="android:colorBackground">#1B272D</item><item name="android:colorAccent">#69DFC2</item>
-  <item name="android:textColorPrimary">#FFFFFF</item><item name="android:textColorSecondary">#A5B1B9</item><item name="android:buttonStyle">@style/AppButton</item>
- </style>
- <style name="AppButton" parent="android:style/Widget.Material.Button">
-  <item name="android:textAllCaps">false</item><item name="android:textColor">#FFFFFF</item><item name="android:backgroundTint">#1B272D</item><item name="android:minHeight">48dp</item>
- </style>
+    <attr name="paletteSurface" format="color" />
+    <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#10191E</item>
+        <item name="android:colorBackground">#10191E</item>
+        <item name="android:colorAccent">#69DFC2</item>
+        <item name="android:statusBarColor">#10191E</item>
+        <item name="android:navigationBarColor">#10191E</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:textColorPrimary">#FFFFFF</item>
+        <item name="android:textColorSecondary">#A5B1B9</item>
+        <item name="android:textColorHint">#A5B1B9</item>
+        <item name="android:colorControlNormal">#A5B1B9</item>
+        <item name="android:colorControlActivated">#69DFC2</item>
+        <item name="android:colorControlHighlight">#143435</item>
+        <item name="android:alertDialogTheme">@style/AppThemeDialog</item>
+        <item name="android:buttonStyle">@style/AppThemeButton</item>
+        <item name="paletteSurface">#1B272D</item>
+    </style>
+    <style name="AppThemeDialog" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_background</item>
+        <item name="android:colorBackground">#1B272D</item>
+        <item name="android:colorAccent">#69DFC2</item>
+        <item name="android:textColorPrimary">#FFFFFF</item>
+        <item name="android:textColorSecondary">#A5B1B9</item>
+        <item name="android:textColorHint">#A5B1B9</item>
+        <item name="android:colorControlNormal">#A5B1B9</item>
+        <item name="android:buttonStyle">@style/AppThemeButton</item>
+        <item name="paletteSurface">#1B272D</item>
+    </style>
+    <style name="AppThemeButton" parent="android:style/Widget.Material.Button">
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:backgroundTint">#1B272D</item>
+        <item name="android:minHeight">48dp</item>
+    </style>
+    <style name="AppThemeDay" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#F3F6FA</item>
+        <item name="android:colorBackground">#F3F6FA</item>
+        <item name="android:colorAccent">#006B60</item>
+        <item name="android:statusBarColor">#F3F6FA</item>
+        <item name="android:navigationBarColor">#F3F6FA</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:textColorPrimary">#172B3A</item>
+        <item name="android:textColorSecondary">#526675</item>
+        <item name="android:textColorHint">#526675</item>
+        <item name="android:colorControlNormal">#526675</item>
+        <item name="android:colorControlActivated">#006B60</item>
+        <item name="android:colorControlHighlight">#D6ECE7</item>
+        <item name="android:alertDialogTheme">@style/AppThemeDayDialog</item>
+        <item name="android:buttonStyle">@style/AppThemeDayButton</item>
+        <item name="paletteSurface">#FFFFFF</item>
+    </style>
+    <style name="AppThemeDayDialog" parent="android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_background</item>
+        <item name="android:colorBackground">#FFFFFF</item>
+        <item name="android:colorAccent">#006B60</item>
+        <item name="android:textColorPrimary">#172B3A</item>
+        <item name="android:textColorSecondary">#526675</item>
+        <item name="android:textColorHint">#526675</item>
+        <item name="android:colorControlNormal">#526675</item>
+        <item name="android:buttonStyle">@style/AppThemeDayButton</item>
+        <item name="paletteSurface">#FFFFFF</item>
+    </style>
+    <style name="AppThemeDayButton" parent="android:style/Widget.Material.Button">
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">#172B3A</item>
+        <item name="android:backgroundTint">#FFFFFF</item>
+        <item name="android:minHeight">48dp</item>
+    </style>
+    <style name="AppThemeSepia" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#F5EDE0</item>
+        <item name="android:colorBackground">#F5EDE0</item>
+        <item name="android:colorAccent">#86520F</item>
+        <item name="android:statusBarColor">#F5EDE0</item>
+        <item name="android:navigationBarColor">#F5EDE0</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:textColorPrimary">#3C3026</item>
+        <item name="android:textColorSecondary">#71604D</item>
+        <item name="android:textColorHint">#71604D</item>
+        <item name="android:colorControlNormal">#71604D</item>
+        <item name="android:colorControlActivated">#86520F</item>
+        <item name="android:colorControlHighlight">#EAD8B8</item>
+        <item name="android:alertDialogTheme">@style/AppThemeSepiaDialog</item>
+        <item name="android:buttonStyle">@style/AppThemeSepiaButton</item>
+        <item name="paletteSurface">#FFF8EC</item>
+    </style>
+    <style name="AppThemeSepiaDialog" parent="android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_background</item>
+        <item name="android:colorBackground">#FFF8EC</item>
+        <item name="android:colorAccent">#86520F</item>
+        <item name="android:textColorPrimary">#3C3026</item>
+        <item name="android:textColorSecondary">#71604D</item>
+        <item name="android:textColorHint">#71604D</item>
+        <item name="android:colorControlNormal">#71604D</item>
+        <item name="android:buttonStyle">@style/AppThemeSepiaButton</item>
+        <item name="paletteSurface">#FFF8EC</item>
+    </style>
+    <style name="AppThemeSepiaButton" parent="android:style/Widget.Material.Button">
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">#3C3026</item>
+        <item name="android:backgroundTint">#FFF8EC</item>
+        <item name="android:minHeight">48dp</item>
+    </style>
+    <style name="AppThemeOcean" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#10182C</item>
+        <item name="android:colorBackground">#10182C</item>
+        <item name="android:colorAccent">#9DBBFF</item>
+        <item name="android:statusBarColor">#10182C</item>
+        <item name="android:navigationBarColor">#10182C</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:textColorPrimary">#EDF3FF</item>
+        <item name="android:textColorSecondary">#A8B8D4</item>
+        <item name="android:textColorHint">#A8B8D4</item>
+        <item name="android:colorControlNormal">#A8B8D4</item>
+        <item name="android:colorControlActivated">#9DBBFF</item>
+        <item name="android:colorControlHighlight">#293F65</item>
+        <item name="android:alertDialogTheme">@style/AppThemeOceanDialog</item>
+        <item name="android:buttonStyle">@style/AppThemeOceanButton</item>
+        <item name="paletteSurface">#1B2942</item>
+    </style>
+    <style name="AppThemeOceanDialog" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_background</item>
+        <item name="android:colorBackground">#1B2942</item>
+        <item name="android:colorAccent">#9DBBFF</item>
+        <item name="android:textColorPrimary">#EDF3FF</item>
+        <item name="android:textColorSecondary">#A8B8D4</item>
+        <item name="android:textColorHint">#A8B8D4</item>
+        <item name="android:colorControlNormal">#A8B8D4</item>
+        <item name="android:buttonStyle">@style/AppThemeOceanButton</item>
+        <item name="paletteSurface">#1B2942</item>
+    </style>
+    <style name="AppThemeOceanButton" parent="android:style/Widget.Material.Button">
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">#EDF3FF</item>
+        <item name="android:backgroundTint">#1B2942</item>
+        <item name="android:minHeight">48dp</item>
+    </style>
 </resources>

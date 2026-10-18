@@ -11,7 +11,7 @@ import android.os.Looper
 import android.widget.*
 import java.util.concurrent.Executors
 
-class SongTextActivity : Activity() {
+class SongTextActivity : ThemedActivity() {
     private var title = ""
     private var artist = ""
     private var source = ""

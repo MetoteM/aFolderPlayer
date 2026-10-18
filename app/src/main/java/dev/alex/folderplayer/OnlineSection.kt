@@ -80,7 +80,7 @@ internal class OnlineSection(
             row.addView(image,LinearLayout.LayoutParams(dp(40),dp(40)))
             val id=song.optString("id")
             row.addView(TextView(host).apply {
-                setTextColor(Color.WHITE);textSize=16f;setPadding(12,0,8,0)
+                setTextColor(AppAppearance.textColor);textSize=16f;setPadding(12,0,8,0)
                 text=if(playlistMode) song.optString("title")+"\n"+song.optInt("count")+" треков"
                 else (if(decisions.contains("favorites",id))"♥ " else "")+song.optString("title")+"\n"+song.optString("artist")+" · "+formatDuration(song.optLong("duration"))+
                     (if(!song.optBoolean("available",true))" · недоступен" else "")
@@ -114,8 +114,8 @@ internal class OnlineSection(
         fun pair(a:View,b:View) { root.addView(LinearLayout(host).apply { addView(a,LinearLayout.LayoutParams(0,-2,1f));addView(b,LinearLayout.LayoutParams(0,-2,1f)) }) }
         pair(Button(host).apply { text="← Назад";setOnClickListener { if(busy)cancelWork() else if(operation=="playlistPage")choose("playlists","","Плейлисты") else screen.dismiss() } },
             Button(host).apply { text="Вход / аккаунт";setOnClickListener { if(!busy)openLogin() } })
-        title=TextView(host).apply { textSize=22f;setTextColor(Color.WHITE) };root.addView(title)
-        status=TextView(host).apply { textSize=13f;setTextColor(Color.LTGRAY) };root.addView(status)
+        title=TextView(host).apply { textSize=22f;setTextColor(AppAppearance.textColor) };root.addView(title)
+        status=TextView(host).apply { textSize=13f;setTextColor(PlayerScreens.muted) };root.addView(status)
         val tabs=LinearLayout(host)
         fun tool(kind:IconButton.Kind,label:String,action:()->Unit) {
             val view=IconButton(host,kind,label) { if(!busy)action() };buttons+=view
@@ -132,7 +132,7 @@ internal class OnlineSection(
         tool(IconButton.Kind.SELECT,"Выбрать треки") { selecting=!selecting;selected.clear();render() }
         tool(IconButton.Kind.MENU,"⋮") { sourceMenu() }
         root.addView(tabs)
-        search=EditText(host).apply { hint="Фильтр списка / поиск";isSingleLine=true;setTextColor(Color.WHITE);setHintTextColor(Color.GRAY) }
+        search=EditText(host).apply { hint="Фильтр списка / поиск";isSingleLine=true;setTextColor(AppAppearance.textColor);setHintTextColor(PlayerScreens.muted) }
         search.addTextChangedListener(object:TextWatcher {
             override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
             override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { query=s?.toString().orEmpty();selected.clear();selecting=false;render() }

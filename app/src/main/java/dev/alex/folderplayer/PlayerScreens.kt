@@ -294,7 +294,7 @@ internal class PlayerScreens(private val context: Context, private val actions: 
                 val toggle =
                     Switch(context).apply {
                         text = "Автопрокрутка"
-                        setTextColor(Color.WHITE)
+                        setTextColor(AppAppearance.textColor)
                         isChecked = auto
                         setPadding(dp(12), dp(8), dp(12), dp(8))
                         setOnCheckedChangeListener { _, yes ->
@@ -535,7 +535,7 @@ internal class PlayerScreens(private val context: Context, private val actions: 
             heart?.isEnabled = true
             heart?.alpha = if(heart?.isEnabled==false) .35f else 1f
             heart?.text = if (s.favorite) "♥" else "♡"
-            heart?.setTextColor(if (s.favorite) accent else Color.WHITE)
+            heart?.setTextColor(if (s.favorite) accent else AppAppearance.textColor)
             backward?.text = "−${s.step}"
             forward?.text = "+${s.step}"
             repeat?.text =
@@ -560,10 +560,10 @@ internal class PlayerScreens(private val context: Context, private val actions: 
                 else 0
         if (changed)
             queueRows.forEach { (id, label) ->
-                label.setTextColor(if (id == s.id) accent else Color.WHITE)
+                label.setTextColor(if (id == s.id) accent else AppAppearance.textColor)
                 label.setTypeface(null, if (id == s.id) Typeface.BOLD else Typeface.NORMAL)
                 (label.parent as View).background =
-                    shape(if (id == s.id) Color.rgb(20, 52, 53) else bg)
+                    shape(if (id == s.id) AppAppearance.palette.selected else bg)
             }
         if (changed && page == "translation") {
             translationText?.text = ""
@@ -677,7 +677,7 @@ internal class PlayerScreens(private val context: Context, private val actions: 
         panel.addView(
             Switch(context).apply {
                 text = "Эквалайзер"
-                setTextColor(Color.WHITE)
+                setTextColor(AppAppearance.textColor)
                 setPadding(dp(8), dp(8), dp(8), dp(8))
                 isChecked = prefs.getBoolean("eqEnabled", false)
                 setOnCheckedChangeListener { _, yes ->
@@ -889,7 +889,7 @@ internal class PlayerScreens(private val context: Context, private val actions: 
         TextView(context).apply {
             text = value
             textSize = size
-            setTextColor(Color.WHITE)
+            setTextColor(AppAppearance.textColor)
             setPadding(dp(8), dp(8), dp(8), dp(8))
         }
 
@@ -908,7 +908,7 @@ internal class PlayerScreens(private val context: Context, private val actions: 
             minHeight = dp(48)
             minimumHeight = dp(48)
             setPadding(dp(6), dp(4), dp(6), dp(4))
-            setTextColor(if (primary) bg else Color.WHITE)
+            setTextColor(if (primary) bg else AppAppearance.textColor)
             background = shape(if (primary) accent else surface)
             backgroundTintList = null
             contentDescription = description
@@ -936,7 +936,7 @@ internal class PlayerScreens(private val context: Context, private val actions: 
                     0f,
                     bounds.width().toFloat(),
                     bounds.height().toFloat(),
-                    intArrayOf(Color.rgb(28, 57, 62), surface),
+                    intArrayOf(AppAppearance.palette.selected, surface),
                     null,
                     android.graphics.Shader.TileMode.CLAMP,
                 )
@@ -966,9 +966,9 @@ internal class PlayerScreens(private val context: Context, private val actions: 
     }
 
     companion object {
-        val bg = Color.rgb(16, 25, 30)
-        val surface = Color.rgb(27, 39, 45)
-        val accent = Color.rgb(105, 223, 194)
-        val muted = Color.rgb(165, 177, 185)
+        val bg get() = AppAppearance.palette.background
+        val surface get() = AppAppearance.palette.surface
+        val accent get() = AppAppearance.palette.accent
+        val muted get() = AppAppearance.palette.muted
     }
 }

@@ -19,14 +19,14 @@ internal class NowPlayingStrip(
         TextView(context).apply {
             text = "Выбери песню"
             textSize = 18f
-            setTextColor(Color.WHITE)
+            setTextColor(AppAppearance.textColor)
             setPadding(dp(8), dp(6), dp(8), dp(2))
         }
     val time =
         TextView(context).apply {
             text = "0:00 / 0:00"
             textSize = 12f
-            setTextColor(Color.LTGRAY)
+            setTextColor(PlayerScreens.muted)
             setPadding(dp(8), dp(2), dp(8), dp(6))
         }
 
@@ -39,7 +39,7 @@ internal class NowPlayingStrip(
             View(context).apply {
                 background =
                     GradientDrawable().apply {
-                        setColor(Color.rgb(91, 116, 119))
+                        setColor(PlayerScreens.muted)
                         cornerRadius = dp(2).toFloat()
                     }
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
