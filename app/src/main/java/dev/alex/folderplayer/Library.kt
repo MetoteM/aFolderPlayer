@@ -136,9 +136,10 @@ internal class Library(private val context: Context) {
             }
             .getOrDefault(emptyList())
 
-    fun tracks(): List<Track> = storedTracks()
-            .filter { it.uri !in prefs.getStringSet("excludedTracks", emptySet())!! }
-            .let { AlbumYears(context).apply(it) }
+    fun tracks(): List<Track> {
+        val excluded=prefs.getStringSet("excludedTracks", emptySet())!!.toSet()
+        return AlbumYears(context).apply(storedTracks().filter { it.uri !in excluded })
+    }
 
     data class ScanResult(val tracks:List<Track>, val errors:Int, val retainedRoots:Int)
 

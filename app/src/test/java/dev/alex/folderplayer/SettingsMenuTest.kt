@@ -19,21 +19,21 @@ class SettingsMenuTest {
         for(extensions in listOf(emptyList(),listOf(extra))){
             val entries=SettingsMenu.entries(extensions)
             assertEquals(SettingsMenu.Action.ABOUT,entries.last().action)
-            assertEquals(SettingsMenu.Action.HISTORY,entries.single { it.title=="История текстов" }.action)
+            assertEquals(SettingsMenu.Action.BOOKS,entries.single { it.title=="Аудиокниги" }.action)
             assertEquals(SettingsMenu.Action.THEME,entries.single { it.title=="Тема оформления" }.action)
             assertEquals(extensions,entries.mapNotNull { it.extension })
         }
     }
-    @Test fun historyEntryActuallyOpensHistory(){
+    @Test fun booksEntryOpensSeparateScreen(){
         RuntimeEnvironment.getApplication().getSharedPreferences("playback",Context.MODE_PRIVATE).edit().clear().commit()
         val c=Robolectric.buildActivity(MainActivity::class.java).create().start()
         try {
             MainActivity::class.java.getDeclaredMethod("settings").apply { isAccessible=true }.invoke(c.get())
             val menu=ShadowAlertDialog.getLatestAlertDialog();val list=menu.listView
-            val index=(0 until list.count).first { list.adapter.getItem(it)=="История текстов" }
+            val index=(0 until list.count).first { list.adapter.getItem(it)=="Аудиокниги" }
             list.performItemClick(null,index,index.toLong())
-            assertNotSame(menu,ShadowAlertDialog.getLatestAlertDialog())
-            assertTrue(ShadowAlertDialog.getLatestAlertDialog().isShowing)
+            assertEquals(BooksActivity::class.java.name,org.robolectric.Shadows.shadowOf(c.get()).nextStartedActivity.component!!.className)
+            assertFalse(SettingsMenu.entries(emptyList()).any { it.title.contains("История") })
         }finally { c.stop().destroy() }
     }
 }

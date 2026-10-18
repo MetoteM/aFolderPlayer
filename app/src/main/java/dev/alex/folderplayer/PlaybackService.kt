@@ -39,6 +39,7 @@ class PlaybackService : MediaSessionService() {
     private val handler = Handler(Looper.getMainLooper())
     private val equalizer = SoftwareEqProcessor()
     private val prefs by lazy { getSharedPreferences("playback", MODE_PRIVATE) }
+    private val books by lazy { Audiobooks(this) }
     private val positionPrefs by lazy { getSharedPreferences("playback-position", MODE_PRIVATE) }
     private var savedPositionState: Triple<Int, String, Long>? = null
     private val applyEq = Runnable { updateEq() }
@@ -199,6 +200,8 @@ class PlaybackService : MediaSessionService() {
                                                 Bundle.EMPTY,
                                             )
                                         )
+                                        .add(SessionCommand(PlaybackCommands.START_BOOK, Bundle.EMPTY))
+                                        .add(SessionCommand(PlaybackCommands.BOOK_SPEED, Bundle.EMPTY))
                                         .add(
                                             SessionCommand(
                                                 PlaybackCommands.START_QUEUE,
@@ -254,6 +257,10 @@ class PlaybackService : MediaSessionService() {
                 .build()
         player.addListener(
             object : Player.Listener {
+                override fun onPositionDiscontinuity(oldPosition:Player.PositionInfo,newPosition:Player.PositionInfo,reason:Int) {
+                    val id=oldPosition.mediaItem?.mediaMetadata?.extras?.getString("bookId")
+                    if(id!=null)books.savePosition(id,oldPosition.mediaItem!!.mediaId,oldPosition.positionMs)
+                }
                 override fun onMediaItemTransition(item: androidx.media3.common.MediaItem?, reason: Int) {
                     this@PlaybackService.player.setWakeMode(if (item?.mediaId?.startsWith("afp-yandex://") == true) C.WAKE_MODE_NETWORK else C.WAKE_MODE_LOCAL)
                 }
@@ -273,8 +280,10 @@ class PlaybackService : MediaSessionService() {
         val savedShuffle = prefs.getBoolean("shuffle", false)
         val store=OnlineLibraryStore(this)
         val onlineSaved = runCatching { OnlinePlayback.items(store.read("playing")?.optJSONArray("tracks")?.toString() ?: store.queue(prefs.getString("onlineQueueId", "").orEmpty()) ?: prefs.getString("onlineQueue", "[]")!!) }.getOrDefault(emptyList()).filter { OnlinePlayback.trackId(android.net.Uri.parse(it.mediaId)) !in OnlineLibraryActions(this).ids("hidden") }.associateBy { it.mediaId }
+        val restoredBook=books.book(prefs.getString("activeBook", "").orEmpty())
+        val savedBookItems=restoredBook?.chapters?.associate { it.uri to it.item(restoredBook) }.orEmpty()
         val saved =
-            Library.strings(prefs.getString("queue", "[]")!!).mapNotNull { tracks[it]?.item() ?: onlineSaved[it] }
+            Library.strings(prefs.getString("queue", "[]")!!).mapNotNull { savedBookItems[it] ?: tracks[it]?.item() ?: onlineSaved[it] }
         val positionIndex = positionPrefs.getInt("index", -1)
         if (
             positionIndex in saved.indices &&
@@ -283,8 +292,14 @@ class PlaybackService : MediaSessionService() {
             savedIndex = positionIndex
             savedPosition = positionPrefs.getLong("position", savedPosition).coerceAtLeast(0)
         }
-        player.repeatMode = savedRepeat
-        player.shuffleModeEnabled = savedShuffle
+        if(restoredBook!=null) {
+            val mark=books.position(restoredBook)
+            val found=saved.indexOfFirst { it.mediaId==mark.uri }
+            if(found>=0){savedIndex=found;savedPosition=mark.position}
+            player.setPlaybackSpeed(books.speed(restoredBook.id))
+        } else prefs.edit().remove("activeBook").apply()
+        player.repeatMode = if(restoredBook!=null) Player.REPEAT_MODE_OFF else savedRepeat
+        player.shuffleModeEnabled = restoredBook==null && savedShuffle
         player.setPauseAtEndOfMediaItems(false)
         if (saved.isNotEmpty()) {
             player.setMediaItems(
@@ -302,6 +317,34 @@ class PlaybackService : MediaSessionService() {
 
     internal fun applyPlaybackCommand(action: String, args: Bundle): Int {
         return when (action) {
+            PlaybackCommands.START_BOOK -> {
+                val book=books.book(args.getString("bookId").orEmpty())
+                if(book==null)SessionError.ERROR_BAD_VALUE else {
+                    val mark=books.position(book)
+                    val requested=args.getString("uri")
+                    val restart=requested==null && mark.completed
+                    val uri=requested ?: if(restart)book.chapters.first().uri else mark.uri
+                    val index=book.chapters.indexOfFirst { it.uri==uri }
+                    if(index<0)SessionError.ERROR_BAD_VALUE else {
+                        savePosition()
+                        val chapter=book.chapters[index]
+                        val pos=(if(requested!=null)args.getLong("position",0) else if(restart)0 else mark.position).coerceAtLeast(0)
+                            .let { if(chapter.duration>0)it.coerceAtMost(chapter.duration) else it }
+                        books.savePosition(book.id,uri,pos)
+                        prefs.edit().putString("activeBook",book.id).putString("queueSource","Аудиокнига · ${book.title}").apply()
+                        player.setMediaItems(book.chapters.map { it.item(book) },index,pos)
+                        player.repeatMode=Player.REPEAT_MODE_OFF;player.shuffleModeEnabled=false
+                        player.setPlaybackSpeed(books.speed(book.id));player.setPauseAtEndOfMediaItems(false)
+                        player.prepare();player.play();SessionResult.RESULT_SUCCESS
+                    }
+                }
+            }
+            PlaybackCommands.BOOK_SPEED -> {
+                val id=player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId")
+                val speed=args.getFloat("speed",1f)
+                if(id==null || !speed.isFinite() || speed !in .5f..2.5f)SessionError.ERROR_BAD_VALUE
+                else { books.setSpeed(id,speed);player.setPlaybackSpeed(speed);SessionResult.RESULT_SUCCESS }
+            }
             PlaybackCommands.START_ONLINE_QUEUE -> {
                 val store=OnlineLibraryStore(this)
                 val queueId=args.getString("queueId").orEmpty()
@@ -318,10 +361,12 @@ class PlaybackService : MediaSessionService() {
                     else {
                         when(mode) {
                             "play" -> {
+                                leaveBook()
                                 prefs.edit().putString("queueSource","Яндекс Музыка"+store.queueSource(queueId).takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()).remove("onlineQueueId").remove("onlineQueue").apply()
                                 player.setMediaItems(items,index,0);player.setPauseAtEndOfMediaItems(false);player.prepare();player.play()
                             }
                             "next", "append" -> {
+                                if(player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId")!=null)return SessionError.ERROR_BAD_VALUE
                                 if(old.any { !it.mediaId.startsWith("afp-yandex://") })prefs.edit().putString("queueSource","Смешанная очередь").apply()
                                 else prefs.edit().putString("queueSource","Яндекс Музыка").apply()
                                 val at=if(mode=="next" && old.isNotEmpty())(player.currentMediaItemIndex+1).coerceAtMost(old.size) else old.size
@@ -346,6 +391,7 @@ class PlaybackService : MediaSessionService() {
                 val index = queue.indexOfFirst { it.uri == args.getString("uri") }
                 if (index < 0) SessionError.ERROR_BAD_VALUE
                 else {
+                    leaveBook()
                     prefs.edit().putString("queueSource", source).apply()
                     // Queue, starting item and repeat mode are applied together on the service
                     // looper.
@@ -359,6 +405,7 @@ class PlaybackService : MediaSessionService() {
                 }
             }
             PlaybackCommands.REORDER_QUEUE -> {
+                if(player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId")!=null)return SessionResult.RESULT_SUCCESS
                 val source = args.getString("source").orEmpty()
                 if (prefs.getString("queueSource", "") != source || player.mediaItemCount == 0)
                     SessionResult.RESULT_SUCCESS
@@ -399,6 +446,7 @@ class PlaybackService : MediaSessionService() {
                 }
             }
             PlaybackCommands.SET_REPEAT -> {
+                if(player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId")!=null)return SessionError.ERROR_BAD_VALUE
                 val mode = args.getInt("mode", -1)
                 if (mode !in 0..2) SessionError.ERROR_BAD_VALUE
                 else {
@@ -409,6 +457,14 @@ class PlaybackService : MediaSessionService() {
             }
             else -> SessionError.ERROR_NOT_SUPPORTED
         }
+    }
+
+    private fun leaveBook() {
+        savePosition()
+        prefs.edit().remove("activeBook").apply()
+        player.setPlaybackSpeed(1f)
+        player.repeatMode=prefs.getInt("requestedRepeat",Player.REPEAT_MODE_OFF).coerceIn(0,2)
+        player.shuffleModeEnabled=false
     }
 
     private fun updateEq() {
@@ -431,6 +487,13 @@ class PlaybackService : MediaSessionService() {
                 player.currentMediaItem?.mediaId.orEmpty(),
                 player.currentPosition.coerceAtLeast(0),
             )
+        val bookId=player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId")
+        if(bookId!=null) {
+            val book=books.book(bookId)
+            val completed=player.playbackState==Player.STATE_ENDED && player.currentMediaItemIndex==player.mediaItemCount-1
+            val wasCompleted=book?.let { books.position(it).completed }==true && !player.playWhenReady
+            books.savePosition(bookId,next.second,next.third,completed || wasCompleted)
+        }
         if (next != savedPositionState) {
             positionPrefs
                 .edit()

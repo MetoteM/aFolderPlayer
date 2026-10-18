@@ -4,7 +4,7 @@ import android.app.Activity
 
 /** Menu positions never identify actions; optional entries cannot shift their handlers. */
 internal object SettingsMenu {
-    enum class Action { ADD_FOLDER, FOLDERS, SCAN, SEEK, SLEEP, EXTENSIONS, HISTORY, CRASH, THEME, ABOUT }
+    enum class Action { ADD_FOLDER, FOLDERS, SCAN, SEEK, SLEEP, EXTENSIONS, BOOKS, CRASH, THEME, ABOUT }
     data class Entry(val title:String, val action:Action? = null, val extension:ExternalExtensions.Entry? = null)
 
     fun entries(extensions:List<ExternalExtensions.Entry>):List<Entry> = listOf(
@@ -14,7 +14,7 @@ internal object SettingsMenu {
         Entry("Шаг перемотки",Action.SEEK),
         Entry("Таймер сна",Action.SLEEP),
         Entry("Расширения",Action.EXTENSIONS),
-        Entry("История текстов",Action.HISTORY),
+        Entry("Аудиокниги",Action.BOOKS),
         Entry("Диагностика последнего сбоя",Action.CRASH),
         Entry("Тема оформления",Action.THEME),
     ) + extensions.map { Entry(it.title,extension=it) } + Entry("О приложении",Action.ABOUT)

@@ -34,7 +34,6 @@ internal class LyricsStore(private val context: Context) {
             LyricsDocument(text) // Validate before changing the last saved version.
             val f = file(uri)
             AtomicTextFiles.write(f, text)
-            context.getSharedPreferences("text-history", 0).edit().remove("local:" + uri).apply()
         }
 
     fun importText(uri: Uri): String =

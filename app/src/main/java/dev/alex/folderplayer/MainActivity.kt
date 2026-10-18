@@ -389,7 +389,9 @@ class MainActivity : ThemedActivity() {
 
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                     query = s.toString()
-                    render()
+                    libraryPage = 0
+                    handler.removeCallbacks(renderSearch)
+                    handler.postDelayed(renderSearch, 180)
                 }
 
                 override fun afterTextChanged(s: android.text.Editable?) {}
@@ -406,7 +408,8 @@ class MainActivity : ThemedActivity() {
                 { travel -> previewPlayer(travel) },
                 { if (page == "library") pageMotion.show(false, root.height, true) },
             ) {
-                showPage("player")
+                if (prefs.getString("activeBook", "").orEmpty().isNotEmpty()) startActivity(Intent(this, BooksActivity::class.java))
+                else showPage("player")
             }
         now = current.title
         position = current.time
@@ -546,6 +549,10 @@ class MainActivity : ThemedActivity() {
         }
     }
 
+    private var libraryPage = 0
+    private var lastBrowserSource:String? = null
+    private val renderSearch = Runnable { if (alive) render() }
+
     private fun render() {
         if (!::list.isInitialized) return
         updateSelectionTools()
@@ -575,14 +582,20 @@ class MainActivity : ThemedActivity() {
                 )
             )
         val favorites = library.playlist("Избранное")
+        val hidden = library.hiddenTracks()
         if (selecting)
             list.addView(
-                button("Выбрать все показанные (${selection.size} выбрано)") {
+                button("Выбрать все найденные (${selection.size} выбрано)") {
                     selection.addAll(visible.map { it.uri })
                     render()
                 }
             )
-        visible.forEach { track ->
+        if(lastBrowserSource!=selectedPlaylist){libraryPage=0;lastBrowserSource=selectedPlaylist}
+        val pageSize=200
+        val lastPage=((visible.size-1).coerceAtLeast(0))/pageSize
+        libraryPage=libraryPage.coerceIn(0,lastPage)
+        if(lastPage>0)list.addView(label("Страница ${libraryPage+1} из ${lastPage+1}",14f))
+        visible.drop(libraryPage*pageSize).take(pageSize).forEach { track ->
             val r =
                 row().apply {
                     setPadding(dp(4), dp(4), dp(4), dp(4))
@@ -620,7 +633,7 @@ class MainActivity : ThemedActivity() {
                 track.year?.let { details.add(it.toString()) }
                 track.discNumber?.let { details.add("диск $it") }
             }
-            if (track.uri in library.hiddenTracks()) details.add("👁 Не воспроизводится")
+            if (track.uri in hidden) details.add("👁 Не воспроизводится")
             details.add(clock(track.duration))
             val caption = "$number${track.title}\n${details.joinToString(" · ")}"
             val styled =
@@ -668,11 +681,18 @@ class MainActivity : ThemedActivity() {
                 LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, dp(3), 0, dp(3)) },
             )
         }
+        if(lastPage>0) {
+            val navigation=row()
+            navigation.addView(button("← Назад") { libraryPage--;render();scrollView?.post { scrollView.scrollTo(0,0) } }.apply { isEnabled=libraryPage>0 },weight())
+            navigation.addView(button("Далее →") { libraryPage++;render();scrollView?.post { scrollView.scrollTo(0,0) } }.apply { isEnabled=libraryPage<lastPage },weight())
+            list.addView(navigation)
+        }
         highlightTrack(true)
         scrollView?.post { if (alive) scrollView.scrollTo(0, scrollY) }
     }
 
     private fun removeUnavailableFromQueue() {
+        if (prefs.getString("activeBook", "").orEmpty().isNotEmpty()) return
         val playable = library.playableTracks().map { it.uri }.toSet()
         val onlineHidden=OnlineLibraryActions(this).ids("hidden")
         controller?.let { c ->
@@ -1361,7 +1381,7 @@ class MainActivity : ThemedActivity() {
                         }
                         .show()
                 SettingsMenu.Action.EXTENSIONS -> extensions()
-                SettingsMenu.Action.HISTORY -> TextHistory.show(this)
+                SettingsMenu.Action.BOOKS -> startActivity(Intent(this, BooksActivity::class.java))
                 SettingsMenu.Action.CRASH -> CrashNotes.show(this)
                 SettingsMenu.Action.THEME -> ThemePicker.show(this)
                 SettingsMenu.Action.ABOUT -> about()
@@ -1643,6 +1663,7 @@ class MainActivity : ThemedActivity() {
     }
 
     private fun previewPlayer(travel: Float) {
+        if (prefs.getString("activeBook", "").orEmpty().isNotEmpty()) return
         if (page != "library") return
         if (screens.view.visibility != View.VISIBLE) {
             screens.show("player")

@@ -23,9 +23,7 @@ public final class DocumentActivity extends ThemedActivity {
   private boolean[] useBlock;
   private boolean busy, complete;
   private TextView status, output;
-  private Button run, stop, review, all, save, copy, history;
-  private JSONArray documents = new JSONArray();
-  private boolean historyReadable = true;
+  private Button run, stop, review, all, save, copy;
 
   private TextView label(String s) {
     TextView v = new TextView(this);
@@ -59,7 +57,6 @@ public final class DocumentActivity extends ThemedActivity {
     if (model == null || !TranslationClient.Companion.getMODELS().containsKey(model))
       model = new TranslationClient(this).getModelId();
     original = DocumentTranslation.paragraphs(source);
-    loadHistory();
     LinearLayout box = new LinearLayout(this);
     box.setOrientation(LinearLayout.VERTICAL);
     box.setBackgroundColor(AppAppearance.getPalette().getBackground());
@@ -92,13 +89,12 @@ public final class DocumentActivity extends ThemedActivity {
             });
     review = button("Места с возможным пропуском", v -> list(true));
     all = button("Все фрагменты", v -> list(false));
-    save = button("Сохранить полный результат", v -> save());
+    save = button("Сохранить для песни", v -> save());
+    if (track == null) save.setVisibility(View.GONE);
     box.addView(run);
     box.addView(stop);
     box.addView(save);
     copy = button("Копировать текущий результат", v -> copy(result()));
-    history = button("История переводов (" + documents.length() + ")", v -> saved());
-    box.addView(history);
     box.addView(button("Дополнительно", v -> extras()));
     output = label("");
     box.addView(output);
@@ -119,14 +115,7 @@ public final class DocumentActivity extends ThemedActivity {
     }
     if (state != null) appliedOperationId = state.getString("appliedOperationId");
     operation.attach(this::showOperation);
-    String savedId = getIntent().getStringExtra("historyId");
-    if (savedId != null) {
-      for (int i = 0; i < documents.length(); i++)
-        if (documents.optJSONObject(i).optString("id").equals(savedId)) {
-          showSaved(documents.optJSONObject(i));
-          break;
-        }
-    } else if (state == null
+    if (state == null
         && operation.state().key == null
         && getIntent().getBooleanExtra("translateNow", false)) translate();
   }
@@ -138,8 +127,7 @@ public final class DocumentActivity extends ThemedActivity {
     stop.setEnabled(b);
     stop.setVisibility(b ? View.VISIBLE : View.GONE);
     for (Button x : new Button[] {review, all, copy}) x.setEnabled(!b && complete);
-    save.setEnabled(!b && complete && historyReadable);
-    history.setEnabled(!b);
+    save.setEnabled(!b && complete && track != null);
   }
 
   private void confirmTranslation() {
@@ -149,7 +137,7 @@ public final class DocumentActivity extends ThemedActivity {
     }
     new AlertDialog.Builder(this)
         .setTitle("Перевести заново?")
-        .setMessage("Сохранения в истории останутся. Новый результат появится после завершения.")
+        .setMessage("Текущий результат будет заменён после завершения.")
         .setPositiveButton("Перевести", (d, n) -> translate())
         .setNegativeButton("Отмена", null)
         .show();
@@ -297,27 +285,6 @@ public final class DocumentActivity extends ThemedActivity {
         .show();
   }
 
-  private AtomicFile file() {
-    return new AtomicFile(new File(getFilesDir(), "full-document-history.json"));
-  }
-
-  private String read(AtomicFile file) throws IOException {
-    return AtomicTextFiles.read(file);
-  }
-
-  private void loadHistory() {
-    try {
-      String archive = read(file());
-      String legacy =
-          archive == null
-              ? read(new AtomicFile(new File(getFilesDir(), "full-document-last.json")))
-              : null;
-      documents = DocumentHistory.load(archive, legacy);
-    } catch (Exception e) {
-      historyReadable = false;
-    }
-  }
-
   private void copy(String value) {
     ((android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE))
         .setPrimaryClip(ClipData.newPlainText("AFP перевод", value));
@@ -325,125 +292,17 @@ public final class DocumentActivity extends ThemedActivity {
   }
 
   private void save() {
-    if (busy || !complete || !historyReadable) return;
+    if (busy || !complete || track == null) return;
+    if (!source.equals(initialSource) || result().contains("⟦Не переведено⟧")) {
+      status.setText("Неполный результат можно скопировать через «Дополнительно».");
+      return;
+    }
     try {
-      JSONObject row =
-          new JSONObject()
-              .put("id", UUID.randomUUID().toString())
-              .put("source", source)
-              .put("created", System.currentTimeMillis())
-              .put("model", model)
-              .put("blocks", new JSONArray(blocks))
-              .put("sentences", new JSONArray(parts))
-              .put("warnings", new JSONArray(notices))
-              .put("translation", result());
-      JSONArray choices = new JSONArray();
-      for (boolean b : useBlock) choices.put(b ? "block" : "sentences");
-      row.put("choices", choices);
-      JSONArray next = DocumentHistory.append(documents, row);
-      writeDocuments(next);
-      if (track != null && source.equals(initialSource) && !result().contains("⟦Не переведено⟧")) {
-        try {
-          new TranslationStore(this).save(track, source, result(), model);
-        } catch (Exception e) {
-          status.setText(
-              "Перевод сохранён в истории, но экран песни не обновлён: " + e.getMessage());
-          return;
-        }
-      }
-      status.setText("Полный перевод добавлен в историю.");
+      new TranslationStore(this).save(track, source, result(), model);
+      status.setText("Перевод сохранён для песни.");
     } catch (Exception e) {
       status.setText("Не удалось сохранить: " + e.getMessage());
     }
-  }
-
-  private void writeDocuments(JSONArray next) throws Exception {
-    AtomicTextFiles.write(file(), DocumentHistory.serialize(next));
-    documents = next;
-    history.setText("История переводов (" + documents.length() + ")");
-  }
-
-  private void saved() {
-    if (busy) return;
-    if (!historyReadable) {
-      status.setText("История повреждена или не читается. Прежние файлы оставлены.");
-      return;
-    }
-    Map<String, JSONObject> removed = new HashMap<>();
-    Map<String, Integer> positions = new HashMap<>();
-    HistoryDialog.INSTANCE.show(
-        this,
-        "История полных переводов",
-        () -> {
-          List<HistoryDialog.Entry> entries = new ArrayList<>();
-          for (int i = documents.length() - 1; i >= 0; i--) {
-            JSONObject row = documents.optJSONObject(i);
-            String preview = row.optString("source").replace('\n', ' ');
-            if (preview.length() > 80) preview = preview.substring(0, 80) + "…";
-            String label =
-                android.text.format.DateFormat.format("dd.MM HH:mm", row.optLong("created"))
-                    + " · "
-                    + preview;
-            entries.add(
-                new HistoryDialog.Entry(
-                    row.optString("id"),
-                    label,
-                    row.optString("source") + "\n" + row.optString("translation")));
-          }
-          return entries;
-        },
-        id -> {
-          for (int i = 0; i < documents.length(); i++)
-            if (documents.optJSONObject(i).optString("id").equals(id)) {
-              showSaved(documents.optJSONObject(i));
-              break;
-            }
-          return kotlin.Unit.INSTANCE;
-        },
-        id -> {
-          try {
-            for (int i = 0; i < documents.length(); i++)
-              if (documents.getJSONObject(i).getString("id").equals(id)) {
-                removed.put(id, documents.getJSONObject(i));
-                positions.put(id, i);
-                break;
-              }
-            writeDocuments(DocumentHistory.remove(documents, id));
-            return true;
-          } catch (Exception e) {
-            status.setText("Не удалось удалить запись");
-            return false;
-          }
-        },
-        id -> {
-          try {
-            JSONObject row = removed.get(id);
-            if (row == null) return false;
-            writeDocuments(DocumentHistory.restore(documents, row, positions.get(id)));
-            return true;
-          } catch (Exception e) {
-            status.setText("Не удалось вернуть запись");
-            return false;
-          }
-        });
-  }
-
-  private void showSaved(JSONObject row) {
-    ScrollView sc = new ScrollView(this);
-    sc.addView(
-        label(
-            "Оригинал\n"
-                + row.optString("source")
-                + "\n\nСохранённый перевод\n"
-                + row.optString("translation")));
-    ReadingPosition.attach(this, sc, "saved-translation:" + row.optString("id"));
-    new AlertDialog.Builder(this)
-        .setTitle("Сохранённый перевод")
-        .setView(sc)
-        .setPositiveButton("Копировать", (d, x) -> copy(row.optString("translation")))
-        .setNeutralButton("Открыть для сравнения", (d, x) -> restore(row))
-        .setNegativeButton("Закрыть", null)
-        .show();
   }
 
   private void restore(JSONObject row) {
