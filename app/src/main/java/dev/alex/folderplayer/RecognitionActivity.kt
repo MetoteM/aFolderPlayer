@@ -253,12 +253,14 @@ class RecognitionActivity : Activity() {
         task =
             worker.submit {
                 val outcome = runCatching {
+                    val cue=Library(this).tracks().firstOrNull { it.uri==localUri && it.cueSheetUri.isNotBlank() }
                     val samples =
                         LocalAudio.decode(
                             this,
-                            if(localUri.startsWith("afp-yandex://")) OnlinePlayback(this).resolve(android.net.Uri.parse(localUri)).toString() else localUri,
+                            if(localUri.startsWith("afp-yandex://")) OnlinePlayback(this).resolve(android.net.Uri.parse(localUri)).toString() else cue?.sourceUri ?: localUri,
                             intent.getLongExtra("localPosition", 0),
                             intent.getLongExtra("localDuration", 0),
+                            sourceOffsetMs=cue?.cueStartMs ?: 0,
                         ) {
                             checkActive(token)
                         }

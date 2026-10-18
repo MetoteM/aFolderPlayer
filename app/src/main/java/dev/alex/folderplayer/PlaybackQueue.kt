@@ -21,7 +21,7 @@ internal fun playbackTracks(
             tracks.sortedWith { a, b ->
                 val folder = naturalCompare(a.folder, b.folder)
                 if (folder != 0) folder
-                else naturalCompare(a.filename.ifBlank { a.title }, b.filename.ifBlank { b.title })
+                else naturalCompare(a.filename.ifBlank { a.title }, b.filename.ifBlank { b.title }).takeIf { it!=0 } ?: a.cueStartMs.compareTo(b.cueStartMs)
             }
         else -> tracks.sortedWith { a, b -> naturalCompare(a.title, b.title) }
     }

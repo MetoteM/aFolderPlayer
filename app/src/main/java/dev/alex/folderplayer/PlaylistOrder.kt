@@ -95,7 +95,7 @@ internal fun playlistOrder(tracks: List<Track>, mode: Int): List<Track> =
         SORT_TITLE -> tracks.sortedWith { a, b -> naturalCompare(a.title, b.title) }
         SORT_FILENAME ->
             tracks.sortedWith { a, b ->
-                naturalCompare(a.filename.ifBlank { a.title }, b.filename.ifBlank { b.title })
+                naturalCompare(a.filename.ifBlank { a.title }, b.filename.ifBlank { b.title }).takeIf { it!=0 } ?: a.cueStartMs.compareTo(b.cueStartMs)
             }
         SORT_ALBUM ->
             tracks

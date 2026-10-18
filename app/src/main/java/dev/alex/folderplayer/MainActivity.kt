@@ -551,7 +551,9 @@ class MainActivity : Activity() {
         updateSelectionTools()
         val scrollView = list.parent as? ScrollView
         val scrollY = scrollView?.scrollY ?: 0
+        thumbnails.begin(scrollView)
         list.removeAllViews()
+        list.post { thumbnails.loadVisible() }
         trackLabels.clear()
         val allowed = selectedPlaylist?.let { library.playlist(it) }
         val ordered =
@@ -600,6 +602,12 @@ class MainActivity : Activity() {
                         }
                     }
                 )
+            if (track.artworkUri.isNotBlank()) {
+                val thumb = ImageView(this).apply { scaleType=ImageView.ScaleType.CENTER_CROP; contentDescription="Обложка: ${track.albumName()}" }
+                r.addView(thumb, LinearLayout.LayoutParams(dp(44),dp(44)).apply { marginEnd=dp(8) })
+                thumbnails.add(thumb,track.artworkUri)
+                thumb.setOnClickListener { if(selecting){if(!selection.add(track.uri))selection.remove(track.uri);render()}else startTrack(track) }
+            }
             val number =
                 if (selectedPlaylist != null)
                     (track.trackNumber ?: filenameTrackNumber(track))
@@ -864,7 +872,7 @@ class MainActivity : Activity() {
                             AlertDialog.Builder(this)
                                 .setTitle(track.title)
                                 .setMessage(
-                                    "${track.artist}\nФайл: ${track.filename.ifBlank { androidx.documentfile.provider.DocumentFile.fromSingleUri(this,Uri.parse(track.uri))?.name ?: "Неизвестно" }}\nПапка: ${track.folder}\n${clock(track.duration)}"
+                                    "${track.artist}\nФайл: ${track.filename.ifBlank { androidx.documentfile.provider.DocumentFile.fromSingleUri(this,Uri.parse(track.sourceUri))?.name ?: "Неизвестно" }}\nПапка: ${track.folder}\n${clock(track.duration)}"
                                 )
                                 .setPositiveButton("Закрыть", null)
                                 .show()
@@ -1295,6 +1303,21 @@ class MainActivity : Activity() {
         startActivity(Intent(this, RecognitionActivity::class.java))
     }
 
+    private fun importExtensionFolder(uri: Uri) {
+        if (uri.scheme != "content") return
+        runCatching {
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            check(androidx.documentfile.provider.DocumentFile.fromTreeUri(this, uri)?.isDirectory == true)
+            library.setRoots((library.roots() + uri.toString()).distinct())
+            scan()
+        }.onFailure {
+            toast("Подтверди папку музыки для доступа плеера")
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+                .putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, uri)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION), 100)
+        }
+    }
+
     private fun settings() {
         val names =
             mutableListOf(
@@ -1304,11 +1327,18 @@ class MainActivity : Activity() {
                 "Шаг перемотки",
                 "Таймер сна",
                 "Расширения",
-                "О приложении",
                 "История текстов",
                 "Диагностика последнего сбоя",
             )
+        val installed = ExternalExtensions.installed(this)
+        names.addAll(installed.map { it.title })
+        names.add("О приложении")
         optionMenu(this, "Настройки", names) { i ->
+            if (i == names.lastIndex) { about(); return@optionMenu }
+            if (i >= 8) {
+                ExternalExtensions.open(this, installed[i - 8])
+                return@optionMenu
+            }
             when (i) {
                 0 ->
                     startActivityForResult(
@@ -1350,8 +1380,7 @@ class MainActivity : Activity() {
                         }
                         .show()
                 5 -> extensions()
-                6 -> about()
-                8 -> CrashNotes.show(this)
+                7 -> CrashNotes.show(this)
             }
         }
     }
@@ -1405,6 +1434,7 @@ class MainActivity : Activity() {
                     result
                         .onSuccess { (items, errors) ->
                             tracks = items
+                            mediaLoadedId=null;queueTimeline=null;queueTracks=null
                             render()
                             reorderPlayingQueue(prefs.getString("queueSource", "").orEmpty(), true)
                             toast(
@@ -1424,6 +1454,10 @@ class MainActivity : Activity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == ExternalExtensions.REQUEST && resultCode == RESULT_OK) {
+            data?.data?.let { importExtensionFolder(it) }
+            return
+        }
         if (requestCode == 107) {
             if (page == "translation") currentTrack()?.let { translate(it, true) }
             return
@@ -1596,6 +1630,7 @@ class MainActivity : Activity() {
         }
     }
 
+    private val thumbnails by lazy { LibraryThumbnails(applicationContext,artworkWorker,handler) }
     private val artworkWorker=java.util.concurrent.Executors.newSingleThreadExecutor()
 
     private fun currentTrack(): Track? {
@@ -1689,7 +1724,7 @@ class MainActivity : Activity() {
         executor.execute {
             val bitmap = runCatching {
                 if(track.uri.startsWith("afp-yandex://")) OnlineArtwork(applicationContext).load(cover)
-                else LocalArtwork.read(this, track.uri)
+                else LocalArtwork.read(this, track.sourceUri, track.artworkUri)
             }.getOrNull()
             val lyrics = runCatching { loadLyrics(track)?.let { LyricsDocument(it) } }
             handler.post {
@@ -2124,7 +2159,7 @@ class MainActivity : Activity() {
             runCatching {
                 val retriever = android.media.MediaMetadataRetriever()
                 try {
-                    retriever.setDataSource(this, Uri.parse(track.uri))
+                    retriever.setDataSource(this, Uri.parse(track.sourceUri))
                     retriever.embeddedPicture?.let { bytes ->
                         val bounds =
                             android.graphics.BitmapFactory.Options().apply {
@@ -2605,8 +2640,22 @@ class MainActivity : Activity() {
             LocalArtwork.clear()
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
+
     override fun onResume() {
         super.onResume()
+        if (intent?.action == "dev.alex.folderplayer.action.IMPORT_FOLDER") {
+            intent.action = null
+            intent.data?.takeIf { it.scheme == "content" }?.let { uri ->
+                AlertDialog.Builder(this).setTitle("Добавить папку музыки?")
+                    .setMessage("Плеер прочитает аудиофайлы в выбранной папке и её подпапках.")
+                    .setPositiveButton("Добавить") { _, _ -> importExtensionFolder(uri) }
+                    .setNegativeButton("Отмена", null).show()
+            }
+        }
         translationForeground = true
         extensionManager.resume()
         appUpdates.resume()
@@ -2702,6 +2751,7 @@ class MainActivity : Activity() {
         extensionManager.close()
         appUpdates.close()
         onlineSection.close()
+        thumbnails.close()
         artworkWorker.shutdownNow()
         lyricsWork.detach()
         if (!isChangingConfigurations) lyricsWork.close()

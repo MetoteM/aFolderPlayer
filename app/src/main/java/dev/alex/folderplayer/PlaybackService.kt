@@ -378,7 +378,7 @@ class PlaybackService : MediaSessionService() {
                     val extraIds = old.map { it.mediaId }.filter { it !in sourceIds && it in known }
                     val ordered =
                         (sourceIds + extraIds).distinct().flatMap {
-                            byId[it] ?: listOf(known.getValue(it).item())
+                            byId[it]?.map { item->if(refresh)known.getValue(it).item() else item } ?: listOf(known.getValue(it).item())
                         } + old.filter { it.mediaId !in known && QueueEligibility.playable(it.mediaId,playableIds,OnlineLibraryActions(this).ids("hidden")) }
                     val current = player.currentMediaItem?.mediaId
                     val occurrence =

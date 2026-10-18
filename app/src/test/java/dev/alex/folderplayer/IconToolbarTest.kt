@@ -49,7 +49,9 @@ class IconToolbarTest {
   try {
    val icons=all(a.window.decorView).filterIsInstance<IconButton>();assertEquals(5,icons.size);assertEquals(1,icons.map { it.parent }.distinct().size)
    assertTrue(icons.all { it.text.isEmpty() && it.contentDescription.isNotBlank() });assertFalse(all(a.window.decorView).filterIsInstance<Button>().any { it.text=="⋮" })
-   icons.single { it.contentDescription=="Меню" }.performClick();assertFalse((0 until ShadowAlertDialog.getLatestAlertDialog().listView.count).any { ShadowAlertDialog.getLatestAlertDialog().listView.adapter.getItem(it).toString()=="Эквалайзер" });ShadowAlertDialog.getLatestAlertDialog().listView.performItemClick(null,6,6)
+   icons.single { it.contentDescription=="Меню" }.performClick();assertFalse((0 until ShadowAlertDialog.getLatestAlertDialog().listView.count).any { ShadowAlertDialog.getLatestAlertDialog().listView.adapter.getItem(it).toString()=="Эквалайзер" });val menu = ShadowAlertDialog.getLatestAlertDialog().listView
+   assertEquals("О приложении", menu.adapter.getItem(menu.count - 1).toString())
+   menu.performItemClick(null, menu.count - 1, (menu.count - 1).toLong())
    val text=all(ShadowAlertDialog.getLatestAlertDialog().window!!.decorView).filterIsInstance<TextView>().joinToString("\n") { it.text.toString() }
    assertTrue(text.contains("Без рекламы и аналитики"));assertFalse(text.contains("ONNX"));assertFalse(text.contains("Apache"));assertFalse(text.contains("Личный проект"));assertFalse(text.contains("Исходный код"));assertFalse(text.contains("Цель проверки"))
   } finally { host.stop().destroy() }

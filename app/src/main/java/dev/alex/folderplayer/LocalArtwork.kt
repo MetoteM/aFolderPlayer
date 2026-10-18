@@ -17,7 +17,8 @@ internal object LocalArtwork {
         cache.evictAll()
     }
 
-    fun read(context: Context, id: String): Bitmap? {
+    fun read(context: Context, id: String, artworkUri:String=""): Bitmap? {
+        if(artworkUri.isNotBlank())readImage(context,Uri.parse(artworkUri))?.let { return it }
         cache
             .get(id)
             ?.takeUnless { it.isRecycled }
@@ -25,6 +26,20 @@ internal object LocalArtwork {
                 return it
             }
         return load(context, id)?.also { cache.put(id, it) }
+    }
+
+    /** Shared by library thumbnails, the player and its notification. No network access. */
+    fun readImage(context:Context,uri:Uri):Bitmap? {
+        if(uri.scheme !in setOf("content","file"))return null
+        val key="image:$uri"
+        cache.get(key)?.takeUnless { it.isRecycled }?.let { return it }
+            return runCatching {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192)
+                    while(true){val n=input.read(buffer);if(n<0)break;if(out.size()+n>MAX_BYTES)return@use null;out.write(buffer,0,n)}
+                    decode(out.toByteArray())
+                }
+            }.getOrNull()?.also { cache.put(key,it) }
     }
 
     private const val MAX_BYTES = 12 * 1024 * 1024
