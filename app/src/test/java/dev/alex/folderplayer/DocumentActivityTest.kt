@@ -23,23 +23,19 @@ import java.io.File
 class DocumentActivityTest {
  private fun views(view:View):List<View> = listOf(view)+if(view is ViewGroup)(0 until view.childCount).flatMap { views(view.getChildAt(it)) } else emptyList()
  private fun button(activity:DocumentActivity,text:String)=views(activity.window.decorView).filterIsInstance<Button>().single { it.text.toString().startsWith(text) }
- @Test fun restoreAndSaveAddsHistoryAndUpdatesSongWithoutEngine() {
-  val app=RuntimeEnvironment.getApplication();val file=File(app.filesDir,"full-document-history.json")
-  val row=JSONObject().put("id","saved").put("source","Hello.").put("translation","Здравствуйте.").put("model",TranslationClient.MODEL).put("created",123L)
+ @Test fun completedResultSavesToSongWithoutReadingOrWritingArchive() {
+  val app=RuntimeEnvironment.getApplication();val file=File(app.filesDir,"full-document-history.json");file.writeText("unreadable old archive")
+  val row=JSONObject().put("source","Hello.").put("model",TranslationClient.MODEL)
    .put("blocks",JSONArray().put("Привет.")).put("sentences",JSONArray().put("Здравствуйте.")).put("warnings",JSONArray().put("")).put("choices",JSONArray().put("sentences"))
-  file.writeText(DocumentHistory.serialize(JSONArray().put(row)))
+  val state=android.os.Bundle().apply { putString("completed",row.toString()) }
   val intent=Intent(app,DocumentActivity::class.java).putExtra("source","Hello.").putExtra("track","content://song")
-  val screen=Robolectric.buildActivity(DocumentActivity::class.java,intent).create().start().resume();val activity=screen.get()
+  val screen=Robolectric.buildActivity(DocumentActivity::class.java,intent).create(state).start().resume()
   try {
-   assertFalse(button(activity,"Сохранить полный результат").isEnabled)
-   button(activity,"История переводов").performClick()
-   val list=views(ShadowAlertDialog.getLatestAlertDialog().window!!.decorView).filterIsInstance<android.widget.ListView>().single();list.performItemClick(list.adapter.getView(0,null,list),0,0)
-   shadowOf(ShadowAlertDialog.getLatestAlertDialog()).clickOnItem(0)
-   ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_NEUTRAL).performClick();shadowOf(android.os.Looper.getMainLooper()).idle()
-   assertTrue(button(activity,"Сохранить полный результат").isEnabled)
-   button(activity,"Сохранить полный результат").performClick()
-   assertEquals(2,DocumentHistory.load(file.readText(),null).length())
+   assertTrue(button(screen.get(),"Сохранить для песни").isEnabled)
+   button(screen.get(),"Сохранить для песни").performClick()
    assertEquals("Здравствуйте.",TranslationStore(app).read("content://song","Hello."))
+   assertEquals("unreadable old archive",file.readText())
+   assertFalse(views(screen.get().window.decorView).filterIsInstance<Button>().any { it.text.contains("История") })
   } finally { screen.pause().stop().destroy() }
  }
  @Test fun perTextTranslationModelOverridesOnlyCurrentDocument() {
@@ -53,11 +49,5 @@ class DocumentActivityTest {
    assertEquals("opus-de-ru-v1",model)
    assertEquals("opus-zh-ru-v1",prefs.getString("model",null))
   } finally { screen.pause().stop().destroy();prefs.edit().clear().commit() }
- }
- @Test fun corruptHistoryCannotBeOverwritten() {
-  val app=RuntimeEnvironment.getApplication();val file=File(app.filesDir,"full-document-history.json");file.writeText("broken")
-  val screen=Robolectric.buildActivity(DocumentActivity::class.java,Intent(app,DocumentActivity::class.java)).create().start().resume()
-  try { assertFalse(button(screen.get(),"Сохранить полный результат").isEnabled);assertEquals("broken",file.readText()) }
-  finally { screen.pause().stop().destroy() }
  }
 }

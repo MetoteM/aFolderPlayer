@@ -28,6 +28,8 @@ internal fun playbackTracks(
 }
 
 internal object PlaybackCommands {
+    const val START_BOOK = "dev.alex.folderplayer.START_BOOK"
+    const val BOOK_SPEED = "dev.alex.folderplayer.BOOK_SPEED"
     const val START_ONLINE_QUEUE = "dev.alex.folderplayer.START_ONLINE_QUEUE"
     const val START_QUEUE = "dev.alex.folderplayer.START_QUEUE"
     const val REORDER_QUEUE = "dev.alex.folderplayer.REORDER_QUEUE"
