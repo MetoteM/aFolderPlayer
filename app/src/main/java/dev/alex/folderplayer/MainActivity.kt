@@ -1319,29 +1319,9 @@ class MainActivity : ThemedActivity() {
     }
 
     private fun settings() {
-        val names =
-            mutableListOf(
-                "Добавить папку",
-                "Выбранные папки",
-                "Обновить библиотеку",
-                "Шаг перемотки",
-                "Таймер сна",
-                "Расширения",
-                "История текстов",
-                "Диагностика последнего сбоя",
-            )
-        val installed = ExternalExtensions.installed(this)
-        names.add("Тема оформления")
-        names.addAll(installed.map { it.title })
-        names.add("О приложении")
-        optionMenu(this, "Настройки", names) { i ->
-            if (i == names.lastIndex) { about(); return@optionMenu }
-            if (i >= 9) {
-                ExternalExtensions.open(this, installed[i - 9])
-                return@optionMenu
-            }
-            when (i) {
-                0 ->
+        SettingsMenu.show(this) { action ->
+            when (action) {
+                SettingsMenu.Action.ADD_FOLDER ->
                     startActivityForResult(
                         Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
                             .addFlags(
@@ -1350,9 +1330,9 @@ class MainActivity : ThemedActivity() {
                             ),
                         100,
                     )
-                1 -> folders()
-                2 -> scan()
-                3 ->
+                SettingsMenu.Action.FOLDERS -> folders()
+                SettingsMenu.Action.SCAN -> scan()
+                SettingsMenu.Action.SEEK ->
                     AlertDialog.Builder(this)
                         .setTitle("Шаг перемотки")
                         .setSingleChoiceItems(
@@ -1363,7 +1343,7 @@ class MainActivity : ThemedActivity() {
                             d.dismiss()
                         }
                         .show()
-                4 ->
+                SettingsMenu.Action.SLEEP ->
                     AlertDialog.Builder(this)
                         .setTitle("Остановить музыку через…")
                         .setItems(
@@ -1380,9 +1360,11 @@ class MainActivity : ThemedActivity() {
                             toast(if (n == 3) "Таймер выключен" else "Таймер установлен")
                         }
                         .show()
-                5 -> extensions()
-                7 -> CrashNotes.show(this)
-                8 -> ThemePicker.show(this)
+                SettingsMenu.Action.EXTENSIONS -> extensions()
+                SettingsMenu.Action.HISTORY -> TextHistory.show(this)
+                SettingsMenu.Action.CRASH -> CrashNotes.show(this)
+                SettingsMenu.Action.THEME -> ThemePicker.show(this)
+                SettingsMenu.Action.ABOUT -> about()
             }
         }
     }
@@ -1434,13 +1416,14 @@ class MainActivity : ThemedActivity() {
                 if (alive) {
                     scanning = false
                     result
-                        .onSuccess { (items, errors) ->
+                        .onSuccess { (items, errors, retainedRoots) ->
                             tracks = items
                             mediaLoadedId=null;queueTimeline=null;queueTracks=null
                             render()
                             reorderPlayingQueue(prefs.getString("queueSource", "").orEmpty(), true)
                             toast(
-                                "Найдено ${items.size} песен" +
+                                "В библиотеке ${items.size} песен" +
+                                    (if (retainedRoots > 0) ". Сохранены данные недоступных папок: $retainedRoots" else "") +
                                     if (errors > 0) ". Не удалось прочитать файлов/папок: $errors"
                                     else ""
                             )
