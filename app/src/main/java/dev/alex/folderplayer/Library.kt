@@ -80,14 +80,18 @@ internal class Library(private val context: Context) {
     fun hiddenTracks(): Set<String> = prefs.getStringSet("hiddenTracks", emptySet())!!.toSet()
 
     fun setTracksHidden(ids: Set<String>, hidden: Boolean) {
-        val updated = hiddenTracks().toMutableSet()
-        if (hidden) updated.addAll(ids) else updated.removeAll(ids)
-        prefs.edit().putStringSet("hiddenTracks", updated).apply()
+        synchronized(storeLock) {
+            val updated = hiddenTracks().toMutableSet()
+            if (hidden) updated.addAll(ids) else updated.removeAll(ids)
+            prefs.edit().putStringSet("hiddenTracks", updated).apply()
+        }
     }
 
     fun excludeTracks(ids: Set<String>) {
-        val excluded = prefs.getStringSet("excludedTracks", emptySet())!!.toSet() + ids
-        prefs.edit().putStringSet("excludedTracks", excluded).apply()
+        synchronized(storeLock) {
+            val excluded = prefs.getStringSet("excludedTracks", emptySet())!!.toSet() + ids
+            prefs.edit().putStringSet("excludedTracks", excluded).apply()
+        }
     }
 
     fun playableTracks(): List<Track> {
@@ -98,10 +102,12 @@ internal class Library(private val context: Context) {
     fun roots(): List<String> = strings(prefs.getString("roots", "[]")!!)
 
     fun setRoots(roots: List<String>) {
-        prefs.edit().putString("roots", JSONArray(roots).toString()).apply()
+        synchronized(storeLock) {
+            prefs.edit().putString("roots", JSONArray(roots).toString()).apply()
+        }
     }
 
-    fun tracks(): List<Track> =
+    private fun storedTracks(): List<Track> =
         runCatching {
                 val a = JSONArray(prefs.getString("tracks", "[]"))
                 (0 until a.length()).map { i ->
@@ -129,31 +135,45 @@ internal class Library(private val context: Context) {
                 }
             }
             .getOrDefault(emptyList())
+
+    fun tracks(): List<Track> = storedTracks()
             .filter { it.uri !in prefs.getStringSet("excludedTracks", emptySet())!! }
             .let { AlbumYears(context).apply(it) }
 
-    fun scan(): Pair<List<Track>, Int> {
+    data class ScanResult(val tracks:List<Track>, val errors:Int, val retainedRoots:Int)
+
+    fun scan(): ScanResult {
+        fun checkActive() {
+            if (Thread.currentThread().isInterrupted) throw java.util.concurrent.CancellationException("Сканирование отменено")
+        }
+        checkActive()
+        val (scanRoots, previous, scanId) = synchronized(storeLock) {
+            Triple(roots(), storedTracks(), ++scanGeneration)
+        }
+        val failedRoots = linkedSetOf<String>()
         val found = linkedMapOf<String, Track>()
         val visited = hashSetOf<String>()
         var errors = 0
-        data class CueDocument(val file:DocumentFile,val folder:String,val root:String)
+        data class CueDocument(val file:LibraryDocument,val folder:String,val root:String)
         val cues=mutableListOf<CueDocument>()
         val images=mutableListOf<Pair<String,AlbumImage>>()
         val extensions = setOf("mp3", "flac", "m4a", "aac", "ogg", "opus", "wav")
-        fun walk(file: DocumentFile, folder: String, root: String) {
+        fun walk(file: LibraryDocument, folder: String, root: String) {
+            checkActive()
             if (!visited.add(file.uri.toString())) return
             if (file.isDirectory) {
                 val children =
-                    runCatching { file.listFiles() }
+                    runCatching { LibraryDocuments.children(context, file.uri) }
                         .getOrElse {
                             errors++
-                            emptyArray()
+                            failedRoots.add(root)
+                            emptyList()
                         }
                 children.sortedBy { it.name }.forEach { walk(it, "$folder/${file.name.orEmpty()}", root) }
                 return
             }
             val name = file.name ?: return
-            if(AlbumArtwork.image(name)) { if(file.length() in 1..12*1024*1024L)images.add(root to AlbumImage(folder.trimStart('/')+"/"+name,file.uri.toString()));return }
+            if(AlbumArtwork.image(name)) { if(file.size in 1..12*1024*1024L)images.add(root to AlbumImage(folder.trimStart('/')+"/"+name,file.uri.toString()));return }
             if(name.endsWith(".cue",true)) { cues.add(CueDocument(file,folder.trimStart('/'),root));return }
             if (name.substringAfterLast('.', "").lowercase() !in extensions) return
             val retriever = MediaMetadataRetriever()
@@ -208,13 +228,15 @@ internal class Library(private val context: Context) {
                 runCatching { retriever.release() }
             }
         }
-        for (root in roots()) {
-            val tree = DocumentFile.fromTreeUri(context, Uri.parse(root))
-            if (tree == null || !tree.canRead()) {
+        for (root in scanRoots) {
+            checkActive()
+            val tree = runCatching { DocumentFile.fromTreeUri(context, Uri.parse(root)) }.getOrNull()
+            if (tree == null || !tree.canRead() || !tree.isDirectory) {
                 errors++
+                failedRoots.add(root)
                 continue
             }
-            walk(tree, "", root)
+            walk(LibraryDocument(tree.uri,tree.name,true,0), "", root)
         }
         val original=found.values.toList()
         val split=hashSetOf<String>()
@@ -233,27 +255,39 @@ internal class Library(private val context: Context) {
         }
         val artwork=images.groupBy({it.first},{it.second}).mapValues { AlbumArtwork(it.value) }
         val sorted = found.values.map { track->track.copy(artworkUri=artwork[track.rootUri]?.candidates(track.folder+"/"+track.filename)?.firstOrNull()?.uri.orEmpty()) }.filter { it.cueSheetUri.isNotBlank() || eligibleDuration(it.duration) }.sortedBy { it.title.lowercase() }
-        migrateCueReferences(sorted)
-        prefs.edit().putString("tracks", JSONArray(sorted.map { it.json() }).toString()).apply()
-        syncFolderPlaylists(sorted)
-        return tracks() to errors
+        synchronized(storeLock) {
+            checkActive()
+            if (scanId != scanGeneration || roots() != scanRoots)
+                throw java.util.concurrent.CancellationException("Результат сканирования устарел")
+            val published = sorted.filter { it.rootUri !in failedRoots } +
+                previous.filter { it.rootUri in failedRoots }
+            val complete = published.distinctBy { it.uri }.sortedBy { it.title.lowercase() }
+            migrateCueReferences(complete)
+            prefs.edit().putString("tracks", JSONArray(complete.map { it.json() }).toString()).apply()
+            syncFolderPlaylists(complete)
+            return ScanResult(tracks(), errors, failedRoots.count { root -> previous.any { it.rootUri == root } })
+        }
     }
 
     private fun migrateCueReferences(tracks:List<Track>) {
-        val replacements=tracks.filter { it.cueSheetUri.isNotBlank() }.groupBy { it.sourceUri }
-        if(replacements.isEmpty())return
-        fun expand(ids:Collection<String>)=ids.flatMap { id->replacements[id]?.sortedBy { it.cueStartMs }?.map { it.uri } ?: listOf(id) }.distinct()
-        val lists=lists();val edit=prefs.edit()
-        for(name in lists.keys().asSequence().toList())lists.put(name,JSONArray(expand(strings(lists.getJSONArray(name).toString()))))
-        edit.putString("playlists",lists.toString())
-        for(key in listOf("hiddenTracks","excludedTracks"))edit.putStringSet(key,expand(prefs.getStringSet(key,emptySet())!!).toSet())
-        edit.apply()
+        synchronized(storeLock) {
+            val replacements=tracks.filter { it.cueSheetUri.isNotBlank() }.groupBy { it.sourceUri }
+            if(replacements.isEmpty())return
+            fun expand(ids:Collection<String>)=ids.flatMap { id->replacements[id]?.sortedBy { it.cueStartMs }?.map { it.uri } ?: listOf(id) }.distinct()
+            val lists=lists();val edit=prefs.edit()
+            for(name in lists.keys().asSequence().toList())lists.put(name,JSONArray(expand(strings(lists.getJSONArray(name).toString()))))
+            edit.putString("playlists",lists.toString())
+            for(key in listOf("hiddenTracks","excludedTracks"))edit.putStringSet(key,expand(prefs.getStringSet(key,emptySet())!!).toSet())
+            edit.apply()
+        }
     }
 
     fun isRandom(source: String) = prefs.contains("randomOrder:$source")
 
     fun clearRandom(source: String) {
-        prefs.edit().remove("randomOrder:$source").apply()
+        synchronized(storeLock) {
+            prefs.edit().remove("randomOrder:$source").apply()
+        }
     }
 
     fun ordered(all: List<Track>, source: String, librarySort: Int): List<Track> {
@@ -270,53 +304,58 @@ internal class Library(private val context: Context) {
     }
 
     fun randomize(all: List<Track>, source: String, librarySort: Int) {
-        val shuffled = ordered(all, source, librarySort).shuffled()
-        prefs
-            .edit()
-            .putString("randomOrder:$source", JSONArray(shuffled.map { it.uri }).toString())
-            .apply()
+        synchronized(storeLock) {
+            val shuffled = ordered(all, source, librarySort).shuffled()
+            prefs
+                .edit()
+                .putString("randomOrder:$source", JSONArray(shuffled.map { it.uri }).toString())
+                .apply()
+        }
     }
 
     fun playlistSort(name: String): Int =
         prefs.getInt("playlistSort:$name", SORT_MANUAL).coerceIn(0, 3)
 
     fun setPlaylistSort(name: String, mode: Int) {
-        require(mode in 0..3)
-        prefs.edit().putInt("playlistSort:$name", mode).apply()
+        synchronized(storeLock) {
+            require(mode in 0..3)
+            prefs.edit().putInt("playlistSort:$name", mode).apply()
+        }
     }
 
-    @Synchronized
     fun addFolder(
         name: String,
         folder: MusicFolder,
         recursive: Boolean,
         follow: Boolean = false,
     ): Int {
-        val existing = playlist(name)
-        val added =
-            playlistOrder(tracks().filter { folder.contains(it, recursive) }, SORT_ALBUM)
-                .map { it.uri }
-                .filter { it !in existing }
-        savePlaylist(name, existing + added)
-        val data = folderLinks()
-        val links = data.optJSONArray(name) ?: JSONArray()
-        val updated = JSONArray()
-        for (i in 0 until links.length()) {
-            val link = links.getJSONObject(i)
-            if (link.optString("root") != folder.root || link.optString("path") != folder.path)
-                updated.put(link)
+        synchronized(storeLock) {
+            val existing = playlist(name)
+            val added =
+                playlistOrder(tracks().filter { folder.contains(it, recursive) }, SORT_ALBUM)
+                    .map { it.uri }
+                    .filter { it !in existing }
+            savePlaylist(name, existing + added)
+            val data = folderLinks()
+            val links = data.optJSONArray(name) ?: JSONArray()
+            val updated = JSONArray()
+            for (i in 0 until links.length()) {
+                val link = links.getJSONObject(i)
+                if (link.optString("root") != folder.root || link.optString("path") != folder.path)
+                    updated.put(link)
+            }
+            if (follow)
+                updated.put(
+                    JSONObject()
+                        .put("root", folder.root)
+                        .put("path", folder.path)
+                        .put("recursive", recursive)
+                        .put("excluded", JSONArray())
+                )
+            data.put(name, updated)
+            prefs.edit().putString("playlistFolders", data.toString()).apply()
+            return added.size
         }
-        if (follow)
-            updated.put(
-                JSONObject()
-                    .put("root", folder.root)
-                    .put("path", folder.path)
-                    .put("recursive", recursive)
-                    .put("excluded", JSONArray())
-            )
-        data.put(name, updated)
-        prefs.edit().putString("playlistFolders", data.toString()).apply()
-        return added.size
     }
 
     data class FolderLink(val folder: MusicFolder, val recursive: Boolean)
@@ -335,40 +374,43 @@ internal class Library(private val context: Context) {
         }
     }
 
-    @Synchronized
     fun configureFolder(name: String, folder: MusicFolder, recursive: Boolean?) {
-        if (name !in playlistNames()) return
-        val data = folderLinks()
-        val rows = data.optJSONArray(name) ?: return
-        val next = JSONArray()
-        for (i in 0 until rows.length()) {
-            val r = rows.getJSONObject(i)
-            if (r.optString("root") == folder.root && r.optString("path") == folder.path) {
-                if (recursive != null) next.put(r.put("recursive", recursive))
-            } else next.put(r)
+        synchronized(storeLock) {
+            if (name !in playlistNames()) return
+            val data = folderLinks()
+            val rows = data.optJSONArray(name) ?: return
+            val next = JSONArray()
+            for (i in 0 until rows.length()) {
+                val r = rows.getJSONObject(i)
+                if (r.optString("root") == folder.root && r.optString("path") == folder.path) {
+                    if (recursive != null) next.put(r.put("recursive", recursive))
+                } else next.put(r)
+            }
+            data.put(name, next)
+            prefs.edit().putString("playlistFolders", data.toString()).apply()
         }
-        data.put(name, next)
-        prefs.edit().putString("playlistFolders", data.toString()).apply()
     }
 
     data class RemovedTrack(val playlist: String, val uri: String, val index: Int)
 
-    @Synchronized
     fun removeTrack(name: String, uri: String): RemovedTrack? {
-        val old = playlist(name).toList()
-        val index = old.indexOf(uri)
-        if (index < 0) return null
-        savePlaylist(name, old.filter { it != uri })
-        return RemovedTrack(name, uri, index)
+        synchronized(storeLock) {
+            val old = playlist(name).toList()
+            val index = old.indexOf(uri)
+            if (index < 0) return null
+            savePlaylist(name, old.filter { it != uri })
+            return RemovedTrack(name, uri, index)
+        }
     }
 
-    @Synchronized
     fun restoreTrack(item: RemovedTrack): Boolean {
-        if (item.playlist !in playlistNames() && item.playlist != "Избранное") return false
-        val current = playlist(item.playlist).toMutableList()
-        if (item.uri !in current) current.add(item.index.coerceIn(0, current.size), item.uri)
-        savePlaylist(item.playlist, current)
-        return true
+        synchronized(storeLock) {
+            if (item.playlist !in playlistNames() && item.playlist != "Избранное") return false
+            val current = playlist(item.playlist).toMutableList()
+            if (item.uri !in current) current.add(item.index.coerceIn(0, current.size), item.uri)
+            savePlaylist(item.playlist, current)
+            return true
+        }
     }
 
     private fun folderLinks() =
@@ -378,37 +420,38 @@ internal class Library(private val context: Context) {
     /**
      * Append new folder members; manual removals remain excluded and existing order stays intact.
      */
-    @Synchronized
     internal fun syncFolderPlaylists(all: List<Track>): Int {
-        val data = folderLinks()
-        var total = 0
-        for (name in data.keys().asSequence().toList()) {
-            if (name !in playlistNames()) continue
-            val current = playlist(name)
-            val candidates = linkedSetOf<String>()
-            val links = data.optJSONArray(name) ?: continue
-            for (i in 0 until links.length()) {
-                val link = links.getJSONObject(i)
-                val folder = MusicFolder(link.getString("root"), link.getString("path"))
-                val excluded = strings(link.optJSONArray("excluded")?.toString() ?: "[]").toSet()
-                candidates.addAll(
-                    playlistOrder(
-                            all.filter {
-                                folder.contains(it, link.optBoolean("recursive")) &&
-                                    it.uri !in excluded
-                            },
-                            SORT_ALBUM,
-                        )
-                        .map { it.uri }
-                )
+        synchronized(storeLock) {
+            val data = folderLinks()
+            var total = 0
+            for (name in data.keys().asSequence().toList()) {
+                if (name !in playlistNames()) continue
+                val current = playlist(name)
+                val candidates = linkedSetOf<String>()
+                val links = data.optJSONArray(name) ?: continue
+                for (i in 0 until links.length()) {
+                    val link = links.getJSONObject(i)
+                    val folder = MusicFolder(link.getString("root"), link.getString("path"))
+                    val excluded = strings(link.optJSONArray("excluded")?.toString() ?: "[]").toSet()
+                    candidates.addAll(
+                        playlistOrder(
+                                all.filter {
+                                    folder.contains(it, link.optBoolean("recursive")) &&
+                                        it.uri !in excluded
+                                },
+                                SORT_ALBUM,
+                            )
+                            .map { it.uri }
+                    )
+                }
+                val added = candidates.filter { it !in current }
+                if (added.isNotEmpty()) {
+                    savePlaylist(name, current + added)
+                    total += added.size
+                }
             }
-            val added = candidates.filter { it !in current }
-            if (added.isNotEmpty()) {
-                savePlaylist(name, current + added)
-                total += added.size
-            }
+            return total
         }
-        return total
     }
 
     internal fun readAlbumYear(retriever: MediaMetadataRetriever, name: String, uri: Uri): Int? {
@@ -435,69 +478,77 @@ internal class Library(private val context: Context) {
     fun playlist(name: String): Set<String> =
         strings(lists().optJSONArray(name)?.toString() ?: "[]").toSet()
 
-    @Synchronized
     fun savePlaylist(name: String, uris: Collection<String>) {
-        val removed = playlist(name) - uris.toSet()
-        val links = folderLinks()
-        val rows = links.optJSONArray(name)
-        if (rows != null) {
-            for (i in 0 until rows.length()) {
-                val row = rows.getJSONObject(i)
-                val excluded = strings(row.optJSONArray("excluded")?.toString() ?: "[]").toSet()
-                row.put("excluded", JSONArray((excluded + removed) - uris.toSet()))
+        synchronized(storeLock) {
+            val removed = playlist(name) - uris.toSet()
+            val links = folderLinks()
+            val rows = links.optJSONArray(name)
+            if (rows != null) {
+                for (i in 0 until rows.length()) {
+                    val row = rows.getJSONObject(i)
+                    val excluded = strings(row.optJSONArray("excluded")?.toString() ?: "[]").toSet()
+                    row.put("excluded", JSONArray((excluded + removed) - uris.toSet()))
+                }
+                prefs.edit().putString("playlistFolders", links.toString()).apply()
             }
-            prefs.edit().putString("playlistFolders", links.toString()).apply()
+            val data = lists().put(name, JSONArray(uris))
+            prefs.edit().putString("playlists", data.toString()).apply()
         }
-        val data = lists().put(name, JSONArray(uris))
-        prefs.edit().putString("playlists", data.toString()).apply()
     }
 
-    @Synchronized
     fun renamePlaylist(old: String, name: String): Boolean {
-        if (name.isBlank() || name == "Избранное" || old == "Избранное") return false
-        val data = lists()
-        if (data.has(name) || !data.has(old)) return false
-        data.put(name, data.getJSONArray(old))
-        data.remove(old)
-        val links = folderLinks()
-        if (links.has(old)) {
-            links.put(name, links.getJSONArray(old))
-            links.remove(old)
-            prefs.edit().putString("playlistFolders", links.toString()).apply()
+        synchronized(storeLock) {
+            if (name.isBlank() || name == "Избранное" || old == "Избранное") return false
+            val data = lists()
+            if (data.has(name) || !data.has(old)) return false
+            data.put(name, data.getJSONArray(old))
+            data.remove(old)
+            val links = folderLinks()
+            if (links.has(old)) {
+                links.put(name, links.getJSONArray(old))
+                links.remove(old)
+                prefs.edit().putString("playlistFolders", links.toString()).apply()
+            }
+            val edit =
+                prefs
+                    .edit()
+                    .putString("playlists", data.toString())
+                    .putInt("playlistSort:$name", playlistSort(old))
+                    .remove("playlistSort:$old")
+            prefs.getString("randomOrder:$old", null)?.let { edit.putString("randomOrder:$name", it) }
+            edit.remove("randomOrder:$old").apply()
+            return true
         }
-        val edit =
+    }
+
+    fun removePlaylist(name: String) {
+        synchronized(storeLock) {
+            val data = lists()
+            data.remove(name)
+            val links = folderLinks()
+            links.remove(name)
             prefs
                 .edit()
+                .putString("playlistFolders", links.toString())
                 .putString("playlists", data.toString())
-                .putInt("playlistSort:$name", playlistSort(old))
-                .remove("playlistSort:$old")
-        prefs.getString("randomOrder:$old", null)?.let { edit.putString("randomOrder:$name", it) }
-        edit.remove("randomOrder:$old").apply()
-        return true
-    }
-
-    @Synchronized
-    fun removePlaylist(name: String) {
-        val data = lists()
-        data.remove(name)
-        val links = folderLinks()
-        links.remove(name)
-        prefs
-            .edit()
-            .putString("playlistFolders", links.toString())
-            .putString("playlists", data.toString())
-            .remove("playlistSort:$name")
-            .remove("randomOrder:$name")
-            .apply()
+                .remove("playlistSort:$name")
+                .remove("randomOrder:$name")
+                .apply()
+        }
     }
 
     fun toggleFavorite(track: Track) {
-        val set = playlist("Избранное").toMutableSet()
-        if (!set.add(track.uri)) set.remove(track.uri)
-        savePlaylist("Избранное", set)
+        synchronized(storeLock) {
+            val set = playlist("Избранное").toMutableSet()
+            if (!set.add(track.uri)) set.remove(track.uri)
+            savePlaylist("Избранное", set)
+        }
     }
 
     companion object {
+        private val storeLock = Any()
+        private var scanGeneration = 0L
+
         fun strings(json: String): List<String> =
             runCatching {
                     val a = JSONArray(json)
