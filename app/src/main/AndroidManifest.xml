@@ -16,7 +16,7 @@
   <activity android:name=".RecognitionActivity" android:exported="false" />
   <provider android:name=".ExtensionFileProvider" android:authorities="${applicationId}.extensions" android:exported="false" android:grantUriPermissions="true" />
   <activity android:name=".DocumentActivity" android:exported="false" />
-  <activity android:name=".MainActivity" android:exported="true">
+  <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden">
    <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
   </activity>
   <!-- External media controls are checked by MediaSession.Callback.onConnect. -->

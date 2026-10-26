@@ -147,6 +147,8 @@ class MainActivity : ThemedActivity() {
         selectedPlaylist = state?.getString("selectedPlaylist")
         selecting = state?.getBoolean("selecting") ?: false
         selection.addAll(state?.getStringArrayList("selection").orEmpty())
+        libraryPage = state?.getInt("libraryPage", 0) ?: 0
+        state?.getInt("libraryScrollY", -1)?.takeIf { it >= 0 }?.let { pendingScrollY = it }
         layout =
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -566,13 +568,19 @@ class MainActivity : ThemedActivity() {
 
     private var libraryPage = 0
     private var lastBrowserSource:String? = null
+    /** Scroll position to apply on the first render after recreation (rotation). */
+    private var pendingScrollY: Int? = null
     private val renderSearch = Runnable { if (alive) render() }
 
     private fun render() {
         if (!::list.isInitialized) return
         updateSelectionTools()
         val scrollView = list.parent as? ScrollView
-        val scrollY = scrollView?.scrollY ?: 0
+        val scrollY =
+            pendingScrollY
+                ?.also { pendingScrollY = null }
+                ?: scrollView?.scrollY
+                ?: 0
         thumbnails.begin(scrollView)
         list.removeAllViews()
         list.post { thumbnails.loadVisible() }
@@ -1577,6 +1585,11 @@ class MainActivity : ThemedActivity() {
         out.putString("selectedPlaylist", selectedPlaylist)
         out.putStringArrayList("selection", ArrayList(selection))
         out.putBoolean("selecting", selecting)
+        out.putInt("libraryPage", libraryPage)
+        out.putInt(
+            "libraryScrollY",
+            (if (::list.isInitialized) list.parent as? ScrollView else null)?.scrollY ?: 0,
+        )
         super.onSaveInstanceState(out)
     }
 
