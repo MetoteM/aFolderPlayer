@@ -18,8 +18,8 @@ class RecognitionUiTest {
   val id=MainActivity::class.java.getDeclaredField("directId").apply { isAccessible=true };val results=MainActivity::class.java.getDeclaredField("directResults").apply { isAccessible=true }
   val found=LyricsSearch.parse("""[{"id":1,"trackName":"Song","artistName":"Artist","duration":100,"plainLyrics":"Words"}]""",100000)
   id.set(activity,"song");results.set(activity,found)
-  val stop=MainActivity::class.java.getDeclaredMethod("stopDirectLyrics",Boolean::class.javaPrimitiveType).apply { isAccessible=true };stop.invoke(activity,false)
-  assertEquals("song",id.get(activity));assertEquals(found,results.get(activity));stop.invoke(activity,true);assertNull(id.get(activity));assertTrue((results.get(activity) as List<*>).isEmpty())
+  activity.stopDirectLyrics(false)
+  assertEquals("song",id.get(activity));assertEquals(found,results.get(activity));activity.stopDirectLyrics(true);assertNull(id.get(activity));assertTrue((results.get(activity) as List<*>).isEmpty())
   host.pause().stop().destroy()
  }
  @Test fun recognitionIsOnMainScreenAndRemovedFromSettings() {

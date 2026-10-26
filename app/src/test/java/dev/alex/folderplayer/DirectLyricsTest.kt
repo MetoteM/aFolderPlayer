@@ -58,7 +58,7 @@ class DirectLyricsTest {
   assertNull(LyricsStore(a).read(t.uri));assertEquals(1,calls())
  }
  @Test fun restoringMissingLyricsScreenDoesNotRequestInternet() = run { a,t,calls ->
-  MainActivity::class.java.getDeclaredMethod("showPage",String::class.java,Boolean::class.javaPrimitiveType).apply { isAccessible=true }.invoke(a,"lyrics",false)
+  a.showPage("lyrics", false)
   Thread.sleep(150);shadowOf(Looper.getMainLooper()).idle();assertEquals(0,calls());assertNull(LyricsStore(a).read(t.uri))
  }
 
