@@ -100,11 +100,11 @@ internal class PlayerScreens(private val context: Context, private val actions: 
     private var shortLandscape = false
 
     init {
-        view.addOnLayoutChangeListener { _, l, t, r, b, _, _, _, _ ->
-            val wide = r - l > b - t
-            val small = (b - t) / context.resources.displayMetrics.density < 520
-            val short = wide && ((b-t)/context.resources.displayMetrics.density < 300 || context.resources.configuration.fontScale >= 1.5f)
-            if (page == "player" && r > l && b > t && (wide != landscape || small != compact || short != shortLandscape)) {
+        view.beforeMeasure = { width, height ->
+            val wide = width > height
+            val small = height / context.resources.displayMetrics.density < 520
+            val short = wide && (height/context.resources.displayMetrics.density < 300 || context.resources.configuration.fontScale >= 1.5f)
+            if (page == "player" && width > 0 && height > 0 && (wide != landscape || small != compact || short != shortLandscape)) {
                 shortLandscape = short
                 landscape = wide
                 compact = small

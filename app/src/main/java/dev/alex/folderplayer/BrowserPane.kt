@@ -17,6 +17,7 @@ internal class BrowserPane(
     private val controls: List<View>,
 ) : LinearLayout(context) {
     private var wide: Boolean? = null
+    private var paneWidth = 0
     private val title = heading.first() as TextView
     private val titleSize = title.textSize
     private val titleLines = title.maxLines
@@ -26,12 +27,20 @@ internal class BrowserPane(
     init {
         orientation = VERTICAL
         rebuild(false)
-        addOnLayoutChangeListener { _, l, t, r, b, _, _, _, _ ->
-            if (r > l && b > t && wide != (r-l > b-t)) rebuild(r-l > b-t)
-        }
     }
 
-    private fun rebuild(landscape: Boolean) {
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val w=MeasureSpec.getSize(widthMeasureSpec)
+        val h=MeasureSpec.getSize(heightMeasureSpec)
+        if(w>0 && h>0) {
+            val landscape=w>h
+            if(wide!=landscape || landscape && paneWidth!=w)rebuild(landscape,w)
+        }
+        super.onMeasure(widthMeasureSpec,heightMeasureSpec)
+    }
+
+    private fun rebuild(landscape: Boolean, availableWidth: Int = 0) {
+        paneWidth=availableWidth
         wide = landscape
         val first = (results as? ScrollView)?.scrollY ?: 0
         portrait.forEach { (it.parent as? ViewGroup)?.removeView(it) }
@@ -56,7 +65,7 @@ internal class BrowserPane(
             controls.forEach { side.addView(it,LayoutParams(-1,-2)) }
             val panel = ScrollView(context).apply { addView(side);isFillViewport=false }
             addView(browser,LayoutParams(0,-1,1f))
-            val width = ((this.width.takeIf { it>0 } ?: resources.displayMetrics.widthPixels)*.4f).toInt()
+            val width = (availableWidth*.4f).toInt()
                 .coerceAtMost((280*resources.displayMetrics.density).toInt())
             addView(panel,LayoutParams(width,-1))
         }
