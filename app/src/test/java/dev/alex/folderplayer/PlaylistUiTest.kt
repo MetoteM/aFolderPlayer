@@ -35,7 +35,7 @@ class PlaylistUiTest {
   val tracks=listOf(Track("a","One","Artist",30000,"Music/Album","01.mp3","Album","Artist",1986,1,1,"root"),Track("b","Two","Artist",30000,"Music/Album","2.mp3","Album","Artist",1986,2,1,"root"))
   app.getSharedPreferences("library",Context.MODE_PRIVATE).edit().clear().putString("tracks",JSONArray(tracks.map { it.json() }).toString()).commit()
   app.getSharedPreferences("playback",Context.MODE_PRIVATE).edit().clear().commit()
-  val screen=Robolectric.buildActivity(MainActivity::class.java).create().start().resume();val activity=screen.get()
+  val screen=mainActivityController().create().start().also { awaitLibrary(it.get()) }.resume();val activity=screen.get()
   try {
    button(activity.window.decorView,"Плейлисты").performClick();shadowOf(dialog()).clickOnItem(1)
    val creation=dialog();val children=views(creation.window!!.decorView)

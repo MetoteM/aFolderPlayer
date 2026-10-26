@@ -1,18 +1,19 @@
 package dev.alex.folderplayer
 
-import android.app.Activity
 import android.app.AlertDialog
 import android.content.ComponentName
 import android.content.Intent
-import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.view.Gravity
 import android.view.View
 import android.widget.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -21,15 +22,20 @@ import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
-import java.util.concurrent.Executors
+import kotlinx.coroutines.launch
 
-class MainActivity : ThemedActivity() {
+class MainActivity : ThemedComponentActivity() {
     private lateinit var root: FrameLayout
     private lateinit var screens: PlayerScreens
+    private val documents = MainDocuments(this, ::onDocumentResult)
+    private lateinit var model: MainViewModel
+    private var libraryLoading = true
+    private var libraryFailure: String? = null
     private var page = "library"
     private lateinit var pageMotion: SheetMotion
     private var soundReturn = "player"
     private var lyricsRequestedId: String? = null
+    private lateinit var scanWork: RetainedOperation<Library.ScanResult>
     private lateinit var lyricsWork: RetainedOperation<List<LyricsSearch.Result>>
     private var directId: String? = null
     private var directResults = emptyList<LyricsSearch.Result>()
@@ -62,23 +68,20 @@ class MainActivity : ThemedActivity() {
     private val selection = linkedSetOf<String>()
     private var selecting = false
     private var lyricTarget: String? = null
-    private var lyricUpdate: (() -> Unit)? = null
     private val lyricsSearch by lazy {
-        LyricsSearch(SearchConnections(this)).also {
+        LyricsSearch(SearchConnections(applicationContext)).also {
             it.restoreCooldown(prefs.getLong("lyricsRetryUntil", 0))
         }
     }
     private val translationClient by lazy { TranslationClient(this) }
     private lateinit var translationWork: RetainedOperation<SongTranslationResult>
     private var translationId: String? = null
-    private val networkExecutor = Executors.newSingleThreadExecutor()
-    private var networkCancel: LyricsSearch.Cancel? = null
-    private var networkTask: java.util.concurrent.Future<*>? = null
+    private val networkWork by lazy { ActivityWork(applicationContext) }
     private val albumYears by lazy {
         AlbumYearDialogs(
             this,
             {
-                tracks = library.tracks()
+                model.reload()
                 render()
                 prefs
                     .getString("queueSource", null)
@@ -93,20 +96,26 @@ class MainActivity : ThemedActivity() {
     private var alive = true
     private val trackLabels = linkedMapOf<String, TextView>()
     private var highlightedId: String? = null
-    private val executor = Executors.newSingleThreadExecutor()
+    private val background by lazy { ActivityWork(applicationContext) }
     private val handler = Handler(Looper.getMainLooper())
     private val prefs by lazy { getSharedPreferences("playback", MODE_PRIVATE) }
     private var screenStarted = false
+    private var restoredBrowseState = false
     private val ticker =
         object : Runnable {
             override fun run() {
                 if (!screenStarted) return
                 updatePlayer()
-                lyricUpdate?.invoke()
+                if (lyricsEditorDelegate.isInitialized()) lyricsEditor.tick()
                 if (controller?.isPlaying == true)
                     handler.postDelayed(
                         this,
-                        if (page == "lyrics" || lyricUpdate != null) 500 else 1000,
+                        if (
+                            page == "lyrics" ||
+                                (lyricsEditorDelegate.isInitialized() && lyricsEditor.ticking)
+                        )
+                            500
+                        else 1000,
                     )
             }
         }
@@ -119,13 +128,17 @@ class MainActivity : ThemedActivity() {
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         CrashNotes.install(this)
-        val retained = lastNonConfigurationInstance as? MainOperations
-        translationWork = retained?.translation ?: RetainedOperation()
-        lyricsWork = retained?.lyrics ?: RetainedOperation()
+        restoredBrowseState = state != null
+        model =
+            ViewModelProvider(this, MainViewModel.factory(application))[MainViewModel::class.java]
+        translationWork = model.translation
+        lyricsWork = model.lyrics
+        scanWork = model.scan
         soundReturn = state?.getString("soundReturn") ?: "player"
         lyricTarget = state?.getString("lyricTarget")
         library = Library(this)
-        tracks = library.tracks()
+        tracks = model.libraryState.value.tracks
+        libraryLoading = model.libraryState.value.loading
         query = state?.getString("libraryQuery").orEmpty()
         selectedPlaylist = state?.getString("selectedPlaylist")
         selecting = state?.getBoolean("selecting") ?: false
@@ -135,12 +148,6 @@ class MainActivity : ThemedActivity() {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(8), dp(12), dp(8))
                 setBackgroundColor(PlayerScreens.bg)
-            }
-        if (android.os.Build.VERSION.SDK_INT >= 30)
-            layout.setOnApplyWindowInsetsListener { view, insets ->
-                val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars())
-                view.setPadding(16, 12 + bars.top, 16, 8 + bars.bottom)
-                insets
             }
         root = FrameLayout(this)
         root.addView(layout)
@@ -157,7 +164,13 @@ class MainActivity : ThemedActivity() {
                     }
 
                     override fun toggle() {
-                        controller?.let { if (it.isPlaying) it.pause() else { if(it.playbackState==Player.STATE_IDLE)it.prepare();it.play() } }
+                        controller?.let {
+                            if (it.isPlaying) it.pause()
+                            else {
+                                if (it.playbackState == Player.STATE_IDLE) it.prepare()
+                                it.play()
+                            }
+                        }
                         updatePlayer()
                     }
 
@@ -182,11 +195,15 @@ class MainActivity : ThemedActivity() {
 
                     override fun favorite() {
                         currentTrack()?.let {
-                            val item=controller?.currentMediaItem
-                            val online=item?.let { media -> OnlineQueueMetadata.row(media) }
-                            if(online!=null) {
-                                val actions=OnlineLibraryActions(this@MainActivity)
-                                actions.set("favorites",org.json.JSONArray().put(online),!actions.contains("favorites",online.optString("id")))
+                            val item = controller?.currentMediaItem
+                            val online = item?.let { media -> OnlineQueueMetadata.row(media) }
+                            if (online != null) {
+                                val actions = OnlineLibraryActions(this@MainActivity)
+                                actions.set(
+                                    "favorites",
+                                    org.json.JSONArray().put(online),
+                                    !actions.contains("favorites", online.optString("id")),
+                                )
                             } else library.toggleFavorite(it)
                             render()
                             updatePlayer()
@@ -217,33 +234,29 @@ class MainActivity : ThemedActivity() {
                         val track = currentTrack()
                         cancelTranslation()
                         translationId = track?.uri
-                        executor.execute {
-                            val result = runCatching {
-                                track?.let { loadLyrics(it) }?.let { LyricsDocument(it).plain }
-                                    ?: ""
-                            }
-                            handler.post {
-                                if (alive)
-                                    result
-                                        .onSuccess {
-                                            if (track != null && currentTrack()?.uri == track.uri)
-                                                startActivityForResult(
-                                                    Intent(
-                                                            this@MainActivity,
-                                                            SongTextActivity::class.java,
-                                                        )
-                                                        .putExtra("source", it)
-                                                        .putExtra("songTitle", track.title)
-                                                        .putExtra("artist", track.artist)
-                                                        .putExtra("localUri", track.uri)
-                                                        .putExtra("openTranslation", true),
-                                                    107,
-                                                )
-                                        }
-                                        .onFailure {
-                                            toast(it.message ?: "Не удалось прочитать текст")
-                                        }
-                            }
+                        background.submit({ ctx ->
+                            track
+                                ?.let { SongContent(ctx).load(it) }
+                                ?.let { LyricsDocument(it).plain } ?: ""
+                        }) { result ->
+                            if (alive)
+                                result
+                                    .onSuccess {
+                                        if (track != null && currentTrack()?.uri == track.uri)
+                                            documents.launch(
+                                                Intent(
+                                                        this@MainActivity,
+                                                        SongTextActivity::class.java,
+                                                    )
+                                                    .putExtra("source", it)
+                                                    .putExtra("songTitle", track.title)
+                                                    .putExtra("artist", track.artist)
+                                                    .putExtra("localUri", track.uri)
+                                                    .putExtra("openTranslation", true),
+                                                DocumentRequest.DOCUMENT_TRANSLATION,
+                                            )
+                                    }
+                                    .onFailure { toast(it.message ?: "Не удалось прочитать текст") }
                         }
                     }
 
@@ -299,14 +312,7 @@ class MainActivity : ThemedActivity() {
         root.addView(screens.view, FrameLayout.LayoutParams(-1, -1))
         screens.view.visibility = View.GONE
         pageMotion = SheetMotion(screens.view)
-        if (android.os.Build.VERSION.SDK_INT >= 30) {
-            layout.setOnApplyWindowInsetsListener(null)
-            root.setOnApplyWindowInsetsListener { view, insets ->
-                val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars())
-                view.setPadding(0, bars.top, 0, bars.bottom)
-                insets
-            }
-        }
+        SystemBarInsets.apply(root)
         setContentView(root)
         if (android.os.Build.VERSION.SDK_INT >= 33)
             onBackInvokedDispatcher.registerOnBackInvokedCallback(
@@ -314,13 +320,21 @@ class MainActivity : ThemedActivity() {
             ) {
                 if (page != "library") backPage() else finish()
             }
+        libraryPage = state?.getInt("libraryPage", 0) ?: 0
+        lastBrowserSource = selectedPlaylist
         browserTitle = label("Библиотека", 24f)
         layout.addView(browserTitle)
         browserCount = label("", 13f).apply { setTextColor(PlayerScreens.muted) }
         layout.addView(browserCount)
         val sources = row()
-        sources.addView(button("На устройстве") { selectedPlaylist=null;render() },weight())
-        sources.addView(button("Яндекс Музыка") { onlineSection.show() },weight())
+        sources.addView(
+            button("На устройстве") {
+                selectedPlaylist = null
+                render()
+            },
+            weight(),
+        )
+        sources.addView(button("Яндекс Музыка") { onlineSection.show() }, weight())
         layout.addView(sources)
         val tools = row()
         moreTools = row()
@@ -364,10 +378,7 @@ class MainActivity : ThemedActivity() {
         layout.addView(moreTools)
         val quick = row()
         identifyButton = button("Определить песню") { identifySong() }
-        quick.addView(
-            identifyButton,
-            LinearLayout.LayoutParams(0, dp(48), 2f),
-        )
+        quick.addView(identifyButton, LinearLayout.LayoutParams(0, dp(48), 2f))
 
         layout.addView(quick)
         search =
@@ -408,7 +419,8 @@ class MainActivity : ThemedActivity() {
                 { travel -> previewPlayer(travel) },
                 { if (page == "library") pageMotion.show(false, root.height, true) },
             ) {
-                if (prefs.getString("activeBook", "").orEmpty().isNotEmpty()) startActivity(Intent(this, BooksActivity::class.java))
+                if (prefs.getString("activeBook", "").orEmpty().isNotEmpty())
+                    startActivity(Intent(this, BooksActivity::class.java))
                 else showPage("player")
             }
         now = current.title
@@ -440,7 +452,16 @@ class MainActivity : ThemedActivity() {
         val controls = row()
         controls.addView(button("⏮") { controller?.seekToPreviousMediaItem() }, weight())
 
-        play = button("▶") { controller?.let { if (it.isPlaying) it.pause() else { if(it.playbackState==Player.STATE_IDLE)it.prepare();it.play() } } }
+        play =
+            button("▶") {
+                controller?.let {
+                    if (it.isPlaying) it.pause()
+                    else {
+                        if (it.playbackState == Player.STATE_IDLE) it.prepare()
+                        it.play()
+                    }
+                }
+            }
         controls.addView(play, weight())
         controls.addView(button("⏭") { controller?.seekToNextMediaItem() }, weight())
         layout.addView(controls)
@@ -460,74 +481,88 @@ class MainActivity : ThemedActivity() {
                                     }
 
                                     override fun onPlayerError(error: PlaybackException) {
-                                        val onlineError = generateSequence(error as Throwable?) { it.cause }
-                                            .take(8).filterIsInstance<OnlinePlayback.Problem>().firstOrNull()
-                                        toast(onlineError?.message ?: "Не удалось воспроизвести трек: ${error.errorCodeName}")
+                                        val onlineError =
+                                            generateSequence(error as Throwable?) { it.cause }
+                                                .take(8)
+                                                .filterIsInstance<OnlinePlayback.Problem>()
+                                                .firstOrNull()
+                                        toast(
+                                            onlineError?.message
+                                                ?: "Не удалось воспроизвести трек: ${error.errorCodeName}"
+                                        )
                                     }
                                 }
                             )
-                            restorePlayingSource()
+                            if (!restoredBrowseState && !libraryLoading) restorePlayingSource()
                             updatePlayer()
                         }
                         .onFailure { toast("Не удалось подключить плеер") }
             },
             java.util.concurrent.Executor { handler.post(it) },
         )
+        BrowserPane.install(
+            layout,
+            scroller,
+            listOf(browserTitle, browserCount, sources, search),
+            listOf(tools, moreTools, quick, current, seek, controls),
+        )
         render()
+        val libraryScroll = state?.getInt("libraryScroll", 0) ?: 0
+        if (libraryScroll > 0)
+            scroller.viewTreeObserver.addOnGlobalLayoutListener(
+                object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+                    override fun onGlobalLayout() {
+                        if (libraryLoading) return
+                        scroller.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                        scroller.scrollTo(0, libraryScroll)
+                    }
+                }
+            )
         showPage(
             state?.getString("uiPage") ?: prefs.getString("uiPage", "library").orEmpty(),
             false,
         )
+        onlineSection.restore(state?.getBundle("onlineBrowser"), model.online)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                model.libraryState.collect { next ->
+                    val firstReady = libraryLoading && !next.loading
+                    tracks = next.tracks
+                    libraryLoading = next.loading
+                    libraryFailure = next.error
+                    if (
+                        firstReady &&
+                            !restoredBrowseState &&
+                            query.isEmpty() &&
+                            !selecting &&
+                            selectedPlaylist == null
+                    )
+                        restorePlayingSource()
+                    queueTimeline = null
+                    queueTracks = null
+                    render()
+                    updatePlayer()
+                }
+            }
+        }
+        scanWork.attach { showScan(it) }
     }
 
-    private fun row() =
-        LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
+    private val ui by lazy { PlayerUi(this) }
 
-    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+    private fun row() = ui.row()
 
-    private fun weight() =
-        LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(3), dp(4), dp(3), dp(4)) }
+    private fun dp(value: Int) = ui.dp(value)
 
-    private fun label(text: String, size: Float = 16f) =
-        TextView(this).apply {
-            this.text = text
-            textSize = size
-            setTextColor(AppAppearance.textColor)
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-        }
+    private fun weight() = ui.weight()
 
-    private fun button(text: String, action: () -> Unit) =
-        Button(this).apply {
-            this.text = text
-            isAllCaps = false
-            textSize = 14f
-            minWidth = 0
-            minimumWidth = 0
-            minimumHeight = dp(48)
-            setTextColor(AppAppearance.textColor)
-            background =
-                android.graphics.drawable.RippleDrawable(
-                    android.content.res.ColorStateList.valueOf(AppAppearance.palette.control),
-                    android.graphics.drawable.GradientDrawable().apply {
-                        setColor(PlayerScreens.surface)
-                        cornerRadius = dp(16).toFloat()
-                    },
-                    null,
-                )
-            setOnClickListener { action() }
-        }
+    private fun label(text: String, size: Float = 16f) = ui.label(text, size)
 
-    private fun toast(text: String) {
-        Toast.makeText(this, text, Toast.LENGTH_LONG).show()
-    }
+    private fun button(text: String, action: () -> Unit) = ui.button(text, action)
 
-    private fun clock(ms: Long): String {
-        val s = ms.coerceAtLeast(0) / 1000
-        return "%d:%02d".format(s / 60, s % 60)
-    }
+    private fun toast(text: String) = ui.toast(text)
+
+    private fun clock(ms: Long) = ui.clock(ms)
 
     private fun updateSelectionTools() {
         (selectionButton as IconButton).icon =
@@ -535,169 +570,108 @@ class MainActivity : ThemedActivity() {
         selectionButton.contentDescription = if (selecting) "Завершить выбор" else "Выбрать треки"
         bulkButton.visibility = if (selecting) View.VISIBLE else View.GONE
         bulkButton.text = "В плейлист (${selection.size})"
-        bulkButton.isEnabled = selection.isNotEmpty()
+        bulkButton.isEnabled = !libraryLoading && selection.isNotEmpty()
         bulkButton.alpha = if (bulkButton.isEnabled) 1f else 0.45f
         moreTools.visibility = if (selecting) View.VISIBLE else View.GONE
         identifyButton.visibility = if (selecting) View.GONE else View.VISIBLE
-        val allHidden = selection.isNotEmpty() && selection.all { it in library.hiddenTracks() }
+        val allHidden =
+            !libraryLoading &&
+                selection.isNotEmpty() &&
+                selection.all { it in library.hiddenTracks() }
         hideTracksButton.text = if (allHidden) "👁 Вернуть" else "👁 Скрыть"
-        hideTracksButton.contentDescription = if (allHidden) "Вернуть в воспроизведение" else "Не воспроизводить"
+        hideTracksButton.contentDescription =
+            if (allHidden) "Вернуть в воспроизведение" else "Не воспроизводить"
         deleteTracksButton.contentDescription = "Удалить выбранные треки из библиотеки"
         listOf(hideTracksButton, deleteTracksButton).forEach {
-            it.isEnabled = selection.isNotEmpty()
+            it.isEnabled = !libraryLoading && selection.isNotEmpty()
             it.alpha = if (it.isEnabled) 1f else 0.45f
         }
     }
 
     private var libraryPage = 0
-    private var lastBrowserSource:String? = null
+    private var lastBrowserSource: String? = null
     private val renderSearch = Runnable { if (alive) render() }
+
+    private val browser by lazy {
+        LibraryBrowser(
+            this,
+            list,
+            browserTitle,
+            browserCount,
+            thumbnails,
+            library,
+            object : LibraryBrowser.Actions {
+                override fun refresh() = render()
+
+                override fun reload() = model.reload()
+
+                override fun select(id: String, selected: Boolean, redraw: Boolean) {
+                    if (selected) selection.add(id) else selection.remove(id)
+                    if (redraw) render() else updateSelectionTools()
+                }
+
+                override fun selectAll(ids: List<String>) {
+                    selection.addAll(ids)
+                    render()
+                }
+
+                override fun page(index: Int) {
+                    libraryPage = index
+                    render()
+                }
+
+                override fun play(track: Track) = startTrack(track)
+
+                override fun menu(track: Track) = trackMenu(track)
+
+                override fun addToPlaylists(track: Track) = this@MainActivity.addToPlaylists(track)
+            },
+        )
+    }
 
     private fun render() {
         if (!::list.isInitialized) return
         updateSelectionTools()
-        val scrollView = list.parent as? ScrollView
-        val scrollY = scrollView?.scrollY ?: 0
-        thumbnails.begin(scrollView)
-        list.removeAllViews()
-        list.post { thumbnails.loadVisible() }
+        if (lastBrowserSource != selectedPlaylist) {
+            libraryPage = 0
+            lastBrowserSource = selectedPlaylist
+        }
+        val rendered =
+            browser.render(
+                LibraryBrowser.State(
+                    tracks,
+                    selectedPlaylist,
+                    query,
+                    selecting,
+                    selection.toSet(),
+                    scanning,
+                    libraryLoading,
+                    libraryFailure,
+                    libraryPage,
+                    if (libraryLoading && tracks.isEmpty()) 0 else prefs.getInt("librarySort", 0),
+                )
+            )
+        visible = rendered.visible
+        libraryPage = rendered.page
         trackLabels.clear()
-        val allowed = selectedPlaylist?.let { library.playlist(it) }
-        val ordered =
-            library.ordered(tracks, selectedPlaylist.orEmpty(), prefs.getInt("librarySort", 0))
-        visible =
-            ordered.filter {
-                (allowed == null || it.uri in allowed) &&
-                    (it.title.contains(query, true) || it.artist.contains(query, true))
-            }
-        browserTitle.text = selectedPlaylist ?: "Библиотека"
-        browserCount.text = if (scanning) "Проверяем папки…" else "${visible.size} песен"
-        if (visible.isEmpty())
-            list.addView(
-                label(
-                    if (library.roots().isEmpty())
-                        "Добавь папку через меню ⋯.\nВ библиотеку попадут песни от 30 секунд."
-                    else "Песен не найдено. Обнови библиотеку через меню ⋯.",
-                    16f,
-                )
-            )
-        val favorites = library.playlist("Избранное")
-        val hidden = library.hiddenTracks()
-        if (selecting)
-            list.addView(
-                button("Выбрать все найденные (${selection.size} выбрано)") {
-                    selection.addAll(visible.map { it.uri })
-                    render()
-                }
-            )
-        if(lastBrowserSource!=selectedPlaylist){libraryPage=0;lastBrowserSource=selectedPlaylist}
-        val pageSize=200
-        val lastPage=((visible.size-1).coerceAtLeast(0))/pageSize
-        libraryPage=libraryPage.coerceIn(0,lastPage)
-        if(lastPage>0)list.addView(label("Страница ${libraryPage+1} из ${lastPage+1}",14f))
-        visible.drop(libraryPage*pageSize).take(pageSize).forEach { track ->
-            val r =
-                row().apply {
-                    setPadding(dp(4), dp(4), dp(4), dp(4))
-                    background =
-                        android.graphics.drawable.GradientDrawable().apply {
-                            setColor(PlayerScreens.bg)
-                            cornerRadius = dp(14).toFloat()
-                        }
-                }
-            if (selecting)
-                r.addView(
-                    CheckBox(this).apply {
-                        isChecked = track.uri in selection
-                        setOnCheckedChangeListener { _, yes ->
-                            if (yes) selection.add(track.uri) else selection.remove(track.uri)
-                            updateSelectionTools()
-                        }
-                    }
-                )
-            if (track.artworkUri.isNotBlank()) {
-                val thumb = ImageView(this).apply { scaleType=ImageView.ScaleType.CENTER_CROP; contentDescription="Обложка: ${track.albumName()}" }
-                r.addView(thumb, LinearLayout.LayoutParams(dp(44),dp(44)).apply { marginEnd=dp(8) })
-                thumbnails.add(thumb,track.artworkUri)
-                thumb.setOnClickListener { if(selecting){if(!selection.add(track.uri))selection.remove(track.uri);render()}else startTrack(track) }
-            }
-            val number =
-                if (selectedPlaylist != null)
-                    (track.trackNumber ?: filenameTrackNumber(track))
-                        ?.let { "№%02d · ".format(it) }
-                        .orEmpty()
-                else ""
-            val details = mutableListOf(track.artist.ifBlank { track.folder })
-            if (selectedPlaylist != null) {
-                details.add(track.albumName())
-                track.year?.let { details.add(it.toString()) }
-                track.discNumber?.let { details.add("диск $it") }
-            }
-            if (track.uri in hidden) details.add("👁 Не воспроизводится")
-            details.add(clock(track.duration))
-            val caption = "$number${track.title}\n${details.joinToString(" · ")}"
-            val styled =
-                android.text.SpannableString(caption).apply {
-                    val start = caption.indexOf('\n') + 1
-                    setSpan(
-                        android.text.style.RelativeSizeSpan(0.76f),
-                        start,
-                        length,
-                        android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                    )
-                    setSpan(
-                        android.text.style.ForegroundColorSpan(PlayerScreens.muted),
-                        start,
-                        length,
-                        android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                    )
-                }
-            val info = label(caption, 18f).apply { text = styled }
-            trackLabels[track.uri] = info
-            info.setOnClickListener {
-                if (selecting) {
-                    if (!selection.add(track.uri)) selection.remove(track.uri)
-                    render()
-                } else startTrack(track)
-            }
-            info.setOnLongClickListener {
-                trackMenu(track)
-                true
-            }
-            r.addView(info, weight())
-            val heart =
-                button(if (track.uri in favorites) "♥" else "♡") {
-                    library.toggleFavorite(track)
-                    render()
-                }
-            heart.contentDescription = "Избранное: ${track.title}"
-            heart.setOnLongClickListener {
-                addToPlaylists(track)
-                true
-            }
-            r.addView(heart, LinearLayout.LayoutParams(dp(48), dp(52)))
-            list.addView(
-                r,
-                LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, dp(3), 0, dp(3)) },
-            )
-        }
-        if(lastPage>0) {
-            val navigation=row()
-            navigation.addView(button("← Назад") { libraryPage--;render();scrollView?.post { scrollView.scrollTo(0,0) } }.apply { isEnabled=libraryPage>0 },weight())
-            navigation.addView(button("Далее →") { libraryPage++;render();scrollView?.post { scrollView.scrollTo(0,0) } }.apply { isEnabled=libraryPage<lastPage },weight())
-            list.addView(navigation)
-        }
+        trackLabels.putAll(rendered.labels)
         highlightTrack(true)
-        scrollView?.post { if (alive) scrollView.scrollTo(0, scrollY) }
     }
 
     private fun removeUnavailableFromQueue() {
         if (prefs.getString("activeBook", "").orEmpty().isNotEmpty()) return
         val playable = library.playableTracks().map { it.uri }.toSet()
-        val onlineHidden=OnlineLibraryActions(this).ids("hidden")
+        val onlineHidden = OnlineLibraryActions(this).ids("hidden")
         controller?.let { c ->
             for (index in c.mediaItemCount - 1 downTo 0) {
-                if (!QueueEligibility.playable(c.getMediaItemAt(index).mediaId,playable,onlineHidden)) c.removeMediaItem(index)
+                if (
+                    !QueueEligibility.playable(
+                        c.getMediaItemAt(index).mediaId,
+                        playable,
+                        onlineHidden,
+                    )
+                )
+                    c.removeMediaItem(index)
             }
         }
     }
@@ -708,7 +682,10 @@ class MainActivity : ThemedActivity() {
         library.setTracksHidden(selection.toSet(), hide)
         removeUnavailableFromQueue()
         render()
-        toast(if (hide) "Выбранные треки не будут воспроизводиться" else "Треки возвращены в воспроизведение")
+        toast(
+            if (hide) "Выбранные треки не будут воспроизводиться"
+            else "Треки возвращены в воспроизведение"
+        )
     }
 
     private fun deleteSelectedTracks() {
@@ -716,12 +693,14 @@ class MainActivity : ThemedActivity() {
         if (ids.isEmpty()) return
         AlertDialog.Builder(this)
             .setTitle("Удалить из библиотеки: ${ids.size}?")
-            .setMessage("Файлы останутся на устройстве. Эти треки будут исключены из библиотеки и воспроизведения, в том числе после обновления библиотеки.")
+            .setMessage(
+                "Файлы останутся на устройстве. Эти треки будут исключены из библиотеки и воспроизведения, в том числе после обновления библиотеки."
+            )
             .setNegativeButton("Отмена", null)
             .setPositiveButton("Удалить") { _, _ ->
                 library.excludeTracks(ids)
                 removeUnavailableFromQueue()
-                tracks = library.tracks()
+                model.reload()
                 selection.clear()
                 render()
             }
@@ -734,7 +713,7 @@ class MainActivity : ThemedActivity() {
             return
         }
         val c = controller ?: return toast("Плеер ещё подключается")
-        prefs.edit().putBoolean("onlinePlayerOrigin",false).apply()
+        prefs.edit().putBoolean("onlinePlayerOrigin", false).apply()
         sendPlaybackCommand(
             c,
             PlaybackCommands.START_QUEUE,
@@ -808,15 +787,17 @@ class MainActivity : ThemedActivity() {
         highlightTrack(false)
         now.text = c.currentMediaItem?.mediaMetadata?.title?.toString() ?: "Выбери песню"
         play.text = if (c.isPlaying) "❚❚" else "▶"
-        val d = c.duration.takeIf { it != C.TIME_UNSET && it > 0 }
-            ?: c.currentMediaItem?.mediaMetadata?.extras?.getLong("onlineDuration") ?: 0L
+        val d =
+            c.duration.takeIf { it != C.TIME_UNSET && it > 0 }
+                ?: c.currentMediaItem?.mediaMetadata?.extras?.getLong("onlineDuration")
+                ?: 0L
         position.text =
             getString(
                 dev.alex.folderplayer.R.string.duration_format,
                 clock(c.currentPosition),
                 clock(d),
             )
-        onlineSection.updateNowPlaying(now.text.toString(),position.text.toString())
+        onlineSection.updateNowPlaying(now.text.toString(), position.text.toString())
         if (!dragging)
             seek.progress =
                 if (d > 0) (c.currentPosition * 1000 / d).toInt().coerceIn(0, 1000) else 0
@@ -832,8 +813,10 @@ class MainActivity : ThemedActivity() {
                     .joinToString(" · "),
                 prefs.getString("queueSource", "").orEmpty().ifBlank { "Библиотека" },
                 c.isPlaying,
-                if(id?.startsWith("afp-yandex://")==true) OnlineLibraryActions(this).contains("favorites",Uri.parse(id).lastPathSegment.orEmpty())
-                else id != null && id in library.playlist("Избранное"),
+                if (id?.startsWith("afp-yandex://") == true)
+                    OnlineLibraryActions(this)
+                        .contains("favorites", Uri.parse(id).lastPathSegment.orEmpty())
+                else !libraryLoading && id != null && id in library.playlist("Избранное"),
                 c.repeatMode,
                 c.currentPosition,
                 d,
@@ -852,7 +835,9 @@ class MainActivity : ThemedActivity() {
                         item.mediaId,
                         local?.title ?: item.mediaMetadata.title?.toString().orEmpty(),
                         local?.artist ?: item.mediaMetadata.artist?.toString().orEmpty(),
-                        local?.duration ?: item.mediaMetadata.extras?.getLong("onlineDuration") ?: 0L,
+                        local?.duration
+                            ?: item.mediaMetadata.extras?.getLong("onlineDuration")
+                            ?: 0L,
                     )
                 }
             screens.setQueue(entries)
@@ -885,7 +870,9 @@ class MainActivity : ThemedActivity() {
                         0 -> addToPlaylists(track)
                         1 -> {
                             if (track.uri in library.hiddenTracks())
-                                toast("Трек скрыт от воспроизведения. Сначала верни его кнопкой глаза")
+                                toast(
+                                    "Трек скрыт от воспроизведения. Сначала верни его кнопкой глаза"
+                                )
                             else controller?.addMediaItem(track.item())
                         }
                         2 ->
@@ -1204,7 +1191,10 @@ class MainActivity : ThemedActivity() {
     }
 
     private fun addToPlaylists(track: Track) {
-        if(track.uri.startsWith("afp-yandex://")) { toast("Смешанные сохраняемые плейлисты — следующий этап. Избранное доступно кнопкой ♥");return }
+        if (track.uri.startsWith("afp-yandex://")) {
+            toast("Смешанные сохраняемые плейлисты — следующий этап. Избранное доступно кнопкой ♥")
+            return
+        }
         val names = (listOf("Избранное") + library.playlistNames()).distinct()
         val checked = names.map { track.uri in library.playlist(it) }.toBooleanArray()
         AlertDialog.Builder(this)
@@ -1326,29 +1316,49 @@ class MainActivity : ThemedActivity() {
     private fun importExtensionFolder(uri: Uri) {
         if (uri.scheme != "content") return
         runCatching {
-            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            check(androidx.documentfile.provider.DocumentFile.fromTreeUri(this, uri)?.isDirectory == true)
-            library.setRoots((library.roots() + uri.toString()).distinct())
-            scan()
-        }.onFailure {
-            toast("Подтверди папку музыки для доступа плеера")
-            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
-                .putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, uri)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION), 100)
-        }
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+                check(
+                    androidx.documentfile.provider.DocumentFile.fromTreeUri(this, uri)
+                        ?.isDirectory == true
+                )
+                library.setRoots((library.roots() + uri.toString()).distinct())
+                scan()
+            }
+            .onFailure {
+                toast("Подтверди папку музыки для доступа плеера")
+                documents.launch(
+                    Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+                        .putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, uri)
+                        .addFlags(
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                        ),
+                    DocumentRequest.MUSIC_FOLDER,
+                )
+            }
     }
 
     private fun settings() {
-        SettingsMenu.show(this) { action ->
+        SettingsMenu.show(
+            this,
+            { entry ->
+                ExternalExtensions.open(this, entry) { intent ->
+                    documents.launch(intent, DocumentRequest.EXTENSION_FOLDER)
+                }
+            },
+        ) { action ->
             when (action) {
                 SettingsMenu.Action.ADD_FOLDER ->
-                    startActivityForResult(
+                    documents.launch(
                         Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
                             .addFlags(
                                 Intent.FLAG_GRANT_READ_URI_PERMISSION or
                                     Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
                             ),
-                        100,
+                        DocumentRequest.MUSIC_FOLDER,
                     )
                 SettingsMenu.Action.FOLDERS -> folders()
                 SettingsMenu.Action.SCAN -> scan()
@@ -1426,120 +1436,119 @@ class MainActivity : ThemedActivity() {
     }
 
     private fun scan() {
+        if (scanWork.state().busy) return
         LocalArtwork.clear()
-        if (scanning) return
-        scanning = true
-        render()
-        executor.execute {
-            val result = runCatching { library.scan() }
-            handler.post {
-                if (alive) {
-                    scanning = false
-                    result
-                        .onSuccess { (items, errors, retainedRoots) ->
-                            tracks = items
-                            mediaLoadedId=null;queueTimeline=null;queueTracks=null
-                            render()
-                            reorderPlayingQueue(prefs.getString("queueSource", "").orEmpty(), true)
-                            toast(
-                                "В библиотеке ${items.size} песен" +
-                                    (if (retainedRoots > 0) ". Сохранены данные недоступных папок: $retainedRoots" else "") +
-                                    if (errors > 0) ". Не удалось прочитать файлов/папок: $errors"
-                                    else ""
-                            )
-                        }
-                        .onFailure {
-                            render()
-                            toast("Не удалось обновить библиотеку")
-                        }
-                }
-            }
-        }
+        // Capture only the application-owned library, never this Activity.
+        val source = Library(applicationContext)
+        scanWork.start("library") { _, _ -> source.scan() }
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == ExternalExtensions.REQUEST && resultCode == RESULT_OK) {
+    private fun showScan(state: RetainedOperation.Snapshot<Library.ScanResult>) {
+        scanning = state.busy
+        val result = state.value
+        if (result != null || state.failure != null) {
+            // Consume completion before rendering; rotation must not repeat notifications.
+            scanWork.cancel()
+            if (result != null) {
+                model.scanned(result.tracks)
+                tracks = result.tracks
+                mediaLoadedId = null
+                queueTimeline = null
+                queueTracks = null
+                reorderPlayingQueue(prefs.getString("queueSource", "").orEmpty(), true)
+                toast(
+                    "В библиотеке ${result.tracks.size} песен" +
+                        (if (result.retainedRoots > 0)
+                            ". Сохранены данные недоступных папок: ${result.retainedRoots}"
+                        else "") +
+                        if (result.errors > 0)
+                            ". Не удалось прочитать файлов/папок: ${result.errors}"
+                        else ""
+                )
+            } else toast("Не удалось обновить библиотеку")
+        }
+        render()
+    }
+
+    private fun onDocumentResult(
+        request: DocumentRequest,
+        activityResult: androidx.activity.result.ActivityResult,
+    ) {
+        val resultCode = activityResult.resultCode
+        val data = activityResult.data
+        if (request == DocumentRequest.EXTENSION_FOLDER && resultCode == RESULT_OK) {
             data?.data?.let { importExtensionFolder(it) }
             return
         }
-        if (requestCode == 107) {
+        if (request == DocumentRequest.DOCUMENT_TRANSLATION) {
             if (page == "translation") currentTrack()?.let { translate(it, true) }
             return
         }
-        if (requestCode == 104 && resultCode == RESULT_OK)
+        if (request == DocumentRequest.IMPORT_ENGINE && resultCode == RESULT_OK)
             data?.data?.let { extensionManager.importEngine(it) }
-        if (requestCode == 103 && resultCode == RESULT_OK)
+        if (request == DocumentRequest.IMPORT_MODEL && resultCode == RESULT_OK)
             data?.data?.let { uri ->
                 cancelTranslation()
                 val track = currentTrack()
                 screens.setTranslation(track?.uri, "", "Устанавливаем и проверяем языковой пакет…")
-                executor.execute {
-                    val result = runCatching {
-                        contentResolver.openFileDescriptor(uri, "r")?.use {
-                            translationClient.install(it)
-                        } ?: error("Не удалось открыть пакет")
-                    }
-                    handler.post {
-                        if (alive) {
-                            result
-                                .onSuccess {
-                                    extensionManager.enable()
-                                    toast("Офлайн-перевод готов")
-                                    currentTrack()?.let { translate(it, true) }
-                                }
-                                .onFailure {
-                                    screens.setTranslation(
-                                        currentTrack()?.uri,
-                                        "",
-                                        it.message ?: "Не удалось установить пакет",
-                                        1,
-                                    )
-                                }
-                        }
+                background.submit({ ctx ->
+                    ctx.contentResolver.openFileDescriptor(uri, "r")?.use {
+                        TranslationClient(ctx).install(it)
+                    } ?: error("Не удалось открыть пакет")
+                }) { result ->
+                    if (alive) {
+                        result
+                            .onSuccess {
+                                extensionManager.enable()
+                                toast("Офлайн-перевод готов")
+                                currentTrack()?.let { translate(it, true) }
+                            }
+                            .onFailure {
+                                screens.setTranslation(
+                                    currentTrack()?.uri,
+                                    "",
+                                    it.message ?: "Не удалось установить пакет",
+                                    1,
+                                )
+                            }
                     }
                 }
             }
-        if (requestCode == 101 && resultCode == RESULT_OK)
+        if (request == DocumentRequest.IMPORT_LYRICS && resultCode == RESULT_OK)
             data?.data?.let { uri ->
                 val target = lyricTarget ?: return@let
-                executor.execute {
-                    val result = runCatching {
-                        lyricStore.importText(uri).also {
-                            lyricStore.save(target, it)
-                            prefs.edit().remove("lyricsSource:$target").apply()
-                        }
+                background.submit({ ctx ->
+                    LyricsStore(ctx).importText(uri).also {
+                        LyricsStore(ctx).save(target, it)
+                        ctx.getSharedPreferences("playback", 0)
+                            .edit()
+                            .remove("lyricsSource:$target")
+                            .apply()
                     }
-                    handler.post {
-                        if (alive)
-                            result
-                                .onSuccess {
-                                    tracks.find { it.uri == target }?.let { localMedia(it) }
-                                }
-                                .onFailure { toast(it.message ?: "Не удалось импортировать текст") }
-                    }
+                }) { result ->
+                    if (alive)
+                        result
+                            .onSuccess { tracks.find { it.uri == target }?.let { localMedia(it) } }
+                            .onFailure { toast(it.message ?: "Не удалось импортировать текст") }
                 }
             }
-        if (requestCode == 102 && resultCode == RESULT_OK)
+        if (request == DocumentRequest.EXPORT_LYRICS && resultCode == RESULT_OK)
             data?.data?.let { uri ->
                 val target = lyricTarget ?: return@let
-                executor.execute {
-                    val result = runCatching {
-                        val text = lyricStore.read(target) ?: error("Нет сохранённого текста")
-                        contentResolver.openOutputStream(uri, "wt")?.use {
-                            it.write(text.toByteArray(Charsets.UTF_8))
-                        } ?: error("Не удалось открыть файл")
-                    }
-                    handler.post {
-                        if (alive)
-                            toast(
-                                if (result.isSuccess) "Текст экспортирован"
-                                else "Не удалось экспортировать текст"
-                            )
-                    }
+                background.submit({ ctx ->
+                    val text = LyricsStore(ctx).read(target) ?: error("Нет сохранённого текста")
+                    ctx.contentResolver.openOutputStream(uri, "wt")?.use {
+                        it.write(text.toByteArray(Charsets.UTF_8))
+                    } ?: error("Не удалось открыть файл")
+                }) { result ->
+                    if (alive)
+                        toast(
+                            if (result.isSuccess) "Текст экспортирован"
+                            else "Не удалось экспортировать текст"
+                        )
                 }
             }
-        if (requestCode == 100 && resultCode == RESULT_OK)
+        if (request == DocumentRequest.MUSIC_FOLDER && resultCode == RESULT_OK)
             data?.data?.let { uri ->
                 runCatching {
                         contentResolver.takePersistableUriPermission(
@@ -1553,15 +1562,11 @@ class MainActivity : ThemedActivity() {
             }
     }
 
-    private class MainOperations(
-        val translation: RetainedOperation<SongTranslationResult>,
-        val lyrics: RetainedOperation<List<LyricsSearch.Result>>,
-    )
-
-    override fun onRetainNonConfigurationInstance(): Any =
-        MainOperations(translationWork, lyricsWork)
-
     override fun onSaveInstanceState(out: Bundle) {
+        model.online = onlineSection.snapshot()
+        out.putBundle("onlineBrowser", onlineSection.saveNavigation())
+        out.putInt("libraryPage", libraryPage)
+        out.putInt("libraryScroll", (list.parent as? ScrollView)?.scrollY ?: 0)
         out.putString("soundReturn", soundReturn)
         out.putString("uiPage", page)
         out.putString("lyricTarget", lyricTarget)
@@ -1576,19 +1581,32 @@ class MainActivity : ThemedActivity() {
         stopDirectLyrics()
         SongMenu.show(this, track.title, track.uri.startsWith("afp-yandex://")) { action ->
             when (action) {
-                SongMenu.Action.SAVE_MP3 -> YandexSaveActivity.open(this,track.uri,track.title,track.artist,controller?.currentMediaItem?.takeIf { it.mediaId==track.uri }?.mediaMetadata?.artworkUri?.toString().orEmpty())
-                SongMenu.Action.SHARE -> YandexTrackShare.show(this,track.uri,track.title)
+                SongMenu.Action.SAVE_MP3 ->
+                    YandexSaveActivity.open(
+                        this,
+                        track.uri,
+                        track.title,
+                        track.artist,
+                        controller
+                            ?.currentMediaItem
+                            ?.takeIf { it.mediaId == track.uri }
+                            ?.mediaMetadata
+                            ?.artworkUri
+                            ?.toString()
+                            .orEmpty(),
+                    )
+                SongMenu.Action.SHARE -> YandexTrackShare.show(this, track.uri, track.title)
                 SongMenu.Action.SEARCH -> {
                     showPage("lyrics")
                     directLyrics(track)
                 }
                 SongMenu.Action.IMPORT -> {
                     lyricTarget = track.uri
-                    startActivityForResult(
+                    documents.launch(
                         Intent(Intent.ACTION_OPEN_DOCUMENT)
                             .setType("*/*")
                             .addCategory(Intent.CATEGORY_OPENABLE),
-                        101,
+                        DocumentRequest.IMPORT_LYRICS,
                     )
                 }
                 SongMenu.Action.PLAYLIST -> addToPlaylists(track)
@@ -1601,50 +1619,58 @@ class MainActivity : ThemedActivity() {
                     renewTranslation(track)
                 }
                 else ->
-                    executor.execute {
-                        val raw = runCatching { loadLyrics(track) }.getOrNull().orEmpty()
-                        handler.post {
-                            if (alive)
-                                when (action) {
-                                    SongMenu.Action.EDIT -> editLyrics(track, raw)
-                                    SongMenu.Action.TIMING -> markLyrics(track, raw)
-                                    SongMenu.Action.EXPORT ->
-                                        if (raw.isBlank()) toast("Сначала добавь текст")
-                                        else {
-                                            lyricTarget = track.uri
-                                            val timed = LyricsDocument(raw).cues.isNotEmpty()
-                                            startActivityForResult(
-                                                Intent(Intent.ACTION_CREATE_DOCUMENT)
-                                                    .setType("text/plain")
-                                                    .addCategory(Intent.CATEGORY_OPENABLE)
-                                                    .putExtra(
-                                                        Intent.EXTRA_TITLE,
-                                                        track.title.replace(
-                                                            Regex("[\\/:*?\"<>|]"),
-                                                            "_",
-                                                        ) + if (timed) ".lrc" else ".txt",
-                                                    ),
-                                                102,
-                                            )
-                                        }
-                                    else -> Unit
-                                }
-                        }
+                    background.submit({ ctx -> SongContent(ctx).load(track).orEmpty() }) { result ->
+                        val raw = result.getOrDefault("")
+
+                        if (alive)
+                            when (action) {
+                                SongMenu.Action.EDIT -> editLyrics(track, raw)
+                                SongMenu.Action.TIMING -> markLyrics(track, raw)
+                                SongMenu.Action.EXPORT ->
+                                    if (raw.isBlank()) toast("Сначала добавь текст")
+                                    else {
+                                        lyricTarget = track.uri
+                                        val timed = LyricsDocument(raw).cues.isNotEmpty()
+                                        documents.launch(
+                                            Intent(Intent.ACTION_CREATE_DOCUMENT)
+                                                .setType("text/plain")
+                                                .addCategory(Intent.CATEGORY_OPENABLE)
+                                                .putExtra(
+                                                    Intent.EXTRA_TITLE,
+                                                    track.title.replace(
+                                                        Regex("[\\/:*?\"<>|]"),
+                                                        "_",
+                                                    ) + if (timed) ".lrc" else ".txt",
+                                                ),
+                                            DocumentRequest.EXPORT_LYRICS,
+                                        )
+                                    }
+                                else -> Unit
+                            }
                     }
             }
         }
     }
 
-    private val thumbnails by lazy { LibraryThumbnails(applicationContext,artworkWorker,handler) }
-    private val artworkWorker=java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val thumbnails by lazy { LibraryThumbnails(applicationContext, artworkWorker, handler) }
+    private val artworkWorker = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     private fun currentTrack(): Track? {
-        val item=controller?.currentMediaItem ?: return null
-        tracks.find { it.uri==item.mediaId }?.let { return it }
-        if(OnlinePlayback.trackId(Uri.parse(item.mediaId))==null)return null
-        val meta=item.mediaMetadata
-        return Track(item.mediaId,meta.title?.toString().orEmpty(),meta.artist?.toString().orEmpty(),
-            meta.extras?.getLong("onlineDuration") ?: 0L,"Яндекс Музыка")
+        val item = controller?.currentMediaItem ?: return null
+        tracks
+            .find { it.uri == item.mediaId }
+            ?.let {
+                return it
+            }
+        if (OnlinePlayback.trackId(Uri.parse(item.mediaId)) == null) return null
+        val meta = item.mediaMetadata
+        return Track(
+            item.mediaId,
+            meta.title?.toString().orEmpty(),
+            meta.artist?.toString().orEmpty(),
+            meta.extras?.getLong("onlineDuration") ?: 0L,
+            "Яндекс Музыка",
+        )
     }
 
     private fun backPage() {
@@ -1657,9 +1683,8 @@ class MainActivity : ThemedActivity() {
             }
         if (page == "player") {
             showPage(target)
-            if(prefs.getBoolean("onlinePlayerOrigin",false))onlineSection.show()
-        }
-        else pageMotion.leavePage { if (alive) showPage(target) }
+            if (prefs.getBoolean("onlinePlayerOrigin", false)) onlineSection.show()
+        } else pageMotion.leavePage { if (alive) showPage(target) }
     }
 
     private fun previewPlayer(travel: Float) {
@@ -1726,33 +1751,41 @@ class MainActivity : ThemedActivity() {
         screens.setArtwork(track.uri, null)
         screens.lyricsSearching(track.uri, false, "Читаем локальный текст…")
         // Capture artwork from this queue item, never the aggregated (possibly previous) metadata.
-        val cover=controller?.currentMediaItem?.mediaMetadata?.artworkUri?.toString().orEmpty()
-        executor.execute {
-            val bitmap = runCatching {
-                if(track.uri.startsWith("afp-yandex://")) OnlineArtwork(applicationContext).load(cover)
-                else LocalArtwork.read(this, track.sourceUri, track.artworkUri)
-            }.getOrNull()
-            val lyrics = runCatching { loadLyrics(track)?.let { LyricsDocument(it) } }
-            handler.post {
-                if (
-                    alive &&
-                        generation == mediaGeneration &&
-                        controller?.currentMediaItem?.mediaId == track.uri
-                ) {
-                    screens.setArtwork(track.uri, bitmap)
-                    screens.setLyrics(
-                        track.uri,
-                        lyrics.getOrNull(),
-                        if (lyrics.isFailure)
-                            "Не удалось прочитать локальный текст. Можно найти слова или добавить свой через ⋮."
-                        else null,
-                    )
-                    if (page == "lyrics" && lyricsWork.state().key == track.uri)
-                        lyricsWork.attach { showLyricsSearch(it) }
-                    if (page == "lyrics" && lyricsRequestedId == track.uri) {
-                        lyricsRequestedId = null
-                        if (lyrics.getOrNull() == null) directLyrics(track, false)
+        val cover = controller?.currentMediaItem?.mediaMetadata?.artworkUri?.toString().orEmpty()
+        background.submit({ ctx ->
+            val bitmap =
+                runCatching {
+                        if (track.uri.startsWith("afp-yandex://")) OnlineArtwork(ctx).load(cover)
+                        else LocalArtwork.read(ctx, track.sourceUri, track.artworkUri)
                     }
+                    .getOrNull()
+            val lyrics = runCatching { SongContent(ctx).load(track)?.let { LyricsDocument(it) } }
+
+            bitmap to lyrics
+        }) { result ->
+            val (bitmap, lyrics) =
+                result.getOrElse {
+                    return@submit
+                }
+
+            if (
+                alive &&
+                    generation == mediaGeneration &&
+                    controller?.currentMediaItem?.mediaId == track.uri
+            ) {
+                screens.setArtwork(track.uri, bitmap)
+                screens.setLyrics(
+                    track.uri,
+                    lyrics.getOrNull(),
+                    if (lyrics.isFailure)
+                        "Не удалось прочитать локальный текст. Можно найти слова или добавить свой через ⋮."
+                    else null,
+                )
+                if (page == "lyrics" && lyricsWork.state().key == track.uri)
+                    lyricsWork.attach { showLyricsSearch(it) }
+                if (page == "lyrics" && lyricsRequestedId == track.uri) {
+                    lyricsRequestedId = null
+                    if (lyrics.getOrNull() == null) directLyrics(track, false)
                 }
             }
         }
@@ -1862,24 +1895,21 @@ class MainActivity : ThemedActivity() {
     }
 
     private fun editSongLanguage(track: Track) {
-        executor.execute {
-            val result = runCatching {
-                val source =
-                    loadLyrics(track)?.let { LyricsDocument(it).plain }
-                        ?: error("Сначала добавь текст")
-                source to translationClient.availableModels().toList()
-            }
-            handler.post {
-                if (alive && currentTrack()?.uri == track.uri)
-                    result
-                        .onSuccess { (source, models) ->
-                            showPage("translation")
-                            cancelTranslation()
-                            translationId = track.uri
-                            chooseSongLanguage(track, source, models)
-                        }
-                        .onFailure { toast(it.message ?: "Не удалось проверить языки") }
-            }
+        background.submit({ ctx ->
+            val source =
+                SongContent(ctx).load(track)?.let { LyricsDocument(it).plain }
+                    ?: error("Сначала добавь текст")
+            source to TranslationClient(ctx).availableModels().toList()
+        }) { result ->
+            if (alive && currentTrack()?.uri == track.uri)
+                result
+                    .onSuccess { (source, models) ->
+                        showPage("translation")
+                        cancelTranslation()
+                        translationId = track.uri
+                        chooseSongLanguage(track, source, models)
+                    }
+                    .onFailure { toast(it.message ?: "Не удалось проверить языки") }
         }
     }
 
@@ -2046,577 +2076,87 @@ class MainActivity : ThemedActivity() {
 
     private fun saveDirectLyrics(track: Track, item: LyricsSearch.Result) {
         screens.lyricsSearching(track.uri, true, "Сохраняем текст…")
-        executor.execute {
-            val result = runCatching {
-                val document = LyricsDocument(item.text)
-                lyricStore.save(track.uri, item.text)
-                SearchIdentity(this).save(track.uri, SongQuery(item.title, item.artist))
-                prefs
-                    .edit()
-                    .putString(
-                        "lyricsSource:${track.uri}",
-                        "Источник: LRCLIB · ${item.title} — ${item.artist}",
-                    )
-                    .apply()
-                document
-            }
-            handler.post {
-                if (alive && page == "lyrics" && currentTrack()?.uri == track.uri) {
-                    result
-                        .onSuccess {
-                            screens.lyricsSearching(track.uri, false, "")
-                            screens.setLyrics(track.uri, it, null)
-                            mediaLoadedId = track.uri
-                        }
-                        .onFailure {
-                            screens.lyricsSearching(
-                                track.uri,
-                                false,
-                                "Не удалось сохранить текст. Повтори попытку.",
-                            )
-                        }
-                }
-            }
-        }
-    }
-
-    private fun loadLyrics(track: Track): String? = SongContent(this).load(track)
-
-    private fun localMedia(track: Track) {
-        if (page != "library" && track.uri == controller?.currentMediaItem?.mediaId) {
-            mediaLoadedId = null
-            showPage("lyrics")
-            return
-        }
-        manageMedia(track)
-    }
-
-    private fun manageMedia(track: Track) {
-        val panel =
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(16, 8, 16, 8)
-            }
-        val actions = row()
-        panel.addView(actions)
-        val edit = button("Свой текст") {}
-        val mark = button("Разметить") {}
-        val export = button("Экспорт") {}
-        actions.addView(edit, weight())
-        actions.addView(mark, weight())
-        actions.addView(export, weight())
-        mark.isEnabled = false
-        export.isEnabled = false
-        val online = button("Найти текст в интернете") {}
-        panel.addView(online)
-        val status = label("Читаем локальные данные…", 14f)
-        panel.addView(status)
-        val text = label("", 18f)
-        text.setTextIsSelectable(true)
-        panel.addView(text)
-        val scroll = ScrollView(this).apply { addView(panel) }
-        var raw = ""
-        val dialog =
-            AlertDialog.Builder(this)
-                .setTitle(track.title)
-                .setView(scroll)
-                .setNeutralButton("Импорт TXT / LRC") { _, _ ->
-                    lyricTarget = track.uri
-                    startActivityForResult(
-                        Intent(Intent.ACTION_OPEN_DOCUMENT)
-                            .setType("*/*")
-                            .addCategory(Intent.CATEGORY_OPENABLE),
-                        101,
-                    )
-                }
-                .setPositiveButton("Закрыть", null)
-                .create()
-        online.setOnClickListener {
-            dialog.dismiss()
-            dialogSearch(track)
-        }
-        edit.setOnClickListener {
-            dialog.dismiss()
-            editLyrics(track, raw)
-        }
-        mark.setOnClickListener {
-            dialog.dismiss()
-            markLyrics(track, raw)
-        }
-        export.setOnClickListener {
-            lyricTarget = track.uri
-            val timed = LyricsDocument(raw).cues.isNotEmpty()
-            startActivityForResult(
-                Intent(Intent.ACTION_CREATE_DOCUMENT)
-                    .setType("text/plain")
-                    .addCategory(Intent.CATEGORY_OPENABLE)
-                    .putExtra(
-                        Intent.EXTRA_TITLE,
-                        track.title.replace(Regex("[\\/:*?\"<>|]"), "_") +
-                            if (timed) ".lrc" else ".txt",
-                    ),
-                102,
-            )
-        }
-        dialog.setOnDismissListener { lyricUpdate = null }
-        dialog.show()
-        executor.execute {
-            var picture: android.graphics.Bitmap? = null
-            runCatching {
-                val retriever = android.media.MediaMetadataRetriever()
-                try {
-                    retriever.setDataSource(this, Uri.parse(track.sourceUri))
-                    retriever.embeddedPicture?.let { bytes ->
-                        val bounds =
-                            android.graphics.BitmapFactory.Options().apply {
-                                inJustDecodeBounds = true
-                            }
-                        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-                        val opts =
-                            android.graphics.BitmapFactory.Options().apply {
-                                inSampleSize = 1
-                                while (
-                                    bounds.outWidth / inSampleSize > 1024 ||
-                                        bounds.outHeight / inSampleSize > 1024
-                                ) inSampleSize *= 2
-                            }
-                        picture =
-                            android.graphics.BitmapFactory.decodeByteArray(
-                                bytes,
-                                0,
-                                bytes.size,
-                                opts,
-                            )
+        background.submit({ ctx ->
+            val document = LyricsDocument(item.text)
+            LyricsStore(ctx).save(track.uri, item.text)
+            SearchIdentity(ctx).save(track.uri, SongQuery(item.title, item.artist))
+            ctx.getSharedPreferences("playback", 0)
+                .edit()
+                .putString(
+                    "lyricsSource:${track.uri}",
+                    "Источник: LRCLIB · ${item.title} — ${item.artist}",
+                )
+                .apply()
+            document
+        }) { result ->
+            if (alive && page == "lyrics" && currentTrack()?.uri == track.uri) {
+                result
+                    .onSuccess {
+                        screens.lyricsSearching(track.uri, false, "")
+                        screens.setLyrics(track.uri, it, null)
+                        mediaLoadedId = track.uri
                     }
-                } finally {
-                    retriever.release()
-                }
-            }
-            val result = runCatching { loadLyrics(track) }
-            handler.post {
-                if (alive && dialog.isShowing) {
-                    picture?.let { bitmap ->
-                        panel.addView(
-                            ImageView(this).apply {
-                                setImageBitmap(bitmap)
-                                adjustViewBounds = true
-                                maxHeight = 600
-                                contentDescription = "Обложка"
-                            },
-                            1,
+                    .onFailure {
+                        screens.lyricsSearching(
+                            track.uri,
+                            false,
+                            "Не удалось сохранить текст. Повтори попытку.",
                         )
                     }
-                    prefs.getString("lyricsSource:${track.uri}", null)?.let {
-                        panel.addView(label(it, 12f), 2)
-                    }
-                    raw = result.getOrNull().orEmpty()
-                    val document = LyricsDocument(raw)
-                    mark.isEnabled = raw.isNotBlank()
-                    export.isEnabled = raw.isNotBlank()
-                    if (raw.isBlank()) {
-                        status.text =
-                            if (result.isFailure)
-                                "Не удалось прочитать локальный текст. Можно вставить свой."
-                            else "Текста пока нет. Вставь слова или импортируй TXT / LRC."
-                    } else if (document.cues.isEmpty()) {
-                        status.text = "Сохранённый текст · без разметки времени"
-                        text.text = raw
-                    } else {
-                        val offsets = mutableListOf<Int>()
-                        var count = 0
-                        document.cues.forEach {
-                            offsets.add(count)
-                            count += it.text.length + 1
-                        }
-                        val display = document.plain + "\n"
-                        text.text = display
-                        var active = Int.MIN_VALUE
-                        lyricUpdate = {
-                            val matching = controller?.currentMediaItem?.mediaId == track.uri
-                            val index =
-                                if (matching) document.activeIndex(controller?.currentPosition ?: 0)
-                                else -1
-                            status.text =
-                                if (matching) "LRC · строка выделяется по времени песни"
-                                else "Для синхронизации включи эту песню"
-                            if (index != active) {
-                                active = index
-                                val spans = android.text.SpannableString(display)
-                                if (index >= 0) {
-                                    val start = document.groupStart(index)
-                                    for (i in start..index) {
-                                        if (document.cues[i].text.isNotEmpty()) {
-                                            spans.setSpan(
-                                                android.text.style.ForegroundColorSpan(
-                                                    PlayerScreens.accent
-                                                ),
-                                                offsets[i],
-                                                offsets[i] + document.cues[i].text.length,
-                                                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                                            )
-                                            spans.setSpan(
-                                                android.text.style.StyleSpan(Typeface.BOLD),
-                                                offsets[i],
-                                                offsets[i] + document.cues[i].text.length,
-                                                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                                            )
-                                        }
-                                    }
-                                    text.text = spans
-                                    text.post {
-                                        if (dialog.isShowing)
-                                            text.layout?.let { l ->
-                                                scroll.smoothScrollTo(
-                                                    0,
-                                                    text.top +
-                                                        l.getLineTop(
-                                                            l.getLineForOffset(offsets[start])
-                                                        ) - scroll.height / 3,
-                                                )
-                                            }
-                                    }
-                                } else text.text = spans
-                            }
-                        }
-                        lyricUpdate?.invoke()
-                    }
-                }
             }
         }
     }
 
-    private fun editLyrics(track: Track, initial: String) {
-        val input =
-            EditText(this).apply {
-                setText(initial)
-                gravity = Gravity.TOP
-                minLines = 8
-                maxLines = 16
-                hint = "Вставь слова песни или LRC с метками [00:12.340]"
-                filters = arrayOf(android.text.InputFilter.LengthFilter(512 * 1024))
-            }
-        val dialog =
-            AlertDialog.Builder(this)
-                .setTitle("Текст: ${track.title}")
-                .setView(input)
-                .setPositiveButton("Сохранить", null)
-                .setNegativeButton("Отмена", null)
-                .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val value = input.text.toString()
-                if (value.isBlank()) {
-                    input.error = "Вставь текст песни"
-                    return@setOnClickListener
-                }
-                runCatching { LyricsDocument(value) }
-                    .onFailure { input.error = it.message }
-                    .onSuccess {
-                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
-                        executor.execute {
-                            val result = runCatching {
-                                lyricStore.save(track.uri, value)
-                                prefs.edit().remove("lyricsSource:${track.uri}").apply()
-                            }
-                            handler.post {
-                                if (alive) {
-                                    if (result.isSuccess) {
-                                        dialog.dismiss()
-                                        localMedia(track)
-                                    } else {
-                                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled =
-                                            true
-                                        input.error = "Не удалось сохранить текст"
-                                    }
-                                }
-                            }
-                        }
-                    }
-            }
-        }
-        dialog.show()
-    }
-
-    private fun markLyrics(track: Track, raw: String) {
-        val lines = LyricsDocument(raw).plain.lines().filter { it.isNotBlank() }
-        if (lines.isEmpty()) return toast("Сначала добавь слова песни")
-        val times = mutableListOf<Long>()
-        val panel =
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(16, 8, 16, 8)
-            }
-        panel.addView(
-            label(
-                "Включи песню с начала. На начале каждой строки нажимай «Отметить». Для пауз добавь пустую строку с меткой в редакторе LRC.",
-                14f,
-            )
-        )
-        val caption = label("", 18f)
-        panel.addView(caption)
-        val controls = row()
-        panel.addView(controls)
-        controls.addView(
-            button("С начала") {
-                if (track.uri in library.hiddenTracks()) {
-                    toast("Трек скрыт от воспроизведения. Сначала верни его кнопкой глаза")
-                    return@button
-                }
-                controller?.let { c ->
-                    if (c.currentMediaItem?.mediaId != track.uri) {
-                        var index =
-                            (0 until c.mediaItemCount).firstOrNull {
-                                c.getMediaItemAt(it).mediaId == track.uri
-                            }
-                        if (index == null) {
-                            c.addMediaItem(track.item())
-                            index = c.mediaItemCount - 1
-                        }
-                        c.seekTo(index, 0)
-                    } else c.seekTo(0)
-                    c.prepare()
-                    c.play()
-                    times.clear()
-                    caption.text = "1 / ${lines.size}\n${lines[0]}"
-                }
+    private val lyricsEditorDelegate = lazy {
+        LyricsEditor(
+            this,
+            { controller },
+            { library.hiddenTracks() },
+            { track ->
+                if (page != "library" && track.uri == controller?.currentMediaItem?.mediaId) {
+                    mediaLoadedId = null
+                    showPage("lyrics")
+                    true
+                } else false
             },
-            weight(),
+            { track ->
+                lyricTarget = track.uri
+                documents.launch(
+                    Intent(Intent.ACTION_OPEN_DOCUMENT)
+                        .setType("*/*")
+                        .addCategory(Intent.CATEGORY_OPENABLE),
+                    DocumentRequest.IMPORT_LYRICS,
+                )
+            },
+            { track, timed ->
+                lyricTarget = track.uri
+                documents.launch(
+                    Intent(Intent.ACTION_CREATE_DOCUMENT)
+                        .setType("text/plain")
+                        .addCategory(Intent.CATEGORY_OPENABLE)
+                        .putExtra(
+                            Intent.EXTRA_TITLE,
+                            track.title.replace(Regex("[\\\\/:*?\"<>|]"), "_") +
+                                (if (timed) ".lrc" else ".txt"),
+                        ),
+                    DocumentRequest.EXPORT_LYRICS,
+                )
+            },
+            lyricsSearch,
+            background,
+            networkWork,
         )
-        controls.addView(
-            button("Пауза / ▶") { controller?.let { if (it.isPlaying) it.pause() else { if(it.playbackState==Player.STATE_IDLE)it.prepare();it.play() } } },
-            weight(),
-        )
-        val next = button("Отметить строку") {}
-        panel.addView(next)
-        panel.addView(
-            button("Отменить последнюю метку") {
-                if (times.isNotEmpty()) times.removeAt(times.lastIndex)
-                caption.text = "${times.size+1} / ${lines.size}\n${lines[times.size]}"
-                next.isEnabled = true
-            }
-        )
-        val dialog =
-            AlertDialog.Builder(this)
-                .setTitle("Разметка: ${track.title}")
-                .setView(panel)
-                .setPositiveButton("Сохранить LRC", null)
-                .setNegativeButton("Отмена", null)
-                .create()
-        caption.text = "1 / ${lines.size}\n${lines[0]}"
-        next.setOnClickListener {
-            val c = controller
-            if (c == null || c.currentMediaItem?.mediaId != track.uri || !c.isPlaying)
-                toast("Сначала включи эту песню")
-            else if (times.isNotEmpty() && c.currentPosition < times.last())
-                toast("После перемотки назад отмени предыдущие метки")
-            else {
-                times.add(c.currentPosition)
-                next.isEnabled = times.size < lines.size
-                caption.text =
-                    if (times.size == lines.size) "Все строки отмечены. Сохрани LRC."
-                    else "${times.size+1} / ${lines.size}\n${lines[times.size]}"
-            }
-        }
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                if (times.size != lines.size) toast("Отметь все строки перед сохранением")
-                else {
-                    val value =
-                        lines.indices.joinToString("\n") {
-                            LyricsDocument.timestamp(times[it]) + lines[it]
-                        }
-                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
-                    executor.execute {
-                        val result = runCatching {
-                            lyricStore.save(track.uri, value)
-                            prefs.edit().remove("lyricsSource:${track.uri}").apply()
-                        }
-                        handler.post {
-                            if (alive) {
-                                if (result.isSuccess) {
-                                    dialog.dismiss()
-                                    localMedia(track)
-                                } else {
-                                    toast("Не удалось сохранить LRC")
-                                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        dialog.show()
     }
+    private val lyricsEditor
+        get() = lyricsEditorDelegate.value
 
-    private fun dialogSearch(track: Track) {
-        val panel =
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(16, 8, 16, 8)
-            }
-        val title =
-            EditText(this).apply {
-                hint = "Название песни"
-                setText(track.title)
-                isSingleLine = true
-                filters = arrayOf(android.text.InputFilter.LengthFilter(200))
-            }
-        panel.addView(title)
-        val artist =
-            EditText(this).apply {
-                hint = "Исполнитель (можно оставить пустым)"
-                setText(track.artist)
-                isSingleLine = true
-                filters = arrayOf(android.text.InputFilter.LengthFilter(200))
-            }
-        panel.addView(artist)
-        panel.addView(
-            label(
-                "Поиск по названию и исполнителю. Перед сохранением проверь выбранный текст.",
-                14f,
-            )
-        )
-        val status = label("", 14f)
-        panel.addView(status)
-        var busy = false
-        val dialog =
-            AlertDialog.Builder(this)
-                .setTitle("Поиск текста")
-                .setView(ScrollView(this).apply { addView(panel) })
-                .setPositiveButton("Поиск", null)
-                .setNegativeButton("Закрыть", null)
-                .setNeutralButton("В интернете", null)
-                .create()
-        dialog.setOnDismissListener {
-            networkCancel?.cancel()
-            networkTask?.cancel(true)
-            networkCancel = null
-            networkTask = null
-        }
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
-                LyricsWeb.open(this, title.text.toString(), artist.text.toString())
-            }
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                if (busy) return@setOnClickListener
-                val name = title.text.toString().trim()
-                val performer = artist.text.toString().trim()
-                if (name.isBlank()) {
-                    title.error = "Введи название песни"
-                    return@setOnClickListener
-                }
-                busy = true
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
-                status.text = "Ищем текст…"
-                val cancel = LyricsSearch.Cancel()
-                networkCancel = cancel
-                networkTask =
-                    networkExecutor.submit {
-                        val result = runCatching {
-                            lyricsSearch.searchExpanded(name, performer, track.duration, cancel)
-                        }
-                        prefs.edit().putLong("lyricsRetryUntil", lyricsSearch.cooldown()).apply()
-                        handler.post {
-                            if (alive && dialog.isShowing) {
-                                busy = false
-                                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
-                                result
-                                    .onFailure { status.text = SearchSupport.message(it, "LRCLIB") }
-                                    .onSuccess { found ->
-                                        if (found.isEmpty())
-                                            status.text =
-                                                "Текст не найден. Попробуй убрать исполнителя или поправить название. Для своей песни можно вставить исходные слова."
-                                        else {
-                                            dialog.dismiss()
-                                            lyricsResults(track, found)
-                                        }
-                                    }
-                            }
-                        }
-                    }
-            }
-        }
-        dialog.show()
-    }
+    private fun localMedia(track: Track) = lyricsEditor.localMedia(track)
 
-    private fun lyricsResults(track: Track, found: List<LyricsSearch.Result>) {
-        val labels =
-            found.map { item ->
-                val duration =
-                    if (item.duration.isFinite() && item.duration > 0)
-                        clock((item.duration * 1000).toLong())
-                    else "длительность неизвестна"
-                "${item.title} — ${item.artist}\n${item.album} · $duration · " +
-                    if (item.instrumental && item.text.isBlank()) "без вокала"
-                    else if (item.timed) "LRC" else "текст"
-            }
-        AlertDialog.Builder(this)
-            .setTitle("Выбери запись · ${clock(track.duration)} на телефоне")
-            .setItems(labels.toTypedArray()) { _, i -> previewLyrics(track, found[i]) }
-            .setNeutralButton("Другой запрос") { _, _ -> dialogSearch(track) }
-            .setNegativeButton("Закрыть", null)
-            .show()
-    }
+    private fun manageMedia(track: Track) = lyricsEditor.manageMedia(track)
 
-    private fun previewLyrics(track: Track, item: LyricsSearch.Result) {
-        val panel =
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(16, 8, 16, 8)
-            }
-        panel.addView(
-            label(
-                "${item.title} — ${item.artist}\n${item.album}\nТекст сохранится для «${track.title}» и заменит прежний сохранённый текст.",
-                14f,
-            )
-        )
-        val preview =
-            label(
-                if (item.text.isBlank()) "Запись помечена как инструментальная: текста нет."
-                else LyricsDocument(item.text).plain,
-                16f,
-            )
-        preview.setTextIsSelectable(true)
-        panel.addView(preview)
-        val dialog =
-            AlertDialog.Builder(this)
-                .setTitle("Проверить текст")
-                .setView(ScrollView(this).apply { addView(panel) })
-                .setPositiveButton("Сохранить", null)
-                .setNegativeButton("Отмена", null)
-                .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = item.text.isNotBlank()
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
-                executor.execute {
-                    val result = runCatching {
-                        lyricStore.save(track.uri, item.text)
-                        prefs
-                            .edit()
-                            .putString(
-                                "lyricsSource:${track.uri}",
-                                "Источник: LRCLIB · ${item.title} — ${item.artist}",
-                            )
-                            .apply()
-                    }
-                    handler.post {
-                        if (alive) {
-                            if (result.isSuccess) {
-                                dialog.dismiss()
-                                localMedia(track)
-                            } else {
-                                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
-                                toast("Не удалось сохранить текст")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        dialog.show()
-    }
+    private fun editLyrics(track: Track, initial: String) = lyricsEditor.editLyrics(track, initial)
+
+    private fun markLyrics(track: Track, raw: String) = lyricsEditor.markLyrics(track, raw)
 
     private fun equalizer() {
         if (page != "sound") soundReturn = page
@@ -2655,12 +2195,16 @@ class MainActivity : ThemedActivity() {
         super.onResume()
         if (intent?.action == "dev.alex.folderplayer.action.IMPORT_FOLDER") {
             intent.action = null
-            intent.data?.takeIf { it.scheme == "content" }?.let { uri ->
-                AlertDialog.Builder(this).setTitle("Добавить папку музыки?")
-                    .setMessage("Плеер прочитает аудиофайлы в выбранной папке и её подпапках.")
-                    .setPositiveButton("Добавить") { _, _ -> importExtensionFolder(uri) }
-                    .setNegativeButton("Отмена", null).show()
-            }
+            intent.data
+                ?.takeIf { it.scheme == "content" }
+                ?.let { uri ->
+                    AlertDialog.Builder(this)
+                        .setTitle("Добавить папку музыки?")
+                        .setMessage("Плеер прочитает аудиофайлы в выбранной папке и её подпапках.")
+                        .setPositiveButton("Добавить") { _, _ -> importExtensionFolder(uri) }
+                        .setNegativeButton("Отмена", null)
+                        .show()
+                }
         }
         translationForeground = true
         extensionManager.resume()
@@ -2674,16 +2218,24 @@ class MainActivity : ThemedActivity() {
             translationClient,
             { if (alive) toast(it) },
             {
-                startActivityForResult(
+                documents.launch(
                     Intent(Intent.ACTION_OPEN_DOCUMENT)
                         .setType("*/*")
                         .addCategory(Intent.CATEGORY_OPENABLE),
-                    103,
+                    DocumentRequest.IMPORT_MODEL,
                 )
             },
             { if (alive && page == "translation") currentTrack()?.let { translate(it, true) } },
             online = { onlineSection.show() },
             updates = { appUpdates.check() },
+            importApk = {
+                documents.launch(
+                    Intent(Intent.ACTION_OPEN_DOCUMENT)
+                        .setType("application/vnd.android.package-archive")
+                        .addCategory(Intent.CATEGORY_OPENABLE),
+                    DocumentRequest.IMPORT_ENGINE,
+                )
+            },
         )
     }
 
@@ -2691,28 +2243,55 @@ class MainActivity : ThemedActivity() {
         extensionManager.show()
     }
 
-    private val onlineSection: OnlineSection by lazy { OnlineSection(this, { raw,index,mode,done ->
-        val c=controller
-        if(c==null)done(if(mode=="remove")null else "Плеер ещё подключается. Повтори запуск")
-        else {
-            val request=c.sendCustomCommand(SessionCommand(PlaybackCommands.START_ONLINE_QUEUE,Bundle.EMPTY),Bundle().apply {
-                putString("queueId",raw);putInt("index",index);putString("mode",mode)
-            })
-            request.addListener({
-                if(alive) {
-                    val error=runCatching { request.get().resultCode }.fold(
-                        { if(it==SessionResult.RESULT_SUCCESS)null else "Плеер отклонил очередь. Повтори действие" },
-                        { "Не удалось передать очередь плееру. Повтори действие" })
-                    done(error)
-                    if(error==null && mode=="play") {
-                        prefs.edit().putBoolean("onlinePlayerOrigin",true).apply()
-                        showPage("player")
-                    }
-                    updatePlayer()
+    private val onlineSection: OnlineSection by lazy {
+        OnlineSection(
+            this,
+            { raw, index, mode, done ->
+                val c = controller
+                if (c == null)
+                    done(if (mode == "remove") null else "Плеер ещё подключается. Повтори запуск")
+                else {
+                    val request =
+                        c.sendCustomCommand(
+                            SessionCommand(PlaybackCommands.START_ONLINE_QUEUE, Bundle.EMPTY),
+                            Bundle().apply {
+                                putString("queueId", raw)
+                                putInt("index", index)
+                                putString("mode", mode)
+                            },
+                        )
+                    request.addListener(
+                        {
+                            if (alive) {
+                                val error =
+                                    runCatching { request.get().resultCode }
+                                        .fold(
+                                            {
+                                                if (it == SessionResult.RESULT_SUCCESS) null
+                                                else "Плеер отклонил очередь. Повтори действие"
+                                            },
+                                            {
+                                                "Не удалось передать очередь плееру. Повтори действие"
+                                            },
+                                        )
+                                done(error)
+                                if (error == null && mode == "play") {
+                                    prefs.edit().putBoolean("onlinePlayerOrigin", true).apply()
+                                    showPage("player")
+                                }
+                                updatePlayer()
+                            }
+                        },
+                        java.util.concurrent.Executor { handler.post(it) },
+                    )
                 }
-            },java.util.concurrent.Executor { handler.post(it) })
-        }
-    },openPlayer={ prefs.edit().putBoolean("onlinePlayerOrigin",true).apply();showPage("player") }) }
+            },
+            openPlayer = {
+                prefs.edit().putBoolean("onlinePlayerOrigin", true).apply()
+                showPage("player")
+            },
+        )
+    }
 
     private val appUpdates: AppUpdates by lazy { AppUpdates(this, extensionManager) }
 
@@ -2739,11 +2318,12 @@ class MainActivity : ThemedActivity() {
     override fun onStart() {
         super.onStart()
         screenStarted = true
-        restorePlayingSource()
+        if (!restoredBrowseState && !libraryLoading) restorePlayingSource()
         refreshTicker()
     }
 
     override fun onStop() {
+        restoredBrowseState = false
         translationForeground = false
         screenStarted = false
         handler.removeCallbacks(ticker)
@@ -2752,22 +2332,21 @@ class MainActivity : ThemedActivity() {
 
     override fun onDestroy() {
         pageMotion.cancel()
+        scanWork.detach()
         translationWork.detach()
-        if (!isChangingConfigurations) translationWork.close()
         extensionManager.close()
         appUpdates.close()
         onlineSection.close()
+        browser.close()
         thumbnails.close()
         artworkWorker.shutdownNow()
         lyricsWork.detach()
-        if (!isChangingConfigurations) lyricsWork.close()
         albumYears.close()
         alive = false
-        networkCancel?.cancel()
-        networkTask?.cancel(true)
-        networkExecutor.shutdownNow()
+        if (lyricsEditorDelegate.isInitialized()) lyricsEditor.close()
+        networkWork.close()
         handler.removeCallbacksAndMessages(null)
-        executor.shutdown()
+        background.close()
         future?.let { MediaController.releaseFuture(it) }
         super.onDestroy()
     }

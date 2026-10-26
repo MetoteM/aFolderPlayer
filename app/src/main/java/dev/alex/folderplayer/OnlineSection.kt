@@ -6,6 +6,7 @@ import android.app.AlertDialog
 import android.content.ComponentName
 import android.content.Intent
 import android.graphics.Color
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.Editable
@@ -37,6 +38,28 @@ internal class OnlineSection(
     @Volatile private var generation=0
     @Volatile private var closed=false
     @Volatile private var suspended=false
+    data class Snapshot(val navigation:Bundle, val data:String)
+    private var pendingNavigation:Bundle?=null
+
+    fun saveNavigation():Bundle? {
+        if(dialog==null && !returning)return null
+        return Bundle().apply {
+            putBoolean("returning",returning)
+            putBoolean("loading",busy)
+            putBoolean("visible",dialog?.isShowing==true && !suspended)
+            putString("operation",operation);putString("sourceId",sourceId);putString("sourceTitle",sourceTitle)
+            putString("query",query);putInt("sort",sort);putBoolean("selecting",selecting)
+            putIntArray("selected",selected.toIntArray())
+            if(::list.isInitialized) { putInt("first",list.firstVisiblePosition);putInt("top",list.getChildAt(0)?.top ?: 0) }
+        }
+    }
+    fun snapshot():Snapshot? = saveNavigation()?.let { Snapshot(it,data.toString()) }
+    fun restore(saved:Bundle?,retained:Snapshot?) {
+        val navigation=retained?.navigation ?: saved ?: return
+        if(navigation.getBoolean("returning")) { returning=true;return }
+        show(navigation,retained?.data)
+    }
+
     private var returning=false
     private var busy=false
     private var pending:java.util.concurrent.Future<*>?=null
@@ -103,7 +126,7 @@ internal class OnlineSection(
             return row
         }
     }
-    fun show() {
+    fun show(restored:Bundle?=null,cached:String?=null) {
         if(closed)return
         dialog?.let { if(suspended) { suspended=false;it.show();adapter.notifyDataSetChanged() };return }
         if(!extension.installed()) { AlertDialog.Builder(host).setTitle("Яндекс Музыка").setMessage("Установи AFP Online из того же тестового комплекта.").setPositiveButton("Закрыть",null).show();return }
@@ -156,17 +179,29 @@ internal class OnlineSection(
         retry=button("Повторить загрузку") { fetch(0,true) };root.addView(retry)
         cancel=Button(host).apply { text="Отменить загрузку";setOnClickListener { cancelWork() } };root.addView(cancel)
         now=NowPlayingStrip(host) { if(!busy) { suspended=true;screen.hide();openPlayer() } }.also { root.addView(it,LinearLayout.LayoutParams(-1,-2)) }
+        BrowserPane.install(root,list,listOf(title,status,searchRow),
+            (0 until root.childCount).map { root.getChildAt(it) }.filter { it !in listOf(title,status,searchRow,list) })
         SystemBarInsets.apply(root);screen.setContentView(root)
         screen.setOnDismissListener { generation++;pending?.cancel(true);pending=null;dialog=null;suspended=false;busy=false;handingOff=false }
         screen.show();screen.window?.setLayout(-1,-1)
-        update();checkStatus()
+        update()
+        if(restored==null)checkStatus() else {
+            pendingNavigation=restored
+            operation=restored.getString("operation","collectionPage")!!
+            sourceId=restored.getString("sourceId","")!!
+            sourceTitle=restored.getString("sourceTitle","Мне нравится в Яндексе")!!
+            val value=cached?.takeUnless { restored.getBoolean("loading") }?.let { runCatching { JSONObject(it) }.getOrNull() }
+            if(value!=null)apply(value) else choose(operation,sourceId,sourceTitle,true)
+            if(!restored.getBoolean("visible",true)) { suspended=true;screen.hide() }
+        }
     }
     private fun dp(value:Int)=(value*host.resources.displayMetrics.density).toInt()
     private fun next():Int?=if(data.has("next") && !data.isNull("next"))data.optInt("next").takeIf { it>=0 } else null
     private fun cacheKey()=if(operation=="collectionPage")"likes" else OnlineLibraryStore.playlistKey(sourceId)
     private fun openPlaylist(song:JSONObject) { choose("playlistPage",song.optString("id"),song.optString("title")) }
-    private fun choose(op:String,id:String,label:String) {
+    private fun choose(op:String,id:String,label:String,restoring:Boolean=false) {
         if(busy)return
+        if(!restoring)pendingNavigation=null
         pending?.cancel(true)
         generation++;operation=op;sourceId=id;sourceTitle=label;selected.clear();selecting=false
         rows=JSONArray();data=JSONObject().put("tracks",rows);playlistMode=op=="playlists";search.setText("")
@@ -217,7 +252,19 @@ internal class OnlineSection(
     }
     private fun apply(value:JSONObject,append:Boolean=false) {
         data=value;playlistMode=value.has("playlists");rows=value.optJSONArray(if(playlistMode)"playlists" else "tracks") ?: JSONArray()
-        if(!append) { selected.clear();selecting=false };retry.visibility=View.GONE;render();if(!append)list.setSelection(0)
+        if(!append) { selected.clear();selecting=false }
+        val navigation=if(!append)pendingNavigation else null
+        if(navigation!=null) {
+            pendingNavigation=null
+            search.setText(navigation.getString("query", ""))
+            sort=navigation.getInt("sort",0).coerceIn(0,3)
+            sortView.setSelection(sort)
+            selecting=navigation.getBoolean("selecting")
+            selected.addAll(navigation.getIntArray("selected")?.toList().orEmpty().filter { it in 0 until rows.length() })
+        }
+        retry.visibility=View.GONE;render()
+        if(navigation!=null)list.setSelectionFromTop(navigation.getInt("first",0),navigation.getInt("top",0))
+        else if(!append)list.setSelection(0)
     }
     private fun render() {
         if(!::title.isInitialized || !::list.isInitialized)return

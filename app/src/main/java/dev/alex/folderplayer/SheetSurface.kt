@@ -14,6 +14,12 @@ import kotlin.math.abs
 /** A downward sheet gesture, shared by the whole surface, with controls and scrolling protected. */
 internal class SheetSurface(context: Context, private val close: () -> Unit) :
     LinearLayout(context) {
+    var beforeMeasure: ((Int,Int)->Unit)? = null
+    override fun onMeasure(widthMeasureSpec:Int,heightMeasureSpec:Int) {
+        beforeMeasure?.invoke(MeasureSpec.getSize(widthMeasureSpec),MeasureSpec.getSize(heightMeasureSpec))
+        super.onMeasure(widthMeasureSpec,heightMeasureSpec)
+    }
+
     var horizontal: ((Boolean) -> Unit)? = null
     private var sideways = false
     private var horizontalEligible = false

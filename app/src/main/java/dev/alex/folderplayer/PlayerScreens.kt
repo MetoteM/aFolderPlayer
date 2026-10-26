@@ -97,12 +97,15 @@ internal class PlayerScreens(private val context: Context, private val actions: 
     private var page = "player"
     private var landscape = false
     private var compact = false
+    private var shortLandscape = false
 
     init {
-        view.addOnLayoutChangeListener { _, l, t, r, b, _, _, _, _ ->
-            val wide = r - l > b - t
-            val small = (b - t) / context.resources.displayMetrics.density < 520
-            if (page == "player" && r > l && b > t && (wide != landscape || small != compact)) {
+        view.beforeMeasure = { width, height ->
+            val wide = width > height
+            val small = height / context.resources.displayMetrics.density < 520
+            val short = wide && (height/context.resources.displayMetrics.density < 300 || context.resources.configuration.fontScale >= 1.5f)
+            if (page == "player" && width > 0 && height > 0 && (wide != landscape || small != compact || short != shortLandscape)) {
+                shortLandscape = short
                 landscape = wide
                 compact = small
                 show(page)
@@ -345,7 +348,8 @@ internal class PlayerScreens(private val context: Context, private val actions: 
                 if (landscape) {
                     body.orientation = LinearLayout.HORIZONTAL
                     body.addView(metadata, LinearLayout.LayoutParams(0, -1, 1f))
-                    body.addView(playback, LinearLayout.LayoutParams(0, -1, 1.5f))
+                    val controls: View = if (shortLandscape) ScrollView(context).apply { addView(playback) } else playback
+                    body.addView(controls, LinearLayout.LayoutParams(0, -1, 1.5f))
                 } else {
                     body.addView(metadata, LinearLayout.LayoutParams(-1, 0, 1f))
                     body.addView(playback)
@@ -362,6 +366,7 @@ internal class PlayerScreens(private val context: Context, private val actions: 
                 metadata.addView(
                     cover,
                     LinearLayout.LayoutParams(-1, 0, 1f).apply {
+                        gravity = Gravity.CENTER_HORIZONTAL
                         setMargins(dp(8), 0, dp(8), dp(4))
                     },
                 )
@@ -419,17 +424,18 @@ internal class PlayerScreens(private val context: Context, private val actions: 
                 controls.addView(forward, weight())
                 playback.addView(controls)
                 val links = row()
-                links.addView(
-                    button("Текст", "Открыть текст песни") { actions.open("lyrics") },
-                    weight(),
-                )
-                links.addView(
-                    button("Очередь", "Открыть очередь") { actions.open("queue") },
-                    weight(),
-                )
-                links.addView(button("Звук", "Эквалайзер") { actions.sound() }, weight())
+                val lyrics = button("Текст", "Открыть текст песни") { actions.open("lyrics") }
+                val queue = button("Очередь", "Открыть очередь") { actions.open("queue") }
+                val sound = button("Звук", "Эквалайзер") { actions.sound() }
                 repeat = button("↻", "Режим повтора") { actions.repeat() }
-                links.addView(repeat, weight())
+                if (shortLandscape) {
+                    links.orientation = LinearLayout.VERTICAL
+                    links.addView(row().apply { addView(lyrics,weight());addView(queue,weight()) })
+                    links.addView(row().apply { addView(sound,weight());addView(repeat,weight()) })
+                } else {
+                    links.addView(lyrics,weight());links.addView(queue,weight())
+                    links.addView(sound,weight());links.addView(repeat,weight())
+                }
                 playback.addView(links)
                 playback.addView(
                     button("Определить песню", "Выбрать режим определения песни") {
@@ -509,8 +515,9 @@ internal class PlayerScreens(private val context: Context, private val actions: 
             times?.setPadding(dp(4), 0, dp(4), 0)
             totalTime?.setPadding(dp(4), 0, dp(4), 0)
         }
-        line.addView(times, weight())
-        line.addView(totalTime, weight())
+        fun timeWeight() = weight().apply { if (page == "player") { topMargin=0;bottomMargin=0 } }
+        line.addView(times, timeWeight())
+        line.addView(totalTime, timeWeight())
         parent.addView(line)
     }
 

@@ -37,8 +37,12 @@ internal data class Track(
         MediaItem.Builder()
             .setMediaId(uri)
             .setUri(sourceUri)
-            .setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(cueStartMs)
-                .setEndPositionMs(cueEndMs ?: androidx.media3.common.C.TIME_END_OF_SOURCE).build())
+            .setClippingConfiguration(
+                MediaItem.ClippingConfiguration.Builder()
+                    .setStartPositionMs(cueStartMs)
+                    .setEndPositionMs(cueEndMs ?: androidx.media3.common.C.TIME_END_OF_SOURCE)
+                    .build()
+            )
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(title)
@@ -74,8 +78,11 @@ internal data class Track(
             .put("artworkUri", artworkUri)
 }
 
-internal class Library(private val context: Context) {
-    private val prefs = context.getSharedPreferences("library", Context.MODE_PRIVATE)
+internal class Library(sourceContext: Context) {
+    private val context = sourceContext.applicationContext
+    private val prefs = sourceContext.getSharedPreferences("library", Context.MODE_PRIVATE)
+
+    private val trackStore = LibraryTrackStore(context, prefs)
 
     fun hiddenTracks(): Set<String> = prefs.getStringSet("hiddenTracks", emptySet())!!.toSet()
 
@@ -107,57 +114,30 @@ internal class Library(private val context: Context) {
         }
     }
 
-    private fun storedTracks(): List<Track> =
-        runCatching {
-                val a = JSONArray(prefs.getString("tracks", "[]"))
-                (0 until a.length()).map { i ->
-                    a.getJSONObject(i).let {
-                        Track(
-                            it.getString("uri"),
-                            it.getString("title"),
-                            it.getString("artist"),
-                            it.getLong("duration"),
-                            it.getString("folder"),
-                            it.optString("filename", ""),
-                            it.optString("album", ""),
-                            it.optString("albumArtist", ""),
-                            it.optInt("year", 0).takeIf { n -> n in 1000..9999 },
-                            it.optInt("trackNumber", 0).takeIf { n -> n > 0 },
-                            it.optInt("discNumber", 0).takeIf { n -> n > 0 },
-                            it.optString("rootUri", ""),
-                            it.optString("sourceUri", it.getString("uri")),
-                            it.optLong("cueStartMs", 0),
-                            it.optLong("cueEndMs", -1).takeIf { end -> end>0 },
-                            it.optString("cueSheetUri", ""),
-                            it.optString("artworkUri", ""),
-                        )
-                    }
-                }
-            }
-            .getOrDefault(emptyList())
+    private fun storedTracks(): List<Track> = trackStore.read()
 
     fun tracks(): List<Track> {
-        val excluded=prefs.getStringSet("excludedTracks", emptySet())!!.toSet()
+        val excluded = prefs.getStringSet("excludedTracks", emptySet())!!.toSet()
         return AlbumYears(context).apply(storedTracks().filter { it.uri !in excluded })
     }
 
-    data class ScanResult(val tracks:List<Track>, val errors:Int, val retainedRoots:Int)
+    data class ScanResult(val tracks: List<Track>, val errors: Int, val retainedRoots: Int)
 
     fun scan(): ScanResult {
         fun checkActive() {
-            if (Thread.currentThread().isInterrupted) throw java.util.concurrent.CancellationException("Сканирование отменено")
+            if (Thread.currentThread().isInterrupted)
+                throw java.util.concurrent.CancellationException("Сканирование отменено")
         }
         checkActive()
-        val (scanRoots, previous, scanId) = synchronized(storeLock) {
-            Triple(roots(), storedTracks(), ++scanGeneration)
-        }
+        val (scanRoots, previous, scanId) =
+            synchronized(storeLock) { Triple(roots(), storedTracks(), ++scanGeneration) }
         val failedRoots = linkedSetOf<String>()
         val found = linkedMapOf<String, Track>()
         val visited = hashSetOf<String>()
         var errors = 0
-        data class CueDocument(val file:LibraryDocument,val folder:String,val root:String)
-        val cues=mutableListOf<CueDocument>()
-        val images=mutableListOf<Pair<String,AlbumImage>>()
+        data class CueDocument(val file: LibraryDocument, val folder: String, val root: String)
+        val cues = mutableListOf<CueDocument>()
+        val images = mutableListOf<Pair<String, AlbumImage>>()
         val extensions = setOf("mp3", "flac", "m4a", "aac", "ogg", "opus", "wav")
         fun walk(file: LibraryDocument, folder: String, root: String) {
             checkActive()
@@ -170,12 +150,23 @@ internal class Library(private val context: Context) {
                             failedRoots.add(root)
                             emptyList()
                         }
-                children.sortedBy { it.name }.forEach { walk(it, "$folder/${file.name.orEmpty()}", root) }
+                children
+                    .sortedBy { it.name }
+                    .forEach { walk(it, "$folder/${file.name.orEmpty()}", root) }
                 return
             }
             val name = file.name ?: return
-            if(AlbumArtwork.image(name)) { if(file.size in 1..12*1024*1024L)images.add(root to AlbumImage(folder.trimStart('/')+"/"+name,file.uri.toString()));return }
-            if(name.endsWith(".cue",true)) { cues.add(CueDocument(file,folder.trimStart('/'),root));return }
+            if (AlbumArtwork.image(name)) {
+                if (file.size in 1..12 * 1024 * 1024L)
+                    images.add(
+                        root to AlbumImage(folder.trimStart('/') + "/" + name, file.uri.toString())
+                    )
+                return
+            }
+            if (name.endsWith(".cue", true)) {
+                cues.add(CueDocument(file, folder.trimStart('/'), root))
+                return
+            }
             if (name.substringAfterLast('.', "").lowercase() !in extensions) return
             val retriever = MediaMetadataRetriever()
             try {
@@ -231,54 +222,104 @@ internal class Library(private val context: Context) {
         }
         for (root in scanRoots) {
             checkActive()
-            val tree = runCatching { DocumentFile.fromTreeUri(context, Uri.parse(root)) }.getOrNull()
+            val tree =
+                runCatching { DocumentFile.fromTreeUri(context, Uri.parse(root)) }.getOrNull()
             if (tree == null || !tree.canRead() || !tree.isDirectory) {
                 errors++
                 failedRoots.add(root)
                 continue
             }
-            walk(LibraryDocument(tree.uri,tree.name,true,0), "", root)
+            walk(LibraryDocument(tree.uri, tree.name, true, 0), "", root)
         }
-        val original=found.values.toList()
-        val split=hashSetOf<String>()
-        for(cue in cues) {
+        val original = found.values.toList()
+        val split = hashSetOf<String>()
+        for (cue in cues) {
             runCatching {
-                val bytes=context.contentResolver.openInputStream(cue.file.uri)!!.use { input ->
-                    val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192)
-                    while(true) { val n=input.read(buffer);if(n<0)break;require(out.size()+n<=CueSheet.MAX_BYTES);out.write(buffer,0,n) };out.toByteArray()
+                    val bytes =
+                        context.contentResolver.openInputStream(cue.file.uri)!!.use { input ->
+                            val out = java.io.ByteArrayOutputStream()
+                            val buffer = ByteArray(8192)
+                            while (true) {
+                                val n = input.read(buffer)
+                                if (n < 0) break
+                                require(out.size() + n <= CueSheet.MAX_BYTES)
+                                out.write(buffer, 0, n)
+                            }
+                            out.toByteArray()
+                        }
+                    val sheet = CueSheet.parse(CueSheet.decode(bytes))
+                    val tracks =
+                        CueTracks.expand(
+                            sheet,
+                            cue.file.uri.toString(),
+                            cue.folder,
+                            cue.root,
+                            original,
+                        )
+                    val sources = tracks.map { it.sourceUri }.toSet()
+                    require(sources.none { it in split }) { "Несколько CUE для одного файла" }
+                    split.addAll(sources)
+                    sources.forEach { found.remove(it) }
+                    tracks.forEach { found[it.uri] = it }
                 }
-                val sheet=CueSheet.parse(CueSheet.decode(bytes))
-                val tracks=CueTracks.expand(sheet,cue.file.uri.toString(),cue.folder,cue.root,original)
-                val sources=tracks.map { it.sourceUri }.toSet()
-                require(sources.none { it in split }) { "Несколько CUE для одного файла" }
-                split.addAll(sources);sources.forEach { found.remove(it) };tracks.forEach { found[it.uri]=it }
-            }.onFailure { errors++ } // A broken sheet keeps the original audio playable.
+                .onFailure { errors++ } // A broken sheet keeps the original audio playable.
         }
-        val artwork=images.groupBy({it.first},{it.second}).mapValues { AlbumArtwork(it.value) }
-        val sorted = found.values.map { track->track.copy(artworkUri=artwork[track.rootUri]?.candidates(track.folder+"/"+track.filename)?.firstOrNull()?.uri.orEmpty()) }.filter { it.cueSheetUri.isNotBlank() || eligibleDuration(it.duration) }.sortedBy { it.title.lowercase() }
+        val artwork =
+            images.groupBy({ it.first }, { it.second }).mapValues { AlbumArtwork(it.value) }
+        val sorted =
+            found.values
+                .map { track ->
+                    track.copy(
+                        artworkUri =
+                            artwork[track.rootUri]
+                                ?.candidates(track.folder + "/" + track.filename)
+                                ?.firstOrNull()
+                                ?.uri
+                                .orEmpty()
+                    )
+                }
+                .filter { it.cueSheetUri.isNotBlank() || eligibleDuration(it.duration) }
+                .sortedBy { it.title.lowercase() }
         synchronized(storeLock) {
             checkActive()
             if (scanId != scanGeneration || roots() != scanRoots)
                 throw java.util.concurrent.CancellationException("Результат сканирования устарел")
-            val published = sorted.filter { it.rootUri !in failedRoots } +
-                previous.filter { it.rootUri in failedRoots }
+            val published =
+                sorted.filter { it.rootUri !in failedRoots } +
+                    previous.filter { it.rootUri in failedRoots }
             val complete = published.distinctBy { it.uri }.sortedBy { it.title.lowercase() }
             migrateCueReferences(complete)
-            prefs.edit().putString("tracks", JSONArray(complete.map { it.json() }).toString()).apply()
+            trackStore.write(complete)
             syncFolderPlaylists(complete)
-            return ScanResult(tracks(), errors, failedRoots.count { root -> previous.any { it.rootUri == root } })
+            return ScanResult(
+                tracks(),
+                errors,
+                failedRoots.count { root -> previous.any { it.rootUri == root } },
+            )
         }
     }
 
-    private fun migrateCueReferences(tracks:List<Track>) {
+    private fun migrateCueReferences(tracks: List<Track>) {
         synchronized(storeLock) {
-            val replacements=tracks.filter { it.cueSheetUri.isNotBlank() }.groupBy { it.sourceUri }
-            if(replacements.isEmpty())return
-            fun expand(ids:Collection<String>)=ids.flatMap { id->replacements[id]?.sortedBy { it.cueStartMs }?.map { it.uri } ?: listOf(id) }.distinct()
-            val lists=lists();val edit=prefs.edit()
-            for(name in lists.keys().asSequence().toList())lists.put(name,JSONArray(expand(strings(lists.getJSONArray(name).toString()))))
-            edit.putString("playlists",lists.toString())
-            for(key in listOf("hiddenTracks","excludedTracks"))edit.putStringSet(key,expand(prefs.getStringSet(key,emptySet())!!).toSet())
+            val replacements =
+                tracks.filter { it.cueSheetUri.isNotBlank() }.groupBy { it.sourceUri }
+            if (replacements.isEmpty()) return
+            fun expand(ids: Collection<String>) =
+                ids.flatMap { id ->
+                        replacements[id]?.sortedBy { it.cueStartMs }?.map { it.uri } ?: listOf(id)
+                    }
+                    .distinct()
+            val lists = lists()
+            val edit = prefs.edit()
+            for (name in lists.keys().asSequence().toList()) lists.put(
+                name,
+                JSONArray(expand(strings(lists.getJSONArray(name).toString()))),
+            )
+            edit.putString("playlists", lists.toString())
+            for (key in listOf("hiddenTracks", "excludedTracks")) edit.putStringSet(
+                key,
+                expand(prefs.getStringSet(key, emptySet())!!).toSet(),
+            )
             edit.apply()
         }
     }
@@ -286,9 +327,7 @@ internal class Library(private val context: Context) {
     fun isRandom(source: String) = prefs.contains("randomOrder:$source")
 
     fun clearRandom(source: String) {
-        synchronized(storeLock) {
-            prefs.edit().remove("randomOrder:$source").apply()
-        }
+        synchronized(storeLock) { prefs.edit().remove("randomOrder:$source").apply() }
     }
 
     fun ordered(all: List<Track>, source: String, librarySort: Int): List<Track> {
@@ -433,7 +472,8 @@ internal class Library(private val context: Context) {
                 for (i in 0 until links.length()) {
                     val link = links.getJSONObject(i)
                     val folder = MusicFolder(link.getString("root"), link.getString("path"))
-                    val excluded = strings(link.optJSONArray("excluded")?.toString() ?: "[]").toSet()
+                    val excluded =
+                        strings(link.optJSONArray("excluded")?.toString() ?: "[]").toSet()
                     candidates.addAll(
                         playlistOrder(
                                 all.filter {
@@ -516,7 +556,9 @@ internal class Library(private val context: Context) {
                     .putString("playlists", data.toString())
                     .putInt("playlistSort:$name", playlistSort(old))
                     .remove("playlistSort:$old")
-            prefs.getString("randomOrder:$old", null)?.let { edit.putString("randomOrder:$name", it) }
+            prefs.getString("randomOrder:$old", null)?.let {
+                edit.putString("randomOrder:$name", it)
+            }
             edit.remove("randomOrder:$old").apply()
             return true
         }

@@ -38,13 +38,39 @@ class PlayerVisualTest {
   val app=org.robolectric.RuntimeEnvironment.getApplication();val items=(1..7).map { Track("file:///$it.mp3","Песня номер $it","Metallica",294000,"Music/Load","$it.mp3","Load","Metallica",1996,it) }
   app.getSharedPreferences("playback",android.content.Context.MODE_PRIVATE).edit().clear().commit()
   app.getSharedPreferences("library",android.content.Context.MODE_PRIVATE).edit().clear().putString("tracks",org.json.JSONArray(items.map { it.json() }).toString()).putString("playlists",org.json.JSONObject().put("Метла",org.json.JSONArray(items.map { it.uri })).toString()).commit()
-  val host=Robolectric.buildActivity(MainActivity::class.java).create().start();val activity=host.get()
+  val host=mainActivityController().create().start().also { awaitLibrary(it.get()) };val activity=host.get()
   try {
    MainActivity::class.java.getDeclaredField("selectedPlaylist").apply { isAccessible=true }.set(activity,"Метла");MainActivity::class.java.getDeclaredMethod("render").apply { isAccessible=true }.invoke(activity)
    val root=MainActivity::class.java.getDeclaredField("root").apply { isAccessible=true }.get(activity) as View
    root.measure(View.MeasureSpec.makeMeasureSpec(822,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(1782,View.MeasureSpec.EXACTLY));root.layout(0,0,822,1782)
    val image=Bitmap.createBitmap(822,1782,Bitmap.Config.ARGB_8888);root.draw(Canvas(image));val target=File("../qa/ui-0.5.0/playlist.png");target.parentFile!!.mkdirs();target.outputStream().use { image.compress(Bitmap.CompressFormat.PNG,100,it) }
   } finally { host.stop().destroy() }
+ }
+
+ @Test fun shortLandscapeKeepsArtworkAndControlsAtLargeFont() {
+  val host=Robolectric.buildActivity(Activity::class.java).setup()
+  try {
+   val context=host.get().createConfigurationContext(android.content.res.Configuration(host.get().resources.configuration).apply { fontScale=1.6f })
+   val ui=PlayerScreens(context,object:PlayerScreens.Actions {
+    override fun back(){};override fun open(page:String){};override fun toggle(){};override fun previous(){};override fun next(){};override fun skip(direction:Int){};override fun seek(progress:Int){};override fun favorite(){};override fun playlists(){};override fun repeat(){};override fun sound(){};override fun lyricsMenu(){};override fun select(index:Int){};override fun move(from:Int,to:Int){}
+   })
+   ui.show("player");ui.update(PlayerScreens.State("a","Очень длинное название композиции","Исполнитель","Альбом","Music",false,false,0,84000,211000,10))
+   val density=context.resources.displayMetrics.density
+   val width=(640*density).toInt();val height=(264*density).toInt()
+   repeat(4) { ui.view.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));ui.view.layout(0,0,width,height) }
+   fun all(v:View):List<View> = listOf(v)+if(v is android.view.ViewGroup)(0 until v.childCount).flatMap { all(v.getChildAt(it)) } else emptyList()
+   val cover=all(ui.view).filterIsInstance<android.widget.ImageView>().single()
+   org.junit.Assert.assertTrue("Artwork disappeared",cover.height>40*density)
+   val controls=all(ui.view).filterIsInstance<android.widget.ScrollView>().single()
+   org.junit.Assert.assertTrue(controls.height>0)
+   val queue=all(controls).filterIsInstance<android.widget.Button>().single { it.text=="Очередь" }
+   org.junit.Assert.assertEquals("Queue label must not split into fragments",1,queue.lineCount)
+   val play=all(controls).single { it.contentDescription=="Воспроизведение / пауза" }
+   val rect=android.graphics.Rect();play.getDrawingRect(rect);ui.view.offsetDescendantRectToMyCoords(play,rect)
+   org.junit.Assert.assertTrue("Primary transport clipped: $rect",rect.top>=0 && rect.bottom<=height)
+   val image=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);ui.view.draw(Canvas(image))
+   val target=File("../qa/rotation-landscape/player-large-font.png");target.parentFile!!.mkdirs();target.outputStream().use { image.compress(Bitmap.CompressFormat.PNG,100,it) }
+  } finally { host.pause().stop().destroy() }
  }
 
 }

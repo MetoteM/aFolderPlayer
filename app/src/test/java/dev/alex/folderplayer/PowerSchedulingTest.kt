@@ -19,6 +19,7 @@ class PowerSchedulingTest {
         val prefs = RuntimeEnvironment.getApplication().getSharedPreferences("playback", 0)
         prefs.edit().clear().commit()
         val host = Robolectric.buildService(PlaybackService::class.java).create()
+        awaitPlaybackRestore(host.get())
         try {
             shadowOf(Looper.getMainLooper()).idle()
             val initial = prefs.all.toMap()
@@ -59,6 +60,7 @@ class PowerSchedulingTest {
             .putLong("position", 3600)
             .commit()
         val host = Robolectric.buildService(PlaybackService::class.java).create()
+        awaitPlaybackRestore(host.get())
         try {
             val player =
                 PlaybackService::class

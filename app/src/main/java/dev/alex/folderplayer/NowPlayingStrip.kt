@@ -19,6 +19,8 @@ internal class NowPlayingStrip(
         TextView(context).apply {
             text = "Выбери песню"
             textSize = 18f
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
             setTextColor(AppAppearance.textColor)
             setPadding(dp(8), dp(6), dp(8), dp(2))
         }

@@ -20,7 +20,7 @@ class PlaybackReturnTest {
  }
  private fun field(activity:MainActivity,name:String):Any? = MainActivity::class.java.getDeclaredField(name).apply { isAccessible=true }.get(activity)
  @Test fun returningFromAnotherTaskOpensPlayingPlaylistAndClearsSearch() {
-  prepare();val screen=Robolectric.buildActivity(MainActivity::class.java).create().start().resume();val activity=screen.get()
+  prepare();val screen=mainActivityController().create().start().also { awaitLibrary(it.get()) }.resume();val activity=screen.get()
   try {
    assertEquals("Металл",field(activity,"selectedPlaylist"))
    MainActivity::class.java.getDeclaredField("selectedPlaylist").apply { isAccessible=true }.set(activity,null)
@@ -30,14 +30,14 @@ class PlaybackReturnTest {
   } finally { screen.pause().stop().destroy() }
  }
  @Test fun recreationAlsoOpensPlayingPlaylist() {
-  prepare();val first=Robolectric.buildActivity(MainActivity::class.java).create().start()
+  prepare();val first=mainActivityController().create().start().also { awaitLibrary(it.get()) }
   first.stop().destroy()
-  val second=Robolectric.buildActivity(MainActivity::class.java).create().start()
+  val second=mainActivityController().create().start().also { awaitLibrary(it.get()) }
   try { assertEquals("Металл",field(second.get(),"selectedPlaylist")) } finally { second.stop().destroy() }
  }
  @Test fun deletedSourceFallsBackToLibrary() {
   prepare();RuntimeEnvironment.getApplication().getSharedPreferences("playback",Context.MODE_PRIVATE).edit().putString("queueSource","Удалённый").commit()
-  val screen=Robolectric.buildActivity(MainActivity::class.java).create().start()
+  val screen=mainActivityController().create().start().also { awaitLibrary(it.get()) }
   try { assertNull(field(screen.get(),"selectedPlaylist")) } finally { screen.stop().destroy() }
  }
 }

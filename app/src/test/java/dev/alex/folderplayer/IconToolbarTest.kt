@@ -45,7 +45,7 @@ class IconToolbarTest {
  }
  @Test fun toolbarIsOneRowWithLabelsForAccessibilityAndAboutIsClean() {
   val app=RuntimeEnvironment.getApplication();app.getSharedPreferences("playback",Context.MODE_PRIVATE).edit().clear().commit()
-  val host=Robolectric.buildActivity(MainActivity::class.java).create().start();val a=host.get()
+  val host=mainActivityController().create().start().also { awaitLibrary(it.get()) };val a=host.get()
   try {
    val icons=all(a.window.decorView).filterIsInstance<IconButton>();assertEquals(5,icons.size);assertEquals(1,icons.map { it.parent }.distinct().size)
    assertTrue(icons.all { it.text.isEmpty() && it.contentDescription.isNotBlank() });assertFalse(all(a.window.decorView).filterIsInstance<Button>().any { it.text=="⋮" })

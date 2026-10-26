@@ -5,7 +5,7 @@ android {
  namespace = "dev.alex.folderplayer"
  compileSdk = 36
  buildToolsVersion = "36.0.0"
- defaultConfig { applicationId = "dev.alex.folderplayer"; minSdk = 26; targetSdk = 36; versionCode = 60; versionName = "0.9.5"; ndk { abiFilters += "arm64-v8a" } }
+ defaultConfig { applicationId = "dev.alex.folderplayer"; minSdk = 26; targetSdk = 36; versionCode = 62; versionName = "0.9.6-rc.2"; ndk { abiFilters += "arm64-v8a" } }
  signingConfigs { create("personalRelease") {
   storeFile = rootProject.file("signing/folder-player.p12")
   storePassword = signingProps.getProperty("storePassword")
@@ -20,6 +20,9 @@ android {
  testOptions { unitTests.isReturnDefaultValues = true; unitTests.isIncludeAndroidResources = true }
 }
 dependencies {
+ implementation("androidx.activity:activity-ktx:1.10.1")
+ implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.0")
+ implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.0")
  testImplementation("junit:junit:4.13.2")
  testImplementation("org.robolectric:robolectric:4.14.1")
  implementation("androidx.media3:media3-exoplayer:1.6.1")

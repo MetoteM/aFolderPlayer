@@ -29,7 +29,7 @@ class ThemePreviewTest {
         val output=File("build/theme-previews").apply { mkdirs() }
         for(p in AppAppearance.choices){
             AppAppearance.save(app,p)
-            val c=Robolectric.buildActivity(MainActivity::class.java).create().start()
+            val c=mainActivityController().create().start().also { awaitLibrary(it.get()) }
             try {
                 val v=MainActivity::class.java.getDeclaredField("root").apply { isAccessible=true }.get(c.get()) as View
                 v.measure(View.MeasureSpec.makeMeasureSpec(720,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(1520,View.MeasureSpec.EXACTLY));v.layout(0,0,720,1520)

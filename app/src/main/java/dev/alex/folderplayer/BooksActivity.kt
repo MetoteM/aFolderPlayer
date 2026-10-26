@@ -46,9 +46,7 @@ class BooksActivity:ThemedActivity() {
         super.onCreate(state)
         selected=state?.getString("book") ?: getSharedPreferences("playback",0).getString("activeBook",null)
         val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(12),dp(8),dp(12),dp(8));setBackgroundColor(AppAppearance.palette.background) }
-        if(android.os.Build.VERSION.SDK_INT>=30)box.setOnApplyWindowInsetsListener { view,insets ->
-            val bars=insets.getInsets(android.view.WindowInsets.Type.systemBars());view.setPadding(dp(12),bars.top+dp(8),dp(12),bars.bottom+dp(8));insets
-        }
+        SystemBarInsets.apply(box)
         box.addView(text(23f).apply { text="Аудиокниги" })
         val wide=resources.configuration.orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE
         val body=LinearLayout(this).apply { orientation=if(wide)LinearLayout.HORIZONTAL else LinearLayout.VERTICAL }

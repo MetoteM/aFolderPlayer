@@ -3,7 +3,6 @@ package dev.alex.folderplayer
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -26,6 +25,14 @@ internal class ExtensionManager(
     private val changed: () -> Unit = {},
     private val online: () -> Unit = {},
     private val updates: () -> Unit = {},
+    private val importApk: () -> Unit = {
+        host.startActivityForResult(
+            Intent(Intent.ACTION_OPEN_DOCUMENT)
+                .setType("application/vnd.android.package-archive")
+                .addCategory(Intent.CATEGORY_OPENABLE),
+            104,
+        )
+    },
 ) {
     companion object {
         const val DEFAULT_CATALOG =
@@ -83,13 +90,7 @@ internal class ExtensionManager(
                 "Проверить обновления" -> updates()
                 "Источник загрузки" -> address()
                 "Онлайн" -> online()
-                "Установить переводчик из файла" ->
-                    host.startActivityForResult(
-                        Intent(Intent.ACTION_OPEN_DOCUMENT)
-                            .setType("application/vnd.android.package-archive")
-                            .addCategory(Intent.CATEGORY_OPENABLE),
-                        104,
-                    )
+                "Установить переводчик из файла" -> importApk()
                 "Пакет для отдельных документов" ->
                     run("Проверяем установленные языки…") {
                         val models = engine.availableModels().toList()
@@ -331,8 +332,10 @@ internal class ExtensionManager(
     }
 
     private fun confirm(base: java.net.URI, entry: ExtensionCatalog.Entry) {
-        if(!ExtensionUpdates.compatible(entry)) {
-            message("В источнике нет совместимой версии расширения. Проверь обновления или выбери другой источник")
+        if (!ExtensionUpdates.compatible(entry)) {
+            message(
+                "В источнике нет совместимой версии расширения. Проверь обновления или выбери другой источник"
+            )
             return
         }
         @Suppress("DEPRECATION")
@@ -489,19 +492,17 @@ internal class ExtensionManager(
         val module = ExtensionModules.find(kind) ?: error("Неизвестное расширение")
         val pm = host.packageManager
         val info =
-            pm.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNATURES)
+            pm.getPackageArchiveInfo(file.absolutePath, ApkIdentity.flags)
                 ?: error("Не удалось прочитать APK")
         require(expectedVersion == null || info.versionName == expectedVersion) {
             "Версия APK не соответствует каталогу"
         }
-        require(info.versionCode.toLong()>=module.minimumCode) { "Версия расширения несовместима с этим плеером" }
-        require(info.packageName == module.pkg) { "Это не ${module.title}" }
-        val own = pm.getPackageInfo(host.packageName, PackageManager.GET_SIGNATURES)
-        require(
-            !info.signatures.isNullOrEmpty() && info.signatures?.toSet() == own.signatures?.toSet()
-        ) {
-            "Подпись расширения не совпадает с плеером"
+        require(info.versionCode.toLong() >= module.minimumCode) {
+            "Версия расширения несовместима с этим плеером"
         }
+        require(info.packageName == module.pkg) { "Это не ${module.title}" }
+        val own = pm.getPackageInfo(host.packageName, ApkIdentity.flags)
+        require(ApkIdentity.matches(info, own)) { "Подпись расширения не совпадает с плеером" }
         val installed = runCatching { pm.getPackageInfo(module.pkg, 0).versionCode }.getOrNull()
         require(installed == null || info.versionCode >= installed) {
             "Расширение старее установленного"

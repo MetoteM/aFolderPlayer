@@ -71,13 +71,13 @@ class AppAppearanceTest {
         }finally { c.pause().stop().destroy() }
     }
     @Test fun changingThemeRetainsLibraryQueryAndAboutStaysLast(){
-        val first=Robolectric.buildActivity(MainActivity::class.java).create().start()
+        val first=mainActivityController().create().start().also { awaitLibrary(it.get()) }
         val saved=Bundle()
         try {
             MainActivity::class.java.getDeclaredField("query").apply { isAccessible=true }.set(first.get(),"my album")
             AppAppearance.save(app,AppAppearance.choices[2]);first.saveInstanceState(saved)
         }finally { first.stop().destroy() }
-        val second=Robolectric.buildActivity(MainActivity::class.java).create(saved).start()
+        val second=mainActivityController().create(saved).start().also { awaitLibrary(it.get()) }
         try {
             val a=second.get()
             assertEquals("sepia",AppAppearance.palette.id)
