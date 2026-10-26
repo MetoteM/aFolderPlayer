@@ -21,7 +21,7 @@ import java.net.HttpURLConnection
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class DirectLyricsTest {
  private fun field(a:MainActivity,name:String,value:Any) { MainActivity::class.java.getDeclaredField(name).apply { isAccessible=true }.set(a,value) }
- private fun invoke(a:MainActivity,name:String,vararg args:Any) { MainActivity::class.java.getDeclaredMethod(name,*args.map { it.javaClass }.toTypedArray()).apply { isAccessible=true }.invoke(a,*args) }
+ private fun invoke(a:MainActivity,name:String,vararg args:Any) { when(name) { "openLyrics" -> a.openLyrics() } }
  private fun await(condition:()->Boolean) {
   val end=System.currentTimeMillis()+8000
   while(!condition() && System.currentTimeMillis()<end) { shadowOf(Looper.getMainLooper()).idle();Thread.sleep(10) }

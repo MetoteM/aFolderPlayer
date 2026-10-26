@@ -42,7 +42,11 @@ object LyricsMatch {
         }
         val texts = exact.mapTo(HashSet()) { key(LyricsDocument(it.text).plain) }
         if (texts.size != 1) return null
-        exact.sortWith(compareBy({ it.timed }, { Math.abs(it.duration - seconds) }))
+        exact.sortWith(
+            compareByDescending<LyricsSearch.Result> { it.timed }.thenBy {
+                Math.abs(it.duration - seconds)
+            }
+        )
         return exact[0]
     }
 }

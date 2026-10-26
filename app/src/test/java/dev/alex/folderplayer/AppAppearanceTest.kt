@@ -82,7 +82,7 @@ class AppAppearanceTest {
             val a=second.get()
             assertEquals("sepia",AppAppearance.palette.id)
             assertEquals("my album",MainActivity::class.java.getDeclaredField("query").apply { isAccessible=true }.get(a))
-            MainActivity::class.java.getDeclaredMethod("settings").apply { isAccessible=true }.invoke(a)
+            a.settings()
             val menu=ShadowAlertDialog.getLatestAlertDialog().listView
             assertEquals("О приложении",menu.adapter.getItem(menu.count-1))
             assertTrue((0 until menu.count).any { menu.adapter.getItem(it)=="Тема оформления" })

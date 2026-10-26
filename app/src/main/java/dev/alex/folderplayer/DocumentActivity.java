@@ -202,15 +202,15 @@ public final class DocumentActivity extends ThemedActivity {
       status.setText(state.message);
       return;
     }
-    if (state.value != null && !state.value.id.equals(appliedOperationId)) {
+    if (state.value != null && !state.value.getId().equals(appliedOperationId)) {
       DocumentResult value = state.value;
-      appliedOperationId = value.id;
-      source = value.source;
-      model = value.model;
+      appliedOperationId = value.getId();
+      source = value.getSource();
+      model = value.getModel();
       original = DocumentTranslation.paragraphs(source);
-      blocks = value.blocks;
-      parts = value.parts;
-      notices = value.notices;
+      blocks = value.getBlocks();
+      parts = value.getParts();
+      notices = value.getNotices();
       useBlock = new boolean[blocks.size()];
       complete = true;
       refresh();
@@ -318,7 +318,7 @@ public final class DocumentActivity extends ThemedActivity {
       for (int i = 0; i < useBlock.length; i++) useBlock[i] = choices.getString(i).equals("block");
       if (original.size() != blocks.size()) throw new JSONException("Части не совпадают");
       complete = true;
-      appliedOperationId = operation.state().value == null ? null : operation.state().value.id;
+      appliedOperationId = operation.state().value == null ? null : operation.state().value.getId();
       refresh();
       active(false);
     } catch (Exception e) {

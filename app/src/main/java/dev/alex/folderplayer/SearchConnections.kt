@@ -11,7 +11,7 @@ import java.net.URL
 class SearchConnections(context: Context) : LyricsSearch.Connections {
     private val context: Context = context.applicationContext
 
-    override fun open(url: URL): java.net.URLConnection =
+    override fun open(url: URL): HttpURLConnection =
         openHttp(url)
 
     fun openHttp(url: URL): HttpURLConnection {

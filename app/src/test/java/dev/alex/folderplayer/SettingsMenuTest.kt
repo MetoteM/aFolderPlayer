@@ -28,7 +28,7 @@ class SettingsMenuTest {
         RuntimeEnvironment.getApplication().getSharedPreferences("playback",Context.MODE_PRIVATE).edit().clear().commit()
         val c=Robolectric.buildActivity(MainActivity::class.java).create().start()
         try {
-            MainActivity::class.java.getDeclaredMethod("settings").apply { isAccessible=true }.invoke(c.get())
+            c.get().settings()
             val menu=ShadowAlertDialog.getLatestAlertDialog();val list=menu.listView
             val index=(0 until list.count).first { list.adapter.getItem(it)=="Аудиокниги" }
             list.performItemClick(null,index,index.toLong())
