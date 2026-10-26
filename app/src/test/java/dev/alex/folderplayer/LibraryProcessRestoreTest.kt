@@ -64,7 +64,7 @@ class LibraryProcessRestoreTest {
                     .toString(),
             )
             .commit()
-        val first = mainActivityController().create().start().resume()
+        val first = mainActivityController().create().start().resume().visible()
         val saved = Bundle()
         try {
             awaitLibrary(first.get())
@@ -74,21 +74,25 @@ class LibraryProcessRestoreTest {
                     .single { it.text == "Далее →" }
                     .performClick()
             }
+            shadowOf(Looper.getMainLooper()).idle()
             layout(first.get())
             val scroll = (field(first.get(), "list") as View).parent as ScrollView
             scroll.scrollTo(0, 640)
+            assertEquals("Initial scroll", 640, scroll.scrollY)
             first.saveInstanceState(saved)
+            assertEquals("Saved scroll", 640, saved.getInt("libraryScroll"))
         } finally {
             first.pause().stop().destroy()
         }
         val restored =
-            mainActivityController().create(saved).start().resume()
+            mainActivityController().create(saved).start().resume().visible()
         try {
             awaitLibrary(restored.get())
             layout(restored.get())
             shadowOf(Looper.getMainLooper()).idle()
             assertEquals(2, field(restored.get(), "libraryPage"))
             assertEquals(
+                "Restored scroll",
                 640,
                 ((field(restored.get(), "list") as View).parent as ScrollView).scrollY,
             )
