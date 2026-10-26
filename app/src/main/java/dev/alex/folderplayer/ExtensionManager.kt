@@ -426,6 +426,9 @@ internal class ExtensionManager(
                 }
                 check(!cancelled && !closed) { "Загрузка отменена" }
                 check(part.renameTo(destination)) { "Не удалось сохранить файл" }
+                // Remember the verified digest so resume() can re-verify the same file
+                // before handing it to the installer.
+                prefs.edit().putString("pendingHash" + entry.kind, entry.hash).apply()
                 if (entry.kind != "model") {
                     validateComponent(
                         destination,
@@ -489,14 +492,16 @@ internal class ExtensionManager(
         val module = ExtensionModules.find(kind) ?: error("Неизвестное расширение")
         val pm = host.packageManager
         val info =
-            pm.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNATURES)
+            ApkIntegrity.archiveInfo(pm, file.absolutePath)
                 ?: error("Не удалось прочитать APK")
         require(expectedVersion == null || info.versionName == expectedVersion) {
             "Версия APK не соответствует каталогу"
         }
         require(info.versionCode.toLong()>=module.minimumCode) { "Версия расширения несовместима с этим плеером" }
         require(info.packageName == module.pkg) { "Это не ${module.title}" }
-        val own = pm.getPackageInfo(host.packageName, PackageManager.GET_SIGNATURES)
+        val own =
+            ApkIntegrity.installedInfo(pm, host.packageName)
+                ?: error("Не удалось прочитать подпись плеера")
         require(
             !info.signatures.isNullOrEmpty() && info.signatures?.toSet() == own.signatures?.toSet()
         ) {
@@ -564,12 +569,20 @@ internal class ExtensionManager(
         ) {
             prefs.edit().putBoolean("pendingInstall", false).apply()
             val kind = prefs.getString("pendingKind", "engine") ?: "engine"
-            if (ExtensionModules.find(kind) != null && File(folder, "$kind.apk").isFile) {
-                runCatching { installComponent(kind) }
-                    .onFailure {
-                        File(folder, "$kind.apk").delete()
-                        message(it.message ?: "Не удалось продолжить установку")
-                    }
+            val file = File(folder, "$kind.apk")
+            if (ExtensionModules.find(kind) != null && file.isFile) {
+                val expectedHash = prefs.getString("pendingHash$kind", null)
+                if (expectedHash != null && runCatching { ApkIntegrity.sha256(file) }.getOrNull() != expectedHash) {
+                    prefs.edit().remove("pendingHash$kind").apply()
+                    file.delete()
+                    message("Целостность APK расширения нарушена. Файл удалён, установи расширение заново.")
+                } else {
+                    runCatching { installComponent(kind) }
+                        .onFailure {
+                            File(folder, "$kind.apk").delete()
+                            message(it.message ?: "Не удалось продолжить установку")
+                        }
+                }
             }
         }
     }

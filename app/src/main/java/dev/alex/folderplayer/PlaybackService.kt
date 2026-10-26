@@ -37,6 +37,7 @@ class PlaybackService : MediaSessionService() {
     private lateinit var player: ExoPlayer
     private var session: MediaSession? = null
     private val handler = Handler(Looper.getMainLooper())
+    private val restoreExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     private val equalizer = SoftwareEqProcessor()
     private val prefs by lazy { getSharedPreferences("playback", MODE_PRIVATE) }
     private val books by lazy { Audiobooks(this) }
@@ -266,49 +267,63 @@ class PlaybackService : MediaSessionService() {
                 }
             }
         )
-        val tracks = Library(this).playableTracks().associateBy { it.uri }
-        var savedIndex = prefs.getInt("index", 0)
-        var savedPosition = prefs.getLong("position", 0)
-        val savedRepeat =
-            prefs
-                .getInt("requestedRepeat", prefs.getInt("repeat", Player.REPEAT_MODE_OFF))
-                .coerceIn(0, 2)
-        val savedShuffle = prefs.getBoolean("shuffle", false)
-        val store=OnlineLibraryStore(this)
-        val onlineSaved = runCatching { OnlinePlayback.items(store.read("playing")?.optJSONArray("tracks")?.toString() ?: store.queue(prefs.getString("onlineQueueId", "").orEmpty()) ?: prefs.getString("onlineQueue", "[]")!!) }.getOrDefault(emptyList()).filter { OnlinePlayback.trackId(android.net.Uri.parse(it.mediaId)) !in OnlineLibraryActions(this).ids("hidden") }.associateBy { it.mediaId }
-        val restoredBook=books.book(prefs.getString("activeBook", "").orEmpty())
-        val savedBookItems=restoredBook?.chapters?.associate { it.uri to it.item(restoredBook) }.orEmpty()
-        val saved =
-            Library.strings(prefs.getString("queue", "[]")!!).mapNotNull { savedBookItems[it] ?: tracks[it]?.item() ?: onlineSaved[it] }
-        val positionIndex = positionPrefs.getInt("index", -1)
-        if (
-            positionIndex in saved.indices &&
-                saved[positionIndex].mediaId == positionPrefs.getString("uri", null)
-        ) {
-            savedIndex = positionIndex
-            savedPosition = positionPrefs.getLong("position", savedPosition).coerceAtLeast(0)
+        // Heavy restore (full library scan, queue JSON, online catalogue, books) runs
+        // off the main thread; only the resulting player mutations are posted back.
+        // This keeps service startup constant regardless of library size.
+        restoreExecutor.execute {
+            val tracks = Library(this).playableTracks().associateBy { it.uri }
+            var savedIndex = prefs.getInt("index", 0)
+            var savedPosition = prefs.getLong("position", 0)
+            val savedRepeat =
+                prefs
+                    .getInt("requestedRepeat", prefs.getInt("repeat", Player.REPEAT_MODE_OFF))
+                    .coerceIn(0, 2)
+            val savedShuffle = prefs.getBoolean("shuffle", false)
+            val store = OnlineLibraryStore(this)
+            val onlineSaved = runCatching { OnlinePlayback.items(store.read("playing")?.optJSONArray("tracks")?.toString() ?: store.queue(prefs.getString("onlineQueueId", "").orEmpty()) ?: prefs.getString("onlineQueue", "[]")!!) }.getOrDefault(emptyList()).filter { OnlinePlayback.trackId(android.net.Uri.parse(it.mediaId)) !in OnlineLibraryActions(this).ids("hidden") }.associateBy { it.mediaId }
+            val restoredBook = books.book(prefs.getString("activeBook", "").orEmpty())
+            val savedBookItems = restoredBook?.chapters?.associate { it.uri to it.item(restoredBook) }.orEmpty()
+            val saved =
+                Library.strings(prefs.getString("queue", "[]")!!).mapNotNull { savedBookItems[it] ?: tracks[it]?.item() ?: onlineSaved[it] }
+            val positionIndex = positionPrefs.getInt("index", -1)
+            if (
+                positionIndex in saved.indices &&
+                    saved[positionIndex].mediaId == positionPrefs.getString("uri", null)
+            ) {
+                savedIndex = positionIndex
+                savedPosition = positionPrefs.getLong("position", savedPosition).coerceAtLeast(0)
+            }
+            if (restoredBook != null) {
+                val mark = books.position(restoredBook)
+                val found = saved.indexOfFirst { it.mediaId == mark.uri }
+                if (found >= 0) { savedIndex = found; savedPosition = mark.position }
+            } else prefs.edit().remove("activeBook").apply()
+            val startSpeed = restoredBook?.let { books.speed(it.id) }
+            handler.post {
+                if (::player.isInitialized) {
+                    if (restoredBook != null) player.setPlaybackSpeed(startSpeed!!)
+                    player.repeatMode = if (restoredBook != null) Player.REPEAT_MODE_OFF else savedRepeat
+                    player.shuffleModeEnabled = restoredBook == null && savedShuffle
+                    player.setPauseAtEndOfMediaItems(false)
+                    if (saved.isNotEmpty()) {
+                        player.setMediaItems(
+                            saved,
+                            savedIndex.coerceIn(0, saved.lastIndex),
+                            savedPosition.coerceAtLeast(0),
+                        )
+                        player.prepare()
+                    }
+                    // Drop only stale sleep deadlines left from a previous process;
+                    // a timer scheduled by the activity meanwhile must survive.
+                    val deadline = prefs.getLong("sleepDeadline", 0)
+                    if (deadline in 1 until System.currentTimeMillis())
+                        prefs.edit().remove("sleepDeadline").apply()
+                    saveState()
+                    scheduleCheckpoint()
+                    scheduleSleep()
+                }
+            }
         }
-        if(restoredBook!=null) {
-            val mark=books.position(restoredBook)
-            val found=saved.indexOfFirst { it.mediaId==mark.uri }
-            if(found>=0){savedIndex=found;savedPosition=mark.position}
-            player.setPlaybackSpeed(books.speed(restoredBook.id))
-        } else prefs.edit().remove("activeBook").apply()
-        player.repeatMode = if(restoredBook!=null) Player.REPEAT_MODE_OFF else savedRepeat
-        player.shuffleModeEnabled = restoredBook==null && savedShuffle
-        player.setPauseAtEndOfMediaItems(false)
-        if (saved.isNotEmpty()) {
-            player.setMediaItems(
-                saved,
-                savedIndex.coerceIn(0, saved.lastIndex),
-                savedPosition.coerceAtLeast(0),
-            )
-            player.prepare()
-        }
-        prefs.edit().remove("sleepDeadline").apply()
-        saveState()
-        scheduleCheckpoint()
-        scheduleSleep()
     }
 
     internal fun applyPlaybackCommand(action: String, args: Bundle): Int {
@@ -541,6 +556,7 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         onlinePreferences.unregisterOnSharedPreferenceChangeListener(hiddenListener)
         prefs.unregisterOnSharedPreferenceChangeListener(changeListener)
+        restoreExecutor.shutdownNow()
         handler.removeCallbacksAndMessages(null)
         saveState()
         session?.release()

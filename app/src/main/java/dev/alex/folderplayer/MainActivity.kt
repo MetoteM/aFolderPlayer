@@ -157,7 +157,7 @@ class MainActivity : ThemedActivity() {
                     }
 
                     override fun toggle() {
-                        controller?.let { if (it.isPlaying) it.pause() else { if(it.playbackState==Player.STATE_IDLE)it.prepare();it.play() } }
+                        togglePlay()
                         updatePlayer()
                     }
 
@@ -440,7 +440,7 @@ class MainActivity : ThemedActivity() {
         val controls = row()
         controls.addView(button("⏮") { controller?.seekToPreviousMediaItem() }, weight())
 
-        play = button("▶") { controller?.let { if (it.isPlaying) it.pause() else { if(it.playbackState==Player.STATE_IDLE)it.prepare();it.play() } } }
+        play = button("▶") { togglePlay() }
         controls.addView(play, weight())
         controls.addView(button("⏭") { controller?.seekToNextMediaItem() }, weight())
         layout.addView(controls)
@@ -800,6 +800,17 @@ class MainActivity : ThemedActivity() {
         query = ""
         search.setText("")
         render()
+    }
+
+    /** Single play/pause toggle for every entry point (sheet, transport row, lyrics screen). */
+    private fun togglePlay() {
+        controller?.let {
+            if (it.isPlaying) it.pause()
+            else {
+                if (it.playbackState == Player.STATE_IDLE) it.prepare()
+                it.play()
+            }
+        }
     }
 
     private fun updatePlayer() {
@@ -2383,7 +2394,7 @@ class MainActivity : ThemedActivity() {
             weight(),
         )
         controls.addView(
-            button("Пауза / ▶") { controller?.let { if (it.isPlaying) it.pause() else { if(it.playbackState==Player.STATE_IDLE)it.prepare();it.play() } } },
+            button("Пауза / ▶") { togglePlay() },
             weight(),
         )
         val next = button("Отметить строку") {}

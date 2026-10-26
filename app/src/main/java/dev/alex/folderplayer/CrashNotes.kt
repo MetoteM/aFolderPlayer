@@ -34,7 +34,7 @@ internal object CrashNotes {
                     cause=value.cause?.takeIf { it!==value }
                 }
             }.take(12000)
-            context.getSharedPreferences("local_crash",0).edit().putString(if(fatal)"fatal" else "trace",text).commit()
+            context.getSharedPreferences("local_crash",0).edit().putString(if(fatal)"fatal" else "trace",text).apply()
         }
     }
     fun show(host:Activity) {

@@ -170,9 +170,15 @@ internal class AppUpdates(
         AlertDialog.Builder(host)
             .setTitle("Обновление")
             .setMessage(
-                if (error is java.io.IOException && error.message.orEmpty().none { it in 'А'..'я' })
-                    "Не удалось проверить источник обновлений. Проверь подключение или попробуй позже."
-                else error.message ?: "Не удалось проверить обновление. Попробуй позже."
+                when (error) {
+                    is java.net.UnknownHostException,
+                    is java.net.ConnectException,
+                    is java.net.SocketTimeoutException,
+                    is javax.net.ssl.SSLException,
+                    is java.io.InterruptedIOException ->
+                        "Не удалось проверить источник обновлений. Проверь подключение или попробуй позже."
+                    else -> error.message ?: "Не удалось проверить обновление. Попробуй позже."
+                }
             )
             .setPositiveButton("Закрыть", null)
             .show()
@@ -340,6 +346,9 @@ internal class AppUpdates(
                 validate(part, release.version)
                 active()
                 check(part.renameTo(file)) { "Не удалось сохранить APK" }
+                // Remember the verified digest so resume() can re-verify the same file
+                // before handing it to the installer.
+                prefs.edit().putString("pendingInstallHash", release.hash).apply()
                 main.post { if (!closed && !cancelled) install() }
             } finally {
                 connection = null
@@ -348,13 +357,14 @@ internal class AppUpdates(
             }
         }
 
-    @Suppress("DEPRECATION")
     internal fun validate(file: File, expectedVersion: String) {
         val pm = host.packageManager
         val apk =
-            pm.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNATURES)
+            ApkIntegrity.archiveInfo(pm, file.absolutePath)
                 ?: error("Не удалось прочитать APK обновления")
-        val own = pm.getPackageInfo(host.packageName, PackageManager.GET_SIGNATURES)
+        val own =
+            ApkIntegrity.installedInfo(pm, host.packageName)
+                ?: error("Не удалось прочитать подпись плеера")
         validateInfo(apk, own, host.packageName, expectedVersion)
     }
 
@@ -406,7 +416,7 @@ internal class AppUpdates(
         }
         val previous = prefs.getString("reviewAfterVersion", null)
         if (previous != null && previous != installedVersion()) {
-            prefs.edit().remove("reviewAfterVersion").remove("pendingInstall").apply()
+            prefs.edit().remove("reviewAfterVersion").remove("pendingInstall").remove("pendingInstallHash").apply()
             check()
             return
         }
@@ -414,6 +424,13 @@ internal class AppUpdates(
         prefs.edit().remove("pendingInstall").apply()
         val file = File(folder, "player-update.apk")
         if (file.isFile && host.packageManager.canRequestPackageInstalls()) {
+            val expectedHash = prefs.getString("pendingInstallHash", null)
+            if (expectedHash != null && runCatching { ApkIntegrity.sha256(file) }.getOrNull() != expectedHash) {
+                file.delete()
+                prefs.edit().remove("pendingInstallHash").apply()
+                showError(IllegalStateException("Целостность APK обновления нарушена. Файл удалён, скачай обновление заново."))
+                return
+            }
             @Suppress("DEPRECATION")
             val version =
                 host.packageManager.getPackageArchiveInfo(file.absolutePath, 0)?.versionName
