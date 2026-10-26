@@ -62,7 +62,7 @@ internal class SoftwareEqProcessor : BaseAudioProcessor() {
             fadeFrame = 0
         }
         val output = replaceOutputBuffer(inputBuffer.remaining()).order(ByteOrder.nativeOrder())
-        if (current.isBypass && previous == null) {
+        if (current.isBypass() && previous == null) {
             output.put(inputBuffer)
             output.flip()
             return

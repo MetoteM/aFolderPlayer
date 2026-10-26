@@ -116,7 +116,7 @@ public final class DocumentActivity extends ThemedActivity {
     if (state != null) appliedOperationId = state.getString("appliedOperationId");
     operation.attach(this::showOperation);
     if (state == null
-        && operation.state().key == null
+        && operation.state().getKey() == null
         && getIntent().getBooleanExtra("translateNow", false)) translate();
   }
 
@@ -196,14 +196,14 @@ public final class DocumentActivity extends ThemedActivity {
   }
 
   private void showOperation(RetainedOperation.Snapshot<DocumentResult> state) {
-    if (state.key == null) return;
-    if (state.busy) {
+    if (state.getKey() == null) return;
+    if (state.getBusy()) {
       active(true);
-      status.setText(state.message);
+      status.setText(state.getMessage());
       return;
     }
-    if (state.value != null && !state.value.getId().equals(appliedOperationId)) {
-      DocumentResult value = state.value;
+    if (state.getValue() != null && !state.getValue().getId().equals(appliedOperationId)) {
+      DocumentResult value = state.getValue();
       appliedOperationId = value.getId();
       source = value.getSource();
       model = value.getModel();
@@ -215,7 +215,7 @@ public final class DocumentActivity extends ThemedActivity {
       complete = true;
       refresh();
     }
-    if (state.failure != null) status.setText("Перевод не завершён: " + state.failure.getMessage());
+    if (state.getFailure() != null) status.setText("Перевод не завершён: " + state.getFailure().getMessage());
     active(false);
   }
 
@@ -318,7 +318,7 @@ public final class DocumentActivity extends ThemedActivity {
       for (int i = 0; i < useBlock.length; i++) useBlock[i] = choices.getString(i).equals("block");
       if (original.size() != blocks.size()) throw new JSONException("Части не совпадают");
       complete = true;
-      appliedOperationId = operation.state().value == null ? null : operation.state().value.getId();
+      appliedOperationId = operation.state().getValue() == null ? null : operation.state().getValue().getId();
       refresh();
       active(false);
     } catch (Exception e) {
