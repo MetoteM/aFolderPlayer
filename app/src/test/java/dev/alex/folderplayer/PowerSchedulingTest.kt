@@ -3,6 +3,7 @@ package dev.alex.folderplayer
 import android.os.Looper
 import java.time.Duration
 import org.junit.Assert.*
+import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -14,11 +15,12 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], manifest = Config.NONE)
 class PowerSchedulingTest {
+    @After fun resetRestore(){disableSyncRestore()}
     @Test
     fun pausedServiceDoesNotWritePeriodicallyAndSleepTimerStillFires() {
         val prefs = RuntimeEnvironment.getApplication().getSharedPreferences("playback", 0)
         prefs.edit().clear().commit()
-        val host = Robolectric.buildService(PlaybackService::class.java).create()
+        val host = buildServiceSync()
         try {
             shadowOf(Looper.getMainLooper()).idle()
             val initial = prefs.all.toMap()
@@ -58,7 +60,7 @@ class PowerSchedulingTest {
             .putInt("index", 0)
             .putLong("position", 3600)
             .commit()
-        val host = Robolectric.buildService(PlaybackService::class.java).create()
+        val host = buildServiceSync()
         try {
             val player =
                 PlaybackService::class

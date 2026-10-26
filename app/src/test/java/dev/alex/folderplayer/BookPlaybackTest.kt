@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.media3.common.Player
 import androidx.media3.session.SessionResult
 import org.junit.Assert.*
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -15,6 +16,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[28],manifest=Config.NONE)
 class BookPlaybackTest {
+    @After fun resetRestore(){disableSyncRestore()}
     private val app get()=RuntimeEnvironment.getApplication()
     private val books get()=Audiobooks(app)
     private val prefs get()=app.getSharedPreferences("playback",0)
@@ -25,7 +27,7 @@ class BookPlaybackTest {
     @Test fun bookResumesAtSavedChapterAndSpeedAndRestoresAfterServiceRestart(){
         val b=book("a");books.put(b);books.savePosition(b.id,b.chapters[1].uri,43000);books.setSpeed(b.id,1.5f)
         prefs.edit().putInt("requestedRepeat",Player.REPEAT_MODE_ALL).commit()
-        val host=Robolectric.buildService(PlaybackService::class.java).create()
+        val host=buildServiceSync()
         try {
             assertEquals(SessionResult.RESULT_SUCCESS,start(host.get(),b.id))
             val p=player(host.get());p.pause()
@@ -33,13 +35,13 @@ class BookPlaybackTest {
             assertEquals(1.5f,p.playbackParameters.speed);assertEquals(Player.REPEAT_MODE_OFF,p.repeatMode);assertFalse(p.shuffleModeEnabled)
             p.seekTo(57000)
         } finally { host.destroy() }
-        val restored=Robolectric.buildService(PlaybackService::class.java).create()
+        val restored=buildServiceSync()
         try {val p=player(restored.get());assertEquals(1,p.currentMediaItemIndex);assertEquals(57000L,p.currentPosition);assertEquals(1.5f,p.playbackParameters.speed)}finally { restored.destroy() }
     }
     @Test fun switchingBooksAndThenMusicKeepsIndependentPositionsAndResetsSpeed(){
         val a=book("a");val b=book("b");books.put(a);books.put(b);books.setSpeed(a.id,1.75f)
         app.getSharedPreferences("library",0).edit().putString("tracks","""[{"uri":"file:///music.wav","title":"Music","artist":"","duration":30000,"folder":""}]""").commit()
-        val host=Robolectric.buildService(PlaybackService::class.java).create()
+        val host=buildServiceSync()
         try {
             val s=host.get();start(s,a.id);val p=player(s);p.pause();p.seekTo(24000)
             start(s,b.id);p.pause();p.seekTo(36000)
@@ -51,7 +53,7 @@ class BookPlaybackTest {
     }
     @Test fun bookmarkJumpAndCompletedBookRestartAreExplicit(){
         val b=book("a");books.put(b);books.savePosition(b.id,b.chapters.last().uri,180000,true)
-        val host=Robolectric.buildService(PlaybackService::class.java).create()
+        val host=buildServiceSync()
         try {
             val s=host.get();val p=player(s)
             assertEquals(SessionResult.RESULT_SUCCESS,start(s,b.id));p.pause();assertEquals(0,p.currentMediaItemIndex);assertEquals(0L,p.currentPosition)
@@ -62,7 +64,7 @@ class BookPlaybackTest {
     }
     @Test fun completedBookStaysCompletedWhenSwitchingAwayAndRestartsFromBeginning(){
         val a=book("a");val b=book("b");books.put(a);books.put(b)
-        val host=Robolectric.buildService(PlaybackService::class.java).create()
+        val host=buildServiceSync()
         try {
             val service=host.get();val p=player(service)
             start(service,a.id,a.chapters.last().uri,180000);p.pause()

@@ -38,6 +38,15 @@ class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private val handler = Handler(Looper.getMainLooper())
     private val restoreExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+    companion object {
+        /**
+         * Test hook: when set, the heavy restore runs on this executor instead
+         * of the background one. Robolectric tests inject a synchronous
+         * executor so restore is deterministic (no thread race on assertions).
+         */
+        @JvmStatic internal var restoreExecutorOverride: java.util.concurrent.Executor? = null
+    }
     private val equalizer = SoftwareEqProcessor()
     private val prefs by lazy { getSharedPreferences("playback", MODE_PRIVATE) }
     private val books by lazy { Audiobooks(this) }
@@ -270,7 +279,7 @@ class PlaybackService : MediaSessionService() {
         // Heavy restore (full library scan, queue JSON, online catalogue, books) runs
         // off the main thread; only the resulting player mutations are posted back.
         // This keeps service startup constant regardless of library size.
-        restoreExecutor.execute {
+        (restoreExecutorOverride ?: restoreExecutor).execute {
             val tracks = Library(this).playableTracks().associateBy { it.uri }
             var savedIndex = prefs.getInt("index", 0)
             var savedPosition = prefs.getLong("position", 0)
