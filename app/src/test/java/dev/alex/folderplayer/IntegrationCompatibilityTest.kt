@@ -48,6 +48,7 @@ class IntegrationCompatibilityTest {
             assertEquals("afp-yandex://track/101",p.currentMediaItem!!.mediaId);assertEquals(1234L,p.currentPosition);assertEquals(before,p.playWhenReady)
         } finally { host.destroy() }
         val restored=Robolectric.buildService(PlaybackService::class.java).create()
+        awaitPlaybackRestore(restored.get())
         try {
             val q=player(restored.get());q.pause()
             assertEquals(listOf(items[2].uri,"afp-yandex://track/101","afp-yandex://track/102"),(0 until q.mediaItemCount).map { q.getMediaItemAt(it).mediaId })

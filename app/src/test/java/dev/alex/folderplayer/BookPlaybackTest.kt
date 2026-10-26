@@ -34,6 +34,7 @@ class BookPlaybackTest {
             p.seekTo(57000)
         } finally { host.destroy() }
         val restored=Robolectric.buildService(PlaybackService::class.java).create()
+        awaitPlaybackRestore(restored.get())
         try {val p=player(restored.get());assertEquals(1,p.currentMediaItemIndex);assertEquals(57000L,p.currentPosition);assertEquals(1.5f,p.playbackParameters.speed)}finally { restored.destroy() }
     }
     @Test fun switchingBooksAndThenMusicKeepsIndependentPositionsAndResetsSpeed(){

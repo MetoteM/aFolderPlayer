@@ -489,16 +489,16 @@ internal class ExtensionManager(
         val module = ExtensionModules.find(kind) ?: error("Неизвестное расширение")
         val pm = host.packageManager
         val info =
-            pm.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNATURES)
+            pm.getPackageArchiveInfo(file.absolutePath, ApkIdentity.flags)
                 ?: error("Не удалось прочитать APK")
         require(expectedVersion == null || info.versionName == expectedVersion) {
             "Версия APK не соответствует каталогу"
         }
         require(info.versionCode.toLong()>=module.minimumCode) { "Версия расширения несовместима с этим плеером" }
         require(info.packageName == module.pkg) { "Это не ${module.title}" }
-        val own = pm.getPackageInfo(host.packageName, PackageManager.GET_SIGNATURES)
+        val own = pm.getPackageInfo(host.packageName, ApkIdentity.flags)
         require(
-            !info.signatures.isNullOrEmpty() && info.signatures?.toSet() == own.signatures?.toSet()
+            ApkIdentity.matches(info, own)
         ) {
             "Подпись расширения не совпадает с плеером"
         }

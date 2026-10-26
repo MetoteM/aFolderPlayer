@@ -38,4 +38,20 @@ class RetainedOperationTest {
    assertEquals(listOf("current"),values)
   }finally{unblock.countDown();work.close()}
  }
+ @Test fun closingOperationInterruptsWorkAndNeverDeliversCompletion() {
+  val work=RetainedOperation<String>();val started=CountDownLatch(1);val stopped=CountDownLatch(1)
+  var delivered=false
+  work.attach { if(it.value!=null)delivered=true }
+  work.start("scan") { _,_ ->
+   started.countDown()
+   try { CountDownLatch(1).await();"unexpected" }
+   finally { stopped.countDown() }
+  }
+  assertTrue(started.await(2,TimeUnit.SECONDS))
+  work.close()
+  assertTrue(stopped.await(2,TimeUnit.SECONDS))
+  shadowOf(Looper.getMainLooper()).idle()
+  assertFalse(delivered)
+ }
+
 }

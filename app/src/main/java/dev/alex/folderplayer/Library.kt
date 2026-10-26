@@ -74,8 +74,11 @@ internal data class Track(
             .put("artworkUri", artworkUri)
 }
 
-internal class Library(private val context: Context) {
-    private val prefs = context.getSharedPreferences("library", Context.MODE_PRIVATE)
+internal class Library(sourceContext: Context) {
+    private val context = sourceContext.applicationContext
+    private val prefs = sourceContext.getSharedPreferences("library", Context.MODE_PRIVATE)
+
+    private val trackStore = LibraryTrackStore(prefs)
 
     fun hiddenTracks(): Set<String> = prefs.getStringSet("hiddenTracks", emptySet())!!.toSet()
 
@@ -107,34 +110,7 @@ internal class Library(private val context: Context) {
         }
     }
 
-    private fun storedTracks(): List<Track> =
-        runCatching {
-                val a = JSONArray(prefs.getString("tracks", "[]"))
-                (0 until a.length()).map { i ->
-                    a.getJSONObject(i).let {
-                        Track(
-                            it.getString("uri"),
-                            it.getString("title"),
-                            it.getString("artist"),
-                            it.getLong("duration"),
-                            it.getString("folder"),
-                            it.optString("filename", ""),
-                            it.optString("album", ""),
-                            it.optString("albumArtist", ""),
-                            it.optInt("year", 0).takeIf { n -> n in 1000..9999 },
-                            it.optInt("trackNumber", 0).takeIf { n -> n > 0 },
-                            it.optInt("discNumber", 0).takeIf { n -> n > 0 },
-                            it.optString("rootUri", ""),
-                            it.optString("sourceUri", it.getString("uri")),
-                            it.optLong("cueStartMs", 0),
-                            it.optLong("cueEndMs", -1).takeIf { end -> end>0 },
-                            it.optString("cueSheetUri", ""),
-                            it.optString("artworkUri", ""),
-                        )
-                    }
-                }
-            }
-            .getOrDefault(emptyList())
+    private fun storedTracks(): List<Track> = trackStore.read()
 
     fun tracks(): List<Track> {
         val excluded=prefs.getStringSet("excludedTracks", emptySet())!!.toSet()
@@ -264,7 +240,7 @@ internal class Library(private val context: Context) {
                 previous.filter { it.rootUri in failedRoots }
             val complete = published.distinctBy { it.uri }.sortedBy { it.title.lowercase() }
             migrateCueReferences(complete)
-            prefs.edit().putString("tracks", JSONArray(complete.map { it.json() }).toString()).apply()
+            trackStore.write(complete)
             syncFolderPlaylists(complete)
             return ScanResult(tracks(), errors, failedRoots.count { root -> previous.any { it.rootUri == root } })
         }

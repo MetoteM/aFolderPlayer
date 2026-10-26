@@ -51,6 +51,26 @@ internal class AppUpdates(
             return 0
         }
 
+        internal fun verifyDownload(file: File, size: Long, hash: String) {
+            require(size in 1..MAX_APK && file.length() == size) { "Размер APK не совпадает" }
+            val digest = MessageDigest.getInstance("SHA-256")
+            file.inputStream().use { input ->
+                val buffer = ByteArray(65536)
+                var total = 0L
+                while (true) {
+                    if (Thread.currentThread().isInterrupted) throw InterruptedException()
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    total += count
+                    require(total <= size) { "Размер APK не совпадает" }
+                    digest.update(buffer, 0, count)
+                }
+                require(total == size && digest.digest().joinToString("") { "%02x".format(it) } == hash) {
+                    "APK повреждён. Скачай обновление повторно."
+                }
+            }
+        }
+
         @Suppress("DEPRECATION")
         internal fun validateInfo(
             apk: PackageInfo,
@@ -62,8 +82,7 @@ internal class AppUpdates(
                 "APK не соответствует обновлению плеера"
             }
             require(
-                !apk.signatures.isNullOrEmpty() &&
-                    apk.signatures?.toSet() == own.signatures?.toSet()
+                ApkIdentity.matches(apk, own)
             ) {
                 "Подпись APK не совпадает. Установка отменена."
             }
@@ -170,7 +189,7 @@ internal class AppUpdates(
         AlertDialog.Builder(host)
             .setTitle("Обновление")
             .setMessage(
-                if (error is java.io.IOException && error.message.orEmpty().none { it in 'А'..'я' })
+                if (error is java.io.IOException)
                     "Не удалось проверить источник обновлений. Проверь подключение или попробуй позже."
                 else error.message ?: "Не удалось проверить обновление. Попробуй позже."
             )
@@ -340,6 +359,8 @@ internal class AppUpdates(
                 validate(part, release.version)
                 active()
                 check(part.renameTo(file)) { "Не удалось сохранить APK" }
+                prefs.edit().putString("downloadVersion", release.version)
+                    .putString("downloadHash", release.hash).putLong("downloadSize", release.size).apply()
                 main.post { if (!closed && !cancelled) install() }
             } finally {
                 connection = null
@@ -352,9 +373,9 @@ internal class AppUpdates(
     internal fun validate(file: File, expectedVersion: String) {
         val pm = host.packageManager
         val apk =
-            pm.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNATURES)
+            pm.getPackageArchiveInfo(file.absolutePath, ApkIdentity.flags)
                 ?: error("Не удалось прочитать APK обновления")
-        val own = pm.getPackageInfo(host.packageName, PackageManager.GET_SIGNATURES)
+        val own = pm.getPackageInfo(host.packageName, ApkIdentity.flags)
         validateInfo(apk, own, host.packageName, expectedVersion)
     }
 
@@ -414,18 +435,21 @@ internal class AppUpdates(
         prefs.edit().remove("pendingInstall").apply()
         val file = File(folder, "player-update.apk")
         if (file.isFile && host.packageManager.canRequestPackageInstalls()) {
-            @Suppress("DEPRECATION")
-            val version =
-                host.packageManager.getPackageArchiveInfo(file.absolutePath, 0)?.versionName
-                    ?: return
-            runCatching {
-                    validate(file, version)
-                    install()
-                }
-                .onFailure {
+            run("Проверяем скачанное обновление…") {
+                try {
+                    val expectedVersion = prefs.getString("downloadVersion", null)
+                        ?: error("Скачай обновление повторно")
+                    val expectedHash = prefs.getString("downloadHash", null)
+                        ?: error("Скачай обновление повторно")
+                    verifyDownload(file, prefs.getLong("downloadSize", -1), expectedHash)
+                    validate(file, expectedVersion)
+                    active()
+                    main.post { if (!closed && !cancelled) install() }
+                } catch (error: Exception) {
                     file.delete()
-                    showError(it)
+                    throw error
                 }
+            }
         }
     }
 

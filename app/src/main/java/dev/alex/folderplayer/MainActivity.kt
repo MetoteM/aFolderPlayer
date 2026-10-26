@@ -30,6 +30,7 @@ class MainActivity : ThemedActivity() {
     private lateinit var pageMotion: SheetMotion
     private var soundReturn = "player"
     private var lyricsRequestedId: String? = null
+    private lateinit var scanWork: RetainedOperation<Library.ScanResult>
     private lateinit var lyricsWork: RetainedOperation<List<LyricsSearch.Result>>
     private var directId: String? = null
     private var directResults = emptyList<LyricsSearch.Result>()
@@ -122,6 +123,7 @@ class MainActivity : ThemedActivity() {
         val retained = lastNonConfigurationInstance as? MainOperations
         translationWork = retained?.translation ?: RetainedOperation()
         lyricsWork = retained?.lyrics ?: RetainedOperation()
+        scanWork = retained?.scan ?: RetainedOperation()
         soundReturn = state?.getString("soundReturn") ?: "player"
         lyricTarget = state?.getString("lyricTarget")
         library = Library(this)
@@ -478,6 +480,7 @@ class MainActivity : ThemedActivity() {
             state?.getString("uiPage") ?: prefs.getString("uiPage", "library").orEmpty(),
             false,
         )
+        scanWork.attach { showScan(it) }
     }
 
     private fun row() =
@@ -1426,35 +1429,29 @@ class MainActivity : ThemedActivity() {
     }
 
     private fun scan() {
+        if (scanWork.state().busy) return
         LocalArtwork.clear()
-        if (scanning) return
-        scanning = true
-        render()
-        executor.execute {
-            val result = runCatching { library.scan() }
-            handler.post {
-                if (alive) {
-                    scanning = false
-                    result
-                        .onSuccess { (items, errors, retainedRoots) ->
-                            tracks = items
-                            mediaLoadedId=null;queueTimeline=null;queueTracks=null
-                            render()
-                            reorderPlayingQueue(prefs.getString("queueSource", "").orEmpty(), true)
-                            toast(
-                                "В библиотеке ${items.size} песен" +
-                                    (if (retainedRoots > 0) ". Сохранены данные недоступных папок: $retainedRoots" else "") +
-                                    if (errors > 0) ". Не удалось прочитать файлов/папок: $errors"
-                                    else ""
-                            )
-                        }
-                        .onFailure {
-                            render()
-                            toast("Не удалось обновить библиотеку")
-                        }
-                }
-            }
+        // Capture only the application-owned library, never this Activity.
+        val source = Library(applicationContext)
+        scanWork.start("library") { _, _ -> source.scan() }
+    }
+
+    private fun showScan(state: RetainedOperation.Snapshot<Library.ScanResult>) {
+        scanning = state.busy
+        val result = state.value
+        if (result != null || state.failure != null) {
+            // Consume completion before rendering; rotation must not repeat notifications.
+            scanWork.cancel()
+            if (result != null) {
+                tracks = result.tracks
+                mediaLoadedId = null; queueTimeline = null; queueTracks = null
+                reorderPlayingQueue(prefs.getString("queueSource", "").orEmpty(), true)
+                toast("В библиотеке ${result.tracks.size} песен" +
+                    (if (result.retainedRoots > 0) ". Сохранены данные недоступных папок: ${result.retainedRoots}" else "") +
+                    if (result.errors > 0) ". Не удалось прочитать файлов/папок: ${result.errors}" else "")
+            } else toast("Не удалось обновить библиотеку")
         }
+        render()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -1556,10 +1553,11 @@ class MainActivity : ThemedActivity() {
     private class MainOperations(
         val translation: RetainedOperation<SongTranslationResult>,
         val lyrics: RetainedOperation<List<LyricsSearch.Result>>,
+        val scan: RetainedOperation<Library.ScanResult>,
     )
 
     override fun onRetainNonConfigurationInstance(): Any =
-        MainOperations(translationWork, lyricsWork)
+        MainOperations(translationWork, lyricsWork, scanWork)
 
     override fun onSaveInstanceState(out: Bundle) {
         out.putString("soundReturn", soundReturn)
@@ -2752,6 +2750,8 @@ class MainActivity : ThemedActivity() {
 
     override fun onDestroy() {
         pageMotion.cancel()
+        scanWork.detach()
+        if (!isChangingConfigurations) scanWork.close()
         translationWork.detach()
         if (!isChangingConfigurations) translationWork.close()
         extensionManager.close()

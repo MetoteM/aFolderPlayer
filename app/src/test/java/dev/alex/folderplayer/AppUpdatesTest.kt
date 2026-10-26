@@ -34,11 +34,14 @@ class AppUpdatesTest {
  }
  @Suppress("DEPRECATION") private fun info(version:String="0.6.0",code:Int=25,signature:Byte=1)=PackageInfo().apply {
   packageName="dev.alex.folderplayer";versionName=version;versionCode=code;signatures=arrayOf(Signature(byteArrayOf(signature)))
+  signingInfo=android.content.pm.SigningInfo().also {
+   org.robolectric.Shadows.shadowOf(it).setSignatures(signatures)
+  }
  }
  @Test fun acceptsOnlyMatchingIdentityAndStrictlyNewerApk() {
   val own=info("0.5.2",24)
   AppUpdates.validateInfo(info(),own,own.packageName,"0.6.0")
-  val bad=listOf(info(signature=2),info(code=24),info(code=23),info(version="0.7.0"),info().apply { packageName="dev.alex.afptranslate" },info().apply { signatures=emptyArray() })
+  val bad=listOf(info(signature=2),info(code=24),info(code=23),info(version="0.7.0"),info().apply { packageName="dev.alex.afptranslate" },info().apply { signingInfo=null;signatures=emptyArray() })
   for(apk in bad)assertThrows(IllegalArgumentException::class.java) { AppUpdates.validateInfo(apk,own,own.packageName,"0.6.0") }
  }
  @Test fun installedRcCanUpgradeToMatchingStableButNeverSelectsOlderOrPrerelease() {
@@ -48,4 +51,16 @@ class AppUpdatesTest {
   assertNull(AppUpdates.candidate(bytes,"0.8.4"))
  }
 
+ @Test fun downloadedApkMustStillMatchOriginalHashAndSizeAfterPermissionReturn() {
+  val file=java.io.File.createTempFile("afp-update", ".apk")
+  try {
+   file.writeBytes(byteArrayOf(1,2,3))
+   val hash=java.security.MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+   AppUpdates.verifyDownload(file,3,hash)
+   file.writeBytes(byteArrayOf(1,2,4))
+   assertThrows(IllegalArgumentException::class.java) { AppUpdates.verifyDownload(file,3,hash) }
+   assertThrows(IllegalArgumentException::class.java) { AppUpdates.verifyDownload(file,2,hash) }
+   assertThrows(IllegalArgumentException::class.java) { AppUpdates.verifyDownload(file,-1,hash) }
+  } finally { file.delete() }
+ }
 }

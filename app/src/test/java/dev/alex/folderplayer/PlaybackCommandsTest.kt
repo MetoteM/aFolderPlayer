@@ -29,6 +29,7 @@ class PlaybackCommandsTest {
    assertEquals(Player.REPEAT_MODE_ALL,player(service).repeatMode)
   } finally { host.destroy() }
   val restored=Robolectric.buildService(PlaybackService::class.java).create()
+        awaitPlaybackRestore(restored.get())
   try { assertEquals(Player.REPEAT_MODE_ALL,player(restored.get()).repeatMode) } finally { restored.destroy() }
  }
  @Test fun queueStartsWithFullSourceAtChosenItemAndPreservesRepeat() {
@@ -68,6 +69,7 @@ class PlaybackCommandsTest {
    assertFalse(expected.contains("afp-yandex://track/900"))
   } finally { host.destroy() }
   val restored=Robolectric.buildService(PlaybackService::class.java).create()
+        awaitPlaybackRestore(restored.get())
   try {
    val p=player(restored.get());p.pause()
    assertEquals(expected,(0 until p.mediaItemCount).map { p.getMediaItemAt(it).mediaId })

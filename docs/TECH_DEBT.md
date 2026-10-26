@@ -38,3 +38,35 @@
 ## TD-DEVICE-080 — физическое устройство и расход батареи
 
 Пользователь 14 октября поручил выполнить релиз 0.8.0. Автоматический CI исходников пройден; перед публикацией выполняется smoke подписанного APK на Android-эмуляторе. Проверка физического ARM64-устройства остаётся открытой: воспроизведение MP3/FLAC через Bluetooth/USB, оба режима определителя, все языки, фоновое управление и сравнение батареи при одинаковых условиях. Эмулятор проверяет установку, совместимость подписи, сохранность плейлиста и поворот; не измеряет расход реального телефона.
+
+## TD-ARCH-095 — lifecycle and library storage after 0.9.5
+
+The review follow-up moves library scanning to an application-context worker retained
+across configuration changes. Final screen destruction interrupts it and detaches
+its observer. Playback startup reads queue metadata on a worker and applies the
+result on the player looper; explicit queue commands invalidate late restoration.
+A pending restore must never write an empty queue or overwrite saved positions.
+
+LibraryTrackStore shares an immutable decoded snapshot across Library instances.
+Changes to the original preferences invalidate it; exclusions, hidden tracks and
+manual album years remain outside the raw cache. The 0.9.5 storage format remains
+compatible. This removes repeated JSON decoding, not the cost of cold loading or
+full-list filtering. MainActivity still reads the library synchronously at startup.
+
+Remaining work before calling the architecture cleanup complete:
+
+- Give remaining Activity workers explicit lifecycle ownership and cancellation;
+  extract library browsing and playback connection responsibilities incrementally.
+- Move cold UI loading off the main thread, with loading/error states and tests
+  for selection and navigation while loading.
+- Measure large libraries on a device; migrate persistent metadata to a repository
+  with indexed storage if justified. Test migration failure, restart and preservation
+  of roots, playlists, exclusions, manual tags and playback references.
+- Perform physical-device checks for background playback, headset commands, service
+  restart and rotation during scanning. Unit tests do not replace these checks.
+
+APK identity checks use current signer sets on API 28+ and the legacy API on 26–27.
+All current signers must match exactly. Historical ancestors alone are not trusted.
+Key rotation is intentionally not enabled by this refactor: it needs an explicit
+upgrade policy, Android-version compatibility checks and a recovery exercise using
+verified backups. Preserve the existing release key and signing identity.
