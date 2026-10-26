@@ -129,7 +129,8 @@ class MainActivity : ThemedComponentActivity() {
         super.onCreate(state)
         CrashNotes.install(this)
         restoredBrowseState = state != null
-        model = ViewModelProvider(this)[MainViewModel::class.java]
+        model =
+            ViewModelProvider(this, MainViewModel.factory(application))[MainViewModel::class.java]
         translationWork = model.translation
         lyricsWork = model.lyrics
         scanWork = model.scan

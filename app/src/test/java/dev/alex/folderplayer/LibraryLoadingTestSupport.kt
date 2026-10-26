@@ -15,3 +15,15 @@ internal fun awaitLibrary(activity: MainActivity) {
     }
     assertFalse("Library loading timed out", field.getBoolean(activity))
 }
+
+internal fun mainActivityController():
+    org.robolectric.android.controller.ActivityController<MainActivity> {
+    val app = org.robolectric.RuntimeEnvironment.getApplication()
+    org.robolectric.Shadows.shadowOf(app)
+        .setComponentNameAndServiceForBindService(
+            android.content.ComponentName(app, PlaybackService::class.java),
+            android.os.Binder(),
+        )
+    org.robolectric.Shadows.shadowOf(app).setUnbindServiceCallsOnServiceDisconnected(false)
+    return org.robolectric.Robolectric.buildActivity(MainActivity::class.java)
+}

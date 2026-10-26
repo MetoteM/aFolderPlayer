@@ -3,6 +3,8 @@ package dev.alex.folderplayer
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -66,5 +68,11 @@ constructor(
         lyrics.close()
         scan.close()
         super.onCleared()
+    }
+
+    companion object {
+        fun factory(application: Application) = viewModelFactory {
+            initializer { MainViewModel(application) }
+        }
     }
 }

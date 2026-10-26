@@ -64,7 +64,7 @@ class LibraryProcessRestoreTest {
                     .toString(),
             )
             .commit()
-        val first = Robolectric.buildActivity(MainActivity::class.java).create().start().resume()
+        val first = mainActivityController().create().start().resume()
         val saved = Bundle()
         try {
             awaitLibrary(first.get())
@@ -82,7 +82,7 @@ class LibraryProcessRestoreTest {
             first.pause().stop().destroy()
         }
         val restored =
-            Robolectric.buildActivity(MainActivity::class.java).create(saved).start().resume()
+            mainActivityController().create(saved).start().resume()
         try {
             awaitLibrary(restored.get())
             layout(restored.get())

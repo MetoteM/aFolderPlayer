@@ -25,7 +25,7 @@ class MainScanLifecycleTest {
         app.getSharedPreferences("library",0).edit().clear().commit()
         shadowOf(app).setComponentNameAndServiceForBindService(ComponentName(app,PlaybackService::class.java),Binder())
         shadowOf(app).setUnbindServiceCallsOnServiceDisconnected(false)
-        val screen=Robolectric.buildActivity(MainActivity::class.java).create().start().also { awaitLibrary(it.get()) }.resume()
+        val screen=mainActivityController().create().start().also { awaitLibrary(it.get()) }.resume()
         val old=screen.get()
         @Suppress("UNCHECKED_CAST")
         val work=field(old,"scanWork") as RetainedOperation<Library.ScanResult>

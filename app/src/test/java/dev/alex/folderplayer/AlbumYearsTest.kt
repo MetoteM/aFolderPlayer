@@ -19,7 +19,7 @@ class AlbumYearsTest {
   val saved=store();val a=track();val b=track("b");saved.save(a.albumIdentity(),AlbumYear(1988,"MusicBrainz","id","Album","Artist","1988-09-07"));raw(listOf(a,b))
   val app=RuntimeEnvironment.getApplication();assertEquals(listOf(1988,1988),Library(app).tracks().map { it.year })
   raw(listOf(b,a));assertEquals(listOf(1988,1988),Library(app).tracks().map { it.year });assertEquals("1988-09-07",AlbumYears(app).get(a.albumIdentity())!!.date)
-  assertNull(JSONArray(app.getSharedPreferences("library",Context.MODE_PRIVATE).getString("tracks","[]")).getJSONObject(0).opt("year"))
+  assertNull(LibraryTrackStore(app,app.getSharedPreferences("library",Context.MODE_PRIVATE)).read().first().year)
  }
  @Test fun taggedAndExplicitFolderYearsBeatNetworkSupplementButManualCanOverrideAndReset() {
   val saved=store();val a=track(year=1983);saved.save(a.albumIdentity(),AlbumYear(2020,"MusicBrainz"));assertEquals(1983,saved.apply(listOf(a)).single().year)

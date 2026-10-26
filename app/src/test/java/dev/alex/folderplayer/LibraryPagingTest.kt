@@ -26,7 +26,7 @@ class LibraryPagingTest {
         }).toString()).commit()
         shadowOf(app).setComponentNameAndServiceForBindService(android.content.ComponentName(app,PlaybackService::class.java),android.os.Binder())
         shadowOf(app).setUnbindServiceCallsOnServiceDisconnected(false)
-        val screen=Robolectric.buildActivity(MainActivity::class.java).create().start().also { awaitLibrary(it.get()) }
+        val screen=mainActivityController().create().start().also { awaitLibrary(it.get()) }
         try {
             val a=screen.get()
             fun field(name:String)=MainActivity::class.java.getDeclaredField(name).apply { isAccessible=true }.get(a)

@@ -27,7 +27,7 @@ class LandscapeBrowserTest {
         app.getSharedPreferences("library",0).edit().clear().putString("tracks",org.json.JSONArray((1..20).map {
             Track("file:///$it.mp3","Композиция $it","Исполнитель",180000,"Music").json()
         }).toString()).commit()
-        val screen=Robolectric.buildActivity(MainActivity::class.java).create().start().also { awaitLibrary(it.get()) }.resume()
+        val screen=mainActivityController().create().start().also { awaitLibrary(it.get()) }.resume()
         try {
             val host=screen.get();val root=field(host,"root") as View
             val results=(field(host,"list") as View).parent as ScrollView
