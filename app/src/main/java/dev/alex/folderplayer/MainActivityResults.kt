@@ -1,0 +1,87 @@
+package dev.alex.folderplayer
+
+import android.content.Intent
+import android.net.Uri
+
+/** Activity-result routing: extracted from MainActivity (roadmap 4.2). */
+internal fun MainActivity.handleActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == ExternalExtensions.REQUEST && resultCode == android.app.Activity.RESULT_OK) {
+            data?.data?.let { importExtensionFolder(it) }
+            return
+        }
+        if (requestCode == 107) {
+            if (page == "translation") currentTrack()?.let { translate(it, true) }
+            return
+        }
+        if (requestCode == 104 && resultCode == android.app.Activity.RESULT_OK)
+            data?.data?.let { extensionManager.importEngine(it) }
+        if (requestCode == 103 && resultCode == android.app.Activity.RESULT_OK)
+            data?.data?.let { uri ->
+                cancelTranslation()
+                val track = currentTrack()
+                screens.setTranslation(track?.uri, "", "Устанавливаем и проверяем языковой пакет…")
+                runAsync({
+                    contentResolver.openFileDescriptor(uri, "r")?.use {
+                        translationClient.install(it)
+                    } ?: error("Не удалось открыть пакет")
+                }) { result ->
+                    result
+                        .onSuccess {
+                            extensionManager.enable()
+                            toast("Офлайн-перевод готов")
+                            currentTrack()?.let { translate(it, true) }
+                        }
+                        .onFailure {
+                            screens.setTranslation(
+                                currentTrack()?.uri,
+                                "",
+                                it.message ?: "Не удалось установить пакет",
+                                1,
+                            )
+                        }
+                }
+            }
+        if (requestCode == 101 && resultCode == android.app.Activity.RESULT_OK)
+            data?.data?.let { uri ->
+                val target = lyricTarget ?: return@let
+                runAsync({
+                    lyricStore.importText(uri).also {
+                        lyricStore.save(target, it)
+                        prefs.edit().remove("lyricsSource:$target").apply()
+                    }
+                }) { result ->
+                    result
+                        .onSuccess {
+                            tracks.find { it.uri == target }?.let { localMedia(it) }
+                        }
+                        .onFailure { toast(it.message ?: "Не удалось импортировать текст") }
+                }
+            }
+        if (requestCode == 102 && resultCode == android.app.Activity.RESULT_OK)
+            data?.data?.let { uri ->
+                val target = lyricTarget ?: return@let
+                runAsync({
+                    val text = lyricStore.read(target) ?: error("Нет сохранённого текста")
+                    contentResolver.openOutputStream(uri, "wt")?.use {
+                        it.write(text.toByteArray(Charsets.UTF_8))
+                    } ?: error("Не удалось открыть файл")
+                }) { result ->
+                    toast(
+                        if (result.isSuccess) "Текст экспортирован"
+                        else "Не удалось экспортировать текст"
+                    )
+                }
+            }
+        if (requestCode == 100 && resultCode == android.app.Activity.RESULT_OK)
+            data?.data?.let { uri ->
+                runCatching {
+                        contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                        )
+                        library.setRoots((library.roots() + uri.toString()).distinct())
+                        scan()
+                    }
+                    .onFailure { toast("Не удалось сохранить доступ к папке") }
+            }
+}
