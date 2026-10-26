@@ -242,4 +242,49 @@ class OnlineSectionTest {
         } finally { ui.close();service.destroy();host.pause().stop().destroy() }
     }
 
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    @Test fun rotationRestoresOnlineSourceFilterSelectionAndCachedRowsWithoutNetworkReset() {
+        val host=Robolectric.buildActivity(Activity::class.java).setup()
+        val api=object:OnlineCatalogue {
+            override fun installed()=true
+            override fun request(operation:String,argument:String):JSONObject = when(operation) {
+                "status"->JSONObject().put("connected",true).put("sessionKey","rotation-account")
+                "collectionPage"->JSONObject().put("tracks",JSONArray((1..8).map { JSONObject().put("id",it).put("title","Song $it") })).put("total",8)
+                else->error(operation)
+            }
+        }
+        val first=OnlineSection(host.get(),{ _,_,_,done -> done(null) },api,Direct())
+        var second:OnlineSection?=null
+        try {
+            first.show();idle()
+            var root=ShadowDialog.getLatestDialog().window!!.decorView
+            all(root).filterIsInstance<EditText>().single().setText("Song 2")
+            val list=all(root).filterIsInstance<ListView>().single()
+            all(list.adapter.getView(0,null,list)).filterIsInstance<CheckBox>().single().performClick()
+            val saved=first.saveNavigation()!!;val retained=first.snapshot()!!
+            first.close()
+            val offline=object:OnlineCatalogue {
+                override fun installed()=true
+                override fun request(operation:String,argument:String):JSONObject=throw AssertionError("Rotation must not restart $operation")
+            }
+            val next=OnlineSection(host.get(),{ _,_,_,done -> done(null) },offline,Direct());second=next
+            next.restore(saved,retained);idle()
+            root=ShadowDialog.getLatestDialog().window!!.decorView
+            assertEquals("Song 2",all(root).filterIsInstance<EditText>().single().text.toString())
+            val restored=all(root).filterIsInstance<ListView>().single()
+            assertEquals(1,restored.adapter.count)
+            assertTrue(all(restored.adapter.getView(0,null,restored)).filterIsInstance<CheckBox>().single().isChecked)
+            val pane=all(root).filterIsInstance<BrowserPane>().single()
+            repeat(4) {
+                pane.measure(View.MeasureSpec.makeMeasureSpec(640,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(280,View.MeasureSpec.EXACTLY))
+                pane.layout(0,0,640,280)
+            }
+            assertTrue("Online results must remain visible",restored.height>=90)
+            val image=android.graphics.Bitmap.createBitmap(640,280,android.graphics.Bitmap.Config.ARGB_8888)
+            pane.draw(android.graphics.Canvas(image))
+            val target=java.io.File("../qa/rotation-landscape/online-640x280.png")
+            target.parentFile!!.mkdirs();target.outputStream().use { image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
+        } finally { first.close();second?.close();host.pause().stop().destroy() }
+    }
+
 }

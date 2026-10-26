@@ -97,12 +97,15 @@ internal class PlayerScreens(private val context: Context, private val actions: 
     private var page = "player"
     private var landscape = false
     private var compact = false
+    private var shortLandscape = false
 
     init {
         view.addOnLayoutChangeListener { _, l, t, r, b, _, _, _, _ ->
             val wide = r - l > b - t
             val small = (b - t) / context.resources.displayMetrics.density < 520
-            if (page == "player" && r > l && b > t && (wide != landscape || small != compact)) {
+            val short = wide && ((b-t)/context.resources.displayMetrics.density < 300 || context.resources.configuration.fontScale >= 1.5f)
+            if (page == "player" && r > l && b > t && (wide != landscape || small != compact || short != shortLandscape)) {
+                shortLandscape = short
                 landscape = wide
                 compact = small
                 show(page)
@@ -345,7 +348,8 @@ internal class PlayerScreens(private val context: Context, private val actions: 
                 if (landscape) {
                     body.orientation = LinearLayout.HORIZONTAL
                     body.addView(metadata, LinearLayout.LayoutParams(0, -1, 1f))
-                    body.addView(playback, LinearLayout.LayoutParams(0, -1, 1.5f))
+                    val controls: View = if (shortLandscape) ScrollView(context).apply { addView(playback) } else playback
+                    body.addView(controls, LinearLayout.LayoutParams(0, -1, 1.5f))
                 } else {
                     body.addView(metadata, LinearLayout.LayoutParams(-1, 0, 1f))
                     body.addView(playback)

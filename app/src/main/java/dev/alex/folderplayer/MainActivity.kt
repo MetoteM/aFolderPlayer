@@ -98,6 +98,7 @@ class MainActivity : ThemedActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private val prefs by lazy { getSharedPreferences("playback", MODE_PRIVATE) }
     private var screenStarted = false
+    private var restoredBrowseState = false
     private val ticker =
         object : Runnable {
             override fun run() {
@@ -120,6 +121,7 @@ class MainActivity : ThemedActivity() {
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         CrashNotes.install(this)
+        restoredBrowseState = state != null
         val retained = lastNonConfigurationInstance as? MainOperations
         translationWork = retained?.translation ?: RetainedOperation()
         lyricsWork = retained?.lyrics ?: RetainedOperation()
@@ -137,12 +139,6 @@ class MainActivity : ThemedActivity() {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(8), dp(12), dp(8))
                 setBackgroundColor(PlayerScreens.bg)
-            }
-        if (android.os.Build.VERSION.SDK_INT >= 30)
-            layout.setOnApplyWindowInsetsListener { view, insets ->
-                val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars())
-                view.setPadding(16, 12 + bars.top, 16, 8 + bars.bottom)
-                insets
             }
         root = FrameLayout(this)
         root.addView(layout)
@@ -301,14 +297,7 @@ class MainActivity : ThemedActivity() {
         root.addView(screens.view, FrameLayout.LayoutParams(-1, -1))
         screens.view.visibility = View.GONE
         pageMotion = SheetMotion(screens.view)
-        if (android.os.Build.VERSION.SDK_INT >= 30) {
-            layout.setOnApplyWindowInsetsListener(null)
-            root.setOnApplyWindowInsetsListener { view, insets ->
-                val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars())
-                view.setPadding(0, bars.top, 0, bars.bottom)
-                insets
-            }
-        }
+        SystemBarInsets.apply(root)
         setContentView(root)
         if (android.os.Build.VERSION.SDK_INT >= 33)
             onBackInvokedDispatcher.registerOnBackInvokedCallback(
@@ -316,6 +305,8 @@ class MainActivity : ThemedActivity() {
             ) {
                 if (page != "library") backPage() else finish()
             }
+        libraryPage = state?.getInt("libraryPage", 0) ?: 0
+        lastBrowserSource = selectedPlaylist
         browserTitle = label("Библиотека", 24f)
         layout.addView(browserTitle)
         browserCount = label("", 13f).apply { setTextColor(PlayerScreens.muted) }
@@ -468,18 +459,28 @@ class MainActivity : ThemedActivity() {
                                     }
                                 }
                             )
-                            restorePlayingSource()
+                            if (!restoredBrowseState) restorePlayingSource()
                             updatePlayer()
                         }
                         .onFailure { toast("Не удалось подключить плеер") }
             },
             java.util.concurrent.Executor { handler.post(it) },
         )
+        BrowserPane.install(layout, scroller, listOf(browserTitle,browserCount,sources,search),
+            listOf(tools,moreTools,quick,current,seek,controls))
         render()
+        val libraryScroll = state?.getInt("libraryScroll",0) ?: 0
+        if (libraryScroll>0) scroller.viewTreeObserver.addOnGlobalLayoutListener(object:android.view.ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                scroller.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                scroller.scrollTo(0,libraryScroll)
+            }
+        })
         showPage(
             state?.getString("uiPage") ?: prefs.getString("uiPage", "library").orEmpty(),
             false,
         )
+        onlineSection.restore(state?.getBundle("onlineBrowser"),retained?.online)
         scanWork.attach { showScan(it) }
     }
 
@@ -1554,12 +1555,16 @@ class MainActivity : ThemedActivity() {
         val translation: RetainedOperation<SongTranslationResult>,
         val lyrics: RetainedOperation<List<LyricsSearch.Result>>,
         val scan: RetainedOperation<Library.ScanResult>,
+        val online: OnlineSection.Snapshot?,
     )
 
     override fun onRetainNonConfigurationInstance(): Any =
-        MainOperations(translationWork, lyricsWork, scanWork)
+        MainOperations(translationWork, lyricsWork, scanWork, onlineSection.snapshot())
 
     override fun onSaveInstanceState(out: Bundle) {
+        out.putBundle("onlineBrowser",onlineSection.saveNavigation())
+        out.putInt("libraryPage",libraryPage)
+        out.putInt("libraryScroll",(list.parent as? ScrollView)?.scrollY ?: 0)
         out.putString("soundReturn", soundReturn)
         out.putString("uiPage", page)
         out.putString("lyricTarget", lyricTarget)
@@ -2737,11 +2742,12 @@ class MainActivity : ThemedActivity() {
     override fun onStart() {
         super.onStart()
         screenStarted = true
-        restorePlayingSource()
+        if (!restoredBrowseState) restorePlayingSource()
         refreshTicker()
     }
 
     override fun onStop() {
+        restoredBrowseState = false
         translationForeground = false
         screenStarted = false
         handler.removeCallbacks(ticker)

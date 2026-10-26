@@ -126,4 +126,5 @@ jobs:
             app/build/reports/
             translator/build/reports/
             online/build/reports/
+            qa/rotation-landscape/
           retention-days: 7
