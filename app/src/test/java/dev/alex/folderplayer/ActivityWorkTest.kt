@@ -52,10 +52,12 @@ class ActivityWorkTest {
         val queued = java.util.concurrent.atomic.AtomicInteger()
         owner.submit({ _ ->
             started.countDown()
-            try {
-                finish.await()
-            } catch (_: InterruptedException) {
-                finish.await()
+            while (finish.count > 0) {
+                try {
+                    finish.await()
+                } catch (_: InterruptedException) {
+                    // This fake provider deliberately ignores every cancellation signal.
+                }
             }
             stopped.countDown()
             "late"
