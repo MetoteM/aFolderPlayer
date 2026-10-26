@@ -185,8 +185,8 @@ public class AdaptiveTranslationTest {
               }
               return "RU " + text;
             });
-    assertEquals("RU Good.\nBad.\n\nRU Good.\nBad.\nRU Last.", result.text);
-    assertEquals(Arrays.asList(1, 4), result.failedLines);
+    assertEquals("RU Good.\nBad.\n\nRU Good.\nBad.\nRU Last.", result.getText());
+    assertEquals(Arrays.asList(1, 4), result.getFailedLines());
     assertEquals(1, failedCalls.get());
   }
 
