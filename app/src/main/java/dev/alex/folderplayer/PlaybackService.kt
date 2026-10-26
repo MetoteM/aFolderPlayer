@@ -280,7 +280,7 @@ class PlaybackService : MediaSessionService() {
                     .coerceIn(0, 2)
             val savedShuffle = prefs.getBoolean("shuffle", false)
             val store = OnlineLibraryStore(this)
-            val onlineSaved = runCatching { OnlinePlayback.items(store.read("playing")?.optJSONArray("tracks")?.toString() ?: store.queue(prefs.getString("onlineQueueId", "").orEmpty()) ?: prefs.getString("onlineQueue", "[]")!!) }.getOrDefault(emptyList()).filter { OnlinePlayback.trackId(android.net.Uri.parse(it.mediaId)) !in OnlineLibraryActions(this).ids("hidden") }.associateBy { it.mediaId }
+            val onlineSaved = runCatching { OnlinePlayback.items(store.read("playing")?.optJSONArray("tracks")?.toString() ?: store.queue(prefs.getString("onlineQueueId", "").orEmpty()) ?: prefs.getString("onlineQueue", "[]")!!) }.getOrDefault(emptyList()).excludingHidden(OnlineLibraryActions(this).ids("hidden")).associateBy { it.mediaId }
             val restoredBook = books.book(prefs.getString("activeBook", "").orEmpty())
             val savedBookItems = restoredBook?.chapters?.associate { it.uri to it.item(restoredBook) }.orEmpty()
             val saved =
@@ -361,8 +361,7 @@ class PlaybackService : MediaSessionService() {
                 val queueId=args.getString("queueId").orEmpty()
                 val parsed=runCatching { OnlinePlayback.items(store.queue(queueId) ?: "[]") }.getOrNull()
                 val mode=args.getString("mode","play").orEmpty()
-                val hidden=OnlineLibraryActions(this).ids("hidden")
-                val items=parsed?.filter { OnlinePlayback.trackId(android.net.Uri.parse(it.mediaId)) !in hidden }.orEmpty()
+                val items=parsed?.excludingHidden(OnlineLibraryActions(this).ids("hidden")).orEmpty()
                 val index=args.getInt("index",0)
                 if(parsed==null || mode !in listOf("play","next","append","remove") || (mode!="remove" && (items.isEmpty() || (mode=="play" && index !in items.indices)))) SessionError.ERROR_BAD_VALUE
                 else {

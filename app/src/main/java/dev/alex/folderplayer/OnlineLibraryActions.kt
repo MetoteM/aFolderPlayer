@@ -1,8 +1,17 @@
 package dev.alex.folderplayer
 
 import android.content.Context
+import androidx.media3.common.MediaItem
 import org.json.JSONArray
 import org.json.JSONObject
+
+/**
+ * Single rule for hiding online tracks from the playback queue. Used by the
+ * service on restore, on queue commands and on queue rebuild so all three
+ * paths can never disagree about what "hidden" means.
+ */
+internal fun List<MediaItem>.excludingHidden(hidden: Set<String>): List<MediaItem> =
+    filter { OnlinePlayback.trackId(android.net.Uri.parse(it.mediaId)) !in hidden }
 
 /** Local decisions never call like/dislike or playlist-write endpoints. Account-scoped by the store. */
 internal class OnlineLibraryActions(context:Context) {

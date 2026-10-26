@@ -95,6 +95,23 @@ class MainActivity : ThemedActivity() {
     private var highlightedId: String? = null
     private val executor = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
+
+    /**
+     * Single seam for the background→UI hand-off. Replaces the previous ~13
+     * copies of `executor.execute { handler.post { if (alive) ... } }`: the
+     * alive guard lives in exactly one place, so a forgotten check can no
+     * longer touch dead views after onDestroy().
+     */
+    private fun postUi(ui: () -> Unit) {
+        handler.post { if (alive) ui() }
+    }
+
+    private fun <T> runAsync(task: () -> T, consume: (Result<T>) -> Unit) {
+        executor.execute {
+            val result = runCatching(task)
+            postUi { consume(result) }
+        }
+    }
     private val prefs by lazy { getSharedPreferences("playback", MODE_PRIVATE) }
     private var screenStarted = false
     private val ticker =
@@ -217,33 +234,31 @@ class MainActivity : ThemedActivity() {
                         val track = currentTrack()
                         cancelTranslation()
                         translationId = track?.uri
-                        executor.execute {
-                            val result = runCatching {
+                        runAsync(
+                            {
                                 track?.let { loadLyrics(it) }?.let { LyricsDocument(it).plain }
                                     ?: ""
-                            }
-                            handler.post {
-                                if (alive)
-                                    result
-                                        .onSuccess {
-                                            if (track != null && currentTrack()?.uri == track.uri)
-                                                startActivityForResult(
-                                                    Intent(
-                                                            this@MainActivity,
-                                                            SongTextActivity::class.java,
-                                                        )
-                                                        .putExtra("source", it)
-                                                        .putExtra("songTitle", track.title)
-                                                        .putExtra("artist", track.artist)
-                                                        .putExtra("localUri", track.uri)
-                                                        .putExtra("openTranslation", true),
-                                                    107,
+                            },
+                        ) { result ->
+                            result
+                                .onSuccess {
+                                    if (track != null && currentTrack()?.uri == track.uri)
+                                        startActivityForResult(
+                                            Intent(
+                                                    this@MainActivity,
+                                                    SongTextActivity::class.java,
                                                 )
-                                        }
-                                        .onFailure {
-                                            toast(it.message ?: "Не удалось прочитать текст")
-                                        }
-                            }
+                                                .putExtra("source", it)
+                                                .putExtra("songTitle", track.title)
+                                                .putExtra("artist", track.artist)
+                                                .putExtra("localUri", track.uri)
+                                                .putExtra("openTranslation", true),
+                                            107,
+                                        )
+                                }
+                                .onFailure {
+                                    toast(it.message ?: "Не удалось прочитать текст")
+                                }
                         }
                     }
 
@@ -1441,30 +1456,25 @@ class MainActivity : ThemedActivity() {
         if (scanning) return
         scanning = true
         render()
-        executor.execute {
-            val result = runCatching { library.scan() }
-            handler.post {
-                if (alive) {
-                    scanning = false
-                    result
-                        .onSuccess { (items, errors, retainedRoots) ->
-                            tracks = items
-                            mediaLoadedId=null;queueTimeline=null;queueTracks=null
-                            render()
-                            reorderPlayingQueue(prefs.getString("queueSource", "").orEmpty(), true)
-                            toast(
-                                "В библиотеке ${items.size} песен" +
-                                    (if (retainedRoots > 0) ". Сохранены данные недоступных папок: $retainedRoots" else "") +
-                                    if (errors > 0) ". Не удалось прочитать файлов/папок: $errors"
-                                    else ""
-                            )
-                        }
-                        .onFailure {
-                            render()
-                            toast("Не удалось обновить библиотеку")
-                        }
+        runAsync({ library.scan() }) { result ->
+            scanning = false
+            result
+                .onSuccess { (items, errors, retainedRoots) ->
+                    tracks = items
+                    mediaLoadedId=null;queueTimeline=null;queueTracks=null
+                    render()
+                    reorderPlayingQueue(prefs.getString("queueSource", "").orEmpty(), true)
+                    toast(
+                        "В библиотеке ${items.size} песен" +
+                            (if (retainedRoots > 0) ". Сохранены данные недоступных папок: $retainedRoots" else "") +
+                            if (errors > 0) ". Не удалось прочитать файлов/папок: $errors"
+                            else ""
+                    )
                 }
-            }
+                .onFailure {
+                    render()
+                    toast("Не удалось обновить библиотеку")
+                }
         }
     }
 
@@ -1485,69 +1495,56 @@ class MainActivity : ThemedActivity() {
                 cancelTranslation()
                 val track = currentTrack()
                 screens.setTranslation(track?.uri, "", "Устанавливаем и проверяем языковой пакет…")
-                executor.execute {
-                    val result = runCatching {
-                        contentResolver.openFileDescriptor(uri, "r")?.use {
-                            translationClient.install(it)
-                        } ?: error("Не удалось открыть пакет")
-                    }
-                    handler.post {
-                        if (alive) {
-                            result
-                                .onSuccess {
-                                    extensionManager.enable()
-                                    toast("Офлайн-перевод готов")
-                                    currentTrack()?.let { translate(it, true) }
-                                }
-                                .onFailure {
-                                    screens.setTranslation(
-                                        currentTrack()?.uri,
-                                        "",
-                                        it.message ?: "Не удалось установить пакет",
-                                        1,
-                                    )
-                                }
+                runAsync({
+                    contentResolver.openFileDescriptor(uri, "r")?.use {
+                        translationClient.install(it)
+                    } ?: error("Не удалось открыть пакет")
+                }) { result ->
+                    result
+                        .onSuccess {
+                            extensionManager.enable()
+                            toast("Офлайн-перевод готов")
+                            currentTrack()?.let { translate(it, true) }
                         }
-                    }
+                        .onFailure {
+                            screens.setTranslation(
+                                currentTrack()?.uri,
+                                "",
+                                it.message ?: "Не удалось установить пакет",
+                                1,
+                            )
+                        }
                 }
             }
         if (requestCode == 101 && resultCode == RESULT_OK)
             data?.data?.let { uri ->
                 val target = lyricTarget ?: return@let
-                executor.execute {
-                    val result = runCatching {
-                        lyricStore.importText(uri).also {
-                            lyricStore.save(target, it)
-                            prefs.edit().remove("lyricsSource:$target").apply()
+                runAsync({
+                    lyricStore.importText(uri).also {
+                        lyricStore.save(target, it)
+                        prefs.edit().remove("lyricsSource:$target").apply()
+                    }
+                }) { result ->
+                    result
+                        .onSuccess {
+                            tracks.find { it.uri == target }?.let { localMedia(it) }
                         }
-                    }
-                    handler.post {
-                        if (alive)
-                            result
-                                .onSuccess {
-                                    tracks.find { it.uri == target }?.let { localMedia(it) }
-                                }
-                                .onFailure { toast(it.message ?: "Не удалось импортировать текст") }
-                    }
+                        .onFailure { toast(it.message ?: "Не удалось импортировать текст") }
                 }
             }
         if (requestCode == 102 && resultCode == RESULT_OK)
             data?.data?.let { uri ->
                 val target = lyricTarget ?: return@let
-                executor.execute {
-                    val result = runCatching {
-                        val text = lyricStore.read(target) ?: error("Нет сохранённого текста")
-                        contentResolver.openOutputStream(uri, "wt")?.use {
-                            it.write(text.toByteArray(Charsets.UTF_8))
-                        } ?: error("Не удалось открыть файл")
-                    }
-                    handler.post {
-                        if (alive)
-                            toast(
-                                if (result.isSuccess) "Текст экспортирован"
-                                else "Не удалось экспортировать текст"
-                            )
-                    }
+                runAsync({
+                    val text = lyricStore.read(target) ?: error("Нет сохранённого текста")
+                    contentResolver.openOutputStream(uri, "wt")?.use {
+                        it.write(text.toByteArray(Charsets.UTF_8))
+                    } ?: error("Не удалось открыть файл")
+                }) { result ->
+                    toast(
+                        if (result.isSuccess) "Текст экспортирован"
+                        else "Не удалось экспортировать текст"
+                    )
                 }
             }
         if (requestCode == 100 && resultCode == RESULT_OK)
@@ -1612,34 +1609,31 @@ class MainActivity : ThemedActivity() {
                     renewTranslation(track)
                 }
                 else ->
-                    executor.execute {
-                        val raw = runCatching { loadLyrics(track) }.getOrNull().orEmpty()
-                        handler.post {
-                            if (alive)
-                                when (action) {
-                                    SongMenu.Action.EDIT -> editLyrics(track, raw)
-                                    SongMenu.Action.TIMING -> markLyrics(track, raw)
-                                    SongMenu.Action.EXPORT ->
-                                        if (raw.isBlank()) toast("Сначала добавь текст")
-                                        else {
-                                            lyricTarget = track.uri
-                                            val timed = LyricsDocument(raw).cues.isNotEmpty()
-                                            startActivityForResult(
-                                                Intent(Intent.ACTION_CREATE_DOCUMENT)
-                                                    .setType("text/plain")
-                                                    .addCategory(Intent.CATEGORY_OPENABLE)
-                                                    .putExtra(
-                                                        Intent.EXTRA_TITLE,
-                                                        track.title.replace(
-                                                            Regex("[\\/:*?\"<>|]"),
-                                                            "_",
-                                                        ) + if (timed) ".lrc" else ".txt",
-                                                    ),
-                                                102,
-                                            )
-                                        }
-                                    else -> Unit
+                    runAsync({ loadLyrics(track).orEmpty() }) { result ->
+                        val raw = result.getOrNull().orEmpty()
+                        when (action) {
+                            SongMenu.Action.EDIT -> editLyrics(track, raw)
+                            SongMenu.Action.TIMING -> markLyrics(track, raw)
+                            SongMenu.Action.EXPORT ->
+                                if (raw.isBlank()) toast("Сначала добавь текст")
+                                else {
+                                    lyricTarget = track.uri
+                                    val timed = LyricsDocument(raw).cues.isNotEmpty()
+                                    startActivityForResult(
+                                        Intent(Intent.ACTION_CREATE_DOCUMENT)
+                                            .setType("text/plain")
+                                            .addCategory(Intent.CATEGORY_OPENABLE)
+                                            .putExtra(
+                                                Intent.EXTRA_TITLE,
+                                                track.title.replace(
+                                                    Regex("[\\/:*?\"<>|]"),
+                                                    "_",
+                                                ) + if (timed) ".lrc" else ".txt",
+                                            ),
+                                        102,
+                                    )
                                 }
+                            else -> Unit
                         }
                     }
             }
@@ -1744,10 +1738,9 @@ class MainActivity : ThemedActivity() {
                 else LocalArtwork.read(this, track.sourceUri, track.artworkUri)
             }.getOrNull()
             val lyrics = runCatching { loadLyrics(track)?.let { LyricsDocument(it) } }
-            handler.post {
+            postUi {
                 if (
-                    alive &&
-                        generation == mediaGeneration &&
+                    generation == mediaGeneration &&
                         controller?.currentMediaItem?.mediaId == track.uri
                 ) {
                     screens.setArtwork(track.uri, bitmap)
@@ -1873,15 +1866,14 @@ class MainActivity : ThemedActivity() {
     }
 
     private fun editSongLanguage(track: Track) {
-        executor.execute {
-            val result = runCatching {
-                val source =
-                    loadLyrics(track)?.let { LyricsDocument(it).plain }
-                        ?: error("Сначала добавь текст")
-                source to translationClient.availableModels().toList()
-            }
-            handler.post {
-                if (alive && currentTrack()?.uri == track.uri)
+        runAsync({
+            val source =
+                loadLyrics(track)?.let { LyricsDocument(it).plain }
+                    ?: error("Сначала добавь текст")
+            source to translationClient.availableModels().toList()
+        }) { result ->
+            postUi {
+                if (currentTrack()?.uri == track.uri)
                     result
                         .onSuccess { (source, models) ->
                             showPage("translation")
@@ -2057,22 +2049,21 @@ class MainActivity : ThemedActivity() {
 
     private fun saveDirectLyrics(track: Track, item: LyricsSearch.Result) {
         screens.lyricsSearching(track.uri, true, "Сохраняем текст…")
-        executor.execute {
-            val result = runCatching {
-                val document = LyricsDocument(item.text)
-                lyricStore.save(track.uri, item.text)
-                SearchIdentity(this).save(track.uri, SongQuery(item.title, item.artist))
-                prefs
-                    .edit()
-                    .putString(
-                        "lyricsSource:${track.uri}",
-                        "Источник: LRCLIB · ${item.title} — ${item.artist}",
-                    )
-                    .apply()
-                document
-            }
-            handler.post {
-                if (alive && page == "lyrics" && currentTrack()?.uri == track.uri) {
+        runAsync({
+            val document = LyricsDocument(item.text)
+            lyricStore.save(track.uri, item.text)
+            SearchIdentity(this).save(track.uri, SongQuery(item.title, item.artist))
+            prefs
+                .edit()
+                .putString(
+                    "lyricsSource:${track.uri}",
+                    "Источник: LRCLIB · ${item.title} — ${item.artist}",
+                )
+                .apply()
+            document
+        }) { result ->
+            postUi {
+                if (page == "lyrics" && currentTrack()?.uri == track.uri) {
                     result
                         .onSuccess {
                             screens.lyricsSearching(track.uri, false, "")
@@ -2204,8 +2195,8 @@ class MainActivity : ThemedActivity() {
                 }
             }
             val result = runCatching { loadLyrics(track) }
-            handler.post {
-                if (alive && dialog.isShowing) {
+            postUi {
+                if (dialog.isShowing) {
                     picture?.let { bitmap ->
                         panel.addView(
                             ImageView(this).apply {
@@ -2324,22 +2315,17 @@ class MainActivity : ThemedActivity() {
                     .onFailure { input.error = it.message }
                     .onSuccess {
                         dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
-                        executor.execute {
-                            val result = runCatching {
-                                lyricStore.save(track.uri, value)
-                                prefs.edit().remove("lyricsSource:${track.uri}").apply()
-                            }
-                            handler.post {
-                                if (alive) {
-                                    if (result.isSuccess) {
-                                        dialog.dismiss()
-                                        localMedia(track)
-                                    } else {
-                                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled =
-                                            true
-                                        input.error = "Не удалось сохранить текст"
-                                    }
-                                }
+                        runAsync({
+                            lyricStore.save(track.uri, value)
+                            prefs.edit().remove("lyricsSource:${track.uri}").apply()
+                        }) { result ->
+                            if (result.isSuccess) {
+                                dialog.dismiss()
+                                localMedia(track)
+                            } else {
+                                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled =
+                                    true
+                                input.error = "Не удалось сохранить текст"
                             }
                         }
                     }
@@ -2437,21 +2423,16 @@ class MainActivity : ThemedActivity() {
                             LyricsDocument.timestamp(times[it]) + lines[it]
                         }
                     dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
-                    executor.execute {
-                        val result = runCatching {
-                            lyricStore.save(track.uri, value)
-                            prefs.edit().remove("lyricsSource:${track.uri}").apply()
-                        }
-                        handler.post {
-                            if (alive) {
-                                if (result.isSuccess) {
-                                    dialog.dismiss()
-                                    localMedia(track)
-                                } else {
-                                    toast("Не удалось сохранить LRC")
-                                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
-                                }
-                            }
+                    runAsync({
+                        lyricStore.save(track.uri, value)
+                        prefs.edit().remove("lyricsSource:${track.uri}").apply()
+                    }) { result ->
+                        if (result.isSuccess) {
+                            dialog.dismiss()
+                            localMedia(track)
+                        } else {
+                            toast("Не удалось сохранить LRC")
+                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
                         }
                     }
                 }
@@ -2601,27 +2582,22 @@ class MainActivity : ThemedActivity() {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = item.text.isNotBlank()
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
-                executor.execute {
-                    val result = runCatching {
-                        lyricStore.save(track.uri, item.text)
-                        prefs
-                            .edit()
-                            .putString(
-                                "lyricsSource:${track.uri}",
-                                "Источник: LRCLIB · ${item.title} — ${item.artist}",
-                            )
-                            .apply()
-                    }
-                    handler.post {
-                        if (alive) {
-                            if (result.isSuccess) {
-                                dialog.dismiss()
-                                localMedia(track)
-                            } else {
-                                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
-                                toast("Не удалось сохранить текст")
-                            }
-                        }
+                runAsync({
+                    lyricStore.save(track.uri, item.text)
+                    prefs
+                        .edit()
+                        .putString(
+                            "lyricsSource:${track.uri}",
+                            "Источник: LRCLIB · ${item.title} — ${item.artist}",
+                        )
+                        .apply()
+                }) { result ->
+                    if (result.isSuccess) {
+                        dialog.dismiss()
+                        localMedia(track)
+                    } else {
+                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                        toast("Не удалось сохранить текст")
                     }
                 }
             }
