@@ -40,7 +40,7 @@ class PlayerVisualTest {
   app.getSharedPreferences("library",android.content.Context.MODE_PRIVATE).edit().clear().putString("tracks",org.json.JSONArray(items.map { it.json() }).toString()).putString("playlists",org.json.JSONObject().put("Метла",org.json.JSONArray(items.map { it.uri })).toString()).commit()
   val host=Robolectric.buildActivity(MainActivity::class.java).create().start();val activity=host.get()
   try {
-   MainActivity::class.java.getDeclaredField("selectedPlaylist").apply { isAccessible=true }.set(activity,"Метла");MainActivity::class.java.getDeclaredMethod("render").apply { isAccessible=true }.invoke(activity)
+   MainActivity::class.java.getDeclaredField("selectedPlaylist").apply { isAccessible=true }.set(activity,"Метла");activity.render()
    val root=MainActivity::class.java.getDeclaredField("root").apply { isAccessible=true }.get(activity) as View
    root.measure(View.MeasureSpec.makeMeasureSpec(822,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(1782,View.MeasureSpec.EXACTLY));root.layout(0,0,822,1782)
    val image=Bitmap.createBitmap(822,1782,Bitmap.Config.ARGB_8888);root.draw(Canvas(image));val target=File("../qa/ui-0.5.0/playlist.png");target.parentFile!!.mkdirs();target.outputStream().use { image.compress(Bitmap.CompressFormat.PNG,100,it) }
