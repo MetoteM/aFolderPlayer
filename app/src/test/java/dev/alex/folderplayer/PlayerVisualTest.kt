@@ -63,6 +63,8 @@ class PlayerVisualTest {
    org.junit.Assert.assertTrue("Artwork disappeared",cover.height>40*density)
    val controls=all(ui.view).filterIsInstance<android.widget.ScrollView>().single()
    org.junit.Assert.assertTrue(controls.height>0)
+   val queue=all(controls).filterIsInstance<android.widget.Button>().single { it.text=="Очередь" }
+   org.junit.Assert.assertEquals("Queue label must not split into fragments",1,queue.lineCount)
    val play=all(controls).single { it.contentDescription=="Воспроизведение / пауза" }
    val rect=android.graphics.Rect();play.getDrawingRect(rect);ui.view.offsetDescendantRectToMyCoords(play,rect)
    org.junit.Assert.assertTrue("Primary transport clipped: $rect",rect.top>=0 && rect.bottom<=height)
