@@ -26,7 +26,7 @@ class SettingsMenuTest {
     }
     @Test fun booksEntryOpensSeparateScreen(){
         RuntimeEnvironment.getApplication().getSharedPreferences("playback",Context.MODE_PRIVATE).edit().clear().commit()
-        val c=Robolectric.buildActivity(MainActivity::class.java).create().start()
+        val c=Robolectric.buildActivity(MainActivity::class.java).create().start().also { awaitLibrary(it.get()) }
         try {
             MainActivity::class.java.getDeclaredMethod("settings").apply { isAccessible=true }.invoke(c.get())
             val menu=ShadowAlertDialog.getLatestAlertDialog();val list=menu.listView

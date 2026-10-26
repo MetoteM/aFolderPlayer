@@ -60,7 +60,7 @@ class AlbumYearUiTest {
  @Test fun playlistSortOffersMissingYearsWithoutStartingNetwork() {
   val t=setup();val app=RuntimeEnvironment.getApplication();shadowOf(app).setComponentNameAndServiceForBindService(ComponentName(app,PlaybackService::class.java),Binder());shadowOf(app).setUnbindServiceCallsOnServiceDisconnected(false)
   Library(app).savePlaylist("P",listOf(t.uri));app.getSharedPreferences("playback",Context.MODE_PRIVATE).edit().clear().commit()
-  val screen=Robolectric.buildActivity(MainActivity::class.java).create().start().resume();val a=screen.get()
+  val screen=Robolectric.buildActivity(MainActivity::class.java).create().start().also { awaitLibrary(it.get()) }.resume();val a=screen.get()
   try {
    views(a.window.decorView).filterIsInstance<Button>().first { it.contentDescription=="Плейлисты" }.performClick();shadowOf(dialog()).clickOnItem(1)
    views(a.window.decorView).filterIsInstance<Button>().first { it.contentDescription=="Сортировка" }.performClick();shadowOf(dialog()).clickOnItem(3)

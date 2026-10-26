@@ -38,7 +38,7 @@ class PlayerVisualTest {
   val app=org.robolectric.RuntimeEnvironment.getApplication();val items=(1..7).map { Track("file:///$it.mp3","Песня номер $it","Metallica",294000,"Music/Load","$it.mp3","Load","Metallica",1996,it) }
   app.getSharedPreferences("playback",android.content.Context.MODE_PRIVATE).edit().clear().commit()
   app.getSharedPreferences("library",android.content.Context.MODE_PRIVATE).edit().clear().putString("tracks",org.json.JSONArray(items.map { it.json() }).toString()).putString("playlists",org.json.JSONObject().put("Метла",org.json.JSONArray(items.map { it.uri })).toString()).commit()
-  val host=Robolectric.buildActivity(MainActivity::class.java).create().start();val activity=host.get()
+  val host=Robolectric.buildActivity(MainActivity::class.java).create().start().also { awaitLibrary(it.get()) };val activity=host.get()
   try {
    MainActivity::class.java.getDeclaredField("selectedPlaylist").apply { isAccessible=true }.set(activity,"Метла");MainActivity::class.java.getDeclaredMethod("render").apply { isAccessible=true }.invoke(activity)
    val root=MainActivity::class.java.getDeclaredField("root").apply { isAccessible=true }.get(activity) as View

@@ -23,16 +23,23 @@ import org.json.JSONArray
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class PlaybackService : MediaSessionService() {
-    private val onlinePreferences by lazy { getSharedPreferences("online_actions",0) }
-    private val hiddenListener=android.content.SharedPreferences.OnSharedPreferenceChangeListener { _,key ->
-        if(key=="hidden")handler.post {
-            if(::player.isInitialized) {
-                val hidden=OnlineLibraryActions(this).ids("hidden")
-                for(i in player.mediaItemCount-1 downTo 0)if(OnlinePlayback.trackId(android.net.Uri.parse(player.getMediaItemAt(i).mediaId)) in hidden)player.removeMediaItem(i)
-                saveState()
-            }
+    private val onlinePreferences by lazy { getSharedPreferences("online_actions", 0) }
+    private val hiddenListener =
+        android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "hidden")
+                handler.post {
+                    if (::player.isInitialized) {
+                        val hidden = OnlineLibraryActions(this).ids("hidden")
+                        for (i in player.mediaItemCount - 1 downTo 0) if (
+                            OnlinePlayback.trackId(
+                                android.net.Uri.parse(player.getMediaItemAt(i).mediaId)
+                            ) in hidden
+                        )
+                            player.removeMediaItem(i)
+                        saveState()
+                    }
+                }
         }
-    }
     private val online by lazy { OnlinePlayback(this) }
     private lateinit var player: ExoPlayer
     private var session: MediaSession? = null
@@ -54,6 +61,7 @@ class PlaybackService : MediaSessionService() {
     private val restoreWork = RetainedOperation<PlaybackRestore>()
     internal var restoring = true
         private set
+
     private var applyingRestore = false
     private var savedQueue: List<String>? = null
     private var savedState: PlaybackSnapshot? = null
@@ -139,17 +147,21 @@ class PlaybackService : MediaSessionService() {
             }
         player =
             ExoPlayer.Builder(this, renderers)
-                .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
-                    androidx.media3.datasource.ResolvingDataSource.Factory(
-                        OnlineDataSource.Factory(this),
-                        object : androidx.media3.datasource.ResolvingDataSource.Resolver {
-                            override fun resolveDataSpec(dataSpec: androidx.media3.datasource.DataSpec): androidx.media3.datasource.DataSpec {
-                                if (dataSpec.uri.scheme != "afp-yandex") return dataSpec
-                                return dataSpec.withUri(online.resolve(dataSpec.uri))
-                            }
-                        }
+                .setMediaSourceFactory(
+                    androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                        androidx.media3.datasource.ResolvingDataSource.Factory(
+                            OnlineDataSource.Factory(this),
+                            object : androidx.media3.datasource.ResolvingDataSource.Resolver {
+                                override fun resolveDataSpec(
+                                    dataSpec: androidx.media3.datasource.DataSpec
+                                ): androidx.media3.datasource.DataSpec {
+                                    if (dataSpec.uri.scheme != "afp-yandex") return dataSpec
+                                    return dataSpec.withUri(online.resolve(dataSpec.uri))
+                                }
+                            },
+                        )
                     )
-                ))
+                )
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(C.USAGE_MEDIA)
@@ -204,8 +216,18 @@ class PlaybackService : MediaSessionService() {
                                                 Bundle.EMPTY,
                                             )
                                         )
-                                        .add(SessionCommand(PlaybackCommands.START_BOOK, Bundle.EMPTY))
-                                        .add(SessionCommand(PlaybackCommands.BOOK_SPEED, Bundle.EMPTY))
+                                        .add(
+                                            SessionCommand(
+                                                PlaybackCommands.START_BOOK,
+                                                Bundle.EMPTY,
+                                            )
+                                        )
+                                        .add(
+                                            SessionCommand(
+                                                PlaybackCommands.BOOK_SPEED,
+                                                Bundle.EMPTY,
+                                            )
+                                        )
                                         .add(
                                             SessionCommand(
                                                 PlaybackCommands.START_QUEUE,
@@ -261,11 +283,23 @@ class PlaybackService : MediaSessionService() {
                 .build()
         player.addListener(
             object : Player.Listener {
-                override fun onMediaItemTransition(item: androidx.media3.common.MediaItem?, reason: Int) {
-                    this@PlaybackService.player.setWakeMode(if (item?.mediaId?.startsWith("afp-yandex://") == true) C.WAKE_MODE_NETWORK else C.WAKE_MODE_LOCAL)
+                override fun onMediaItemTransition(
+                    item: androidx.media3.common.MediaItem?,
+                    reason: Int,
+                ) {
+                    this@PlaybackService.player.setWakeMode(
+                        if (item?.mediaId?.startsWith("afp-yandex://") == true) C.WAKE_MODE_NETWORK
+                        else C.WAKE_MODE_LOCAL
+                    )
                 }
+
                 override fun onEvents(player: Player, events: Player.Events) {
-                    if (restoring && !applyingRestore && events.contains(Player.EVENT_TIMELINE_CHANGED) && player.mediaItemCount > 0)
+                    if (
+                        restoring &&
+                            !applyingRestore &&
+                            events.contains(Player.EVENT_TIMELINE_CHANGED) &&
+                            player.mediaItemCount > 0
+                    )
                         cancelRestore()
                     saveState(events.contains(Player.EVENT_TIMELINE_CHANGED))
                     scheduleCheckpoint()
@@ -296,12 +330,20 @@ class PlaybackService : MediaSessionService() {
             val book = saved.book
             if (book == null) prefs.edit().remove("activeBook").apply()
             player.setPlaybackSpeed(book?.let { books.speed(it.id) } ?: 1f)
-            player.repeatMode = if (book != null) Player.REPEAT_MODE_OFF else
-                prefs.getInt("requestedRepeat", prefs.getInt("repeat", Player.REPEAT_MODE_OFF)).coerceIn(0, 2)
+            player.repeatMode =
+                if (book != null) Player.REPEAT_MODE_OFF
+                else
+                    prefs
+                        .getInt("requestedRepeat", prefs.getInt("repeat", Player.REPEAT_MODE_OFF))
+                        .coerceIn(0, 2)
             player.shuffleModeEnabled = book == null && prefs.getBoolean("shuffle", false)
             player.setPauseAtEndOfMediaItems(false)
             if (saved.items.isNotEmpty()) {
-                player.setMediaItems(saved.items, saved.index.coerceIn(0, saved.items.lastIndex), saved.position.coerceAtLeast(0))
+                player.setMediaItems(
+                    saved.items,
+                    saved.index.coerceIn(0, saved.items.lastIndex),
+                    saved.position.coerceAtLeast(0),
+                )
                 player.prepare()
             }
         } finally {
@@ -312,164 +354,20 @@ class PlaybackService : MediaSessionService() {
         scheduleCheckpoint()
     }
 
-    internal fun applyPlaybackCommand(action: String, args: Bundle): Int {
-        val result = when (action) {
-            PlaybackCommands.START_BOOK -> {
-                val book=books.book(args.getString("bookId").orEmpty())
-                if(book==null)SessionError.ERROR_BAD_VALUE else {
-                    val mark=books.position(book)
-                    val requested=args.getString("uri")
-                    val restart=requested==null && mark.completed
-                    val uri=requested ?: if(restart)book.chapters.first().uri else mark.uri
-                    val index=book.chapters.indexOfFirst { it.uri==uri }
-                    if(index<0)SessionError.ERROR_BAD_VALUE else {
-                        savePosition()
-                        val chapter=book.chapters[index]
-                        val pos=(if(requested!=null)args.getLong("position",0) else if(restart)0 else mark.position).coerceAtLeast(0)
-                            .let { if(chapter.duration>0)it.coerceAtMost(chapter.duration) else it }
-                        books.savePosition(book.id,uri,pos)
-                        prefs.edit().putString("activeBook",book.id).putString("queueSource","Аудиокнига · ${book.title}").apply()
-                        player.setMediaItems(book.chapters.map { it.item(book) },index,pos)
-                        player.repeatMode=Player.REPEAT_MODE_OFF;player.shuffleModeEnabled=false
-                        player.setPlaybackSpeed(books.speed(book.id));player.setPauseAtEndOfMediaItems(false)
-                        player.prepare();player.play();SessionResult.RESULT_SUCCESS
-                    }
-                }
-            }
-            PlaybackCommands.BOOK_SPEED -> {
-                val id=player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId")
-                val speed=args.getFloat("speed",1f)
-                if(id==null || !speed.isFinite() || speed !in .5f..2.5f)SessionError.ERROR_BAD_VALUE
-                else { books.setSpeed(id,speed);player.setPlaybackSpeed(speed);SessionResult.RESULT_SUCCESS }
-            }
-            PlaybackCommands.START_ONLINE_QUEUE -> {
-                val store=OnlineLibraryStore(this)
-                val queueId=args.getString("queueId").orEmpty()
-                val parsed=runCatching { OnlinePlayback.items(store.queue(queueId) ?: "[]") }.getOrNull()
-                val mode=args.getString("mode","play").orEmpty()
-                val hidden=OnlineLibraryActions(this).ids("hidden")
-                val items=parsed?.filter { OnlinePlayback.trackId(android.net.Uri.parse(it.mediaId)) !in hidden }.orEmpty()
-                val index=args.getInt("index",0)
-                if(parsed==null || mode !in listOf("play","next","append","remove") || (mode!="remove" && (items.isEmpty() || (mode=="play" && index !in items.indices)))) SessionError.ERROR_BAD_VALUE
-                else {
-                    val old=(0 until player.mediaItemCount).map { player.getMediaItemAt(it) }
-                    val combined=if(mode=="play")items else old+items
-                    if(mode!="remove" && (combined.size>20000 || OnlineQueueMetadata.rows(combined).toString().length>8_000_000)) SessionError.ERROR_BAD_VALUE
-                    else {
-                        when(mode) {
-                            "play" -> {
-                                leaveBook()
-                                prefs.edit().putString("queueSource","Яндекс Музыка"+store.queueSource(queueId).takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()).remove("onlineQueueId").remove("onlineQueue").apply()
-                                player.setMediaItems(items,index,0);player.setPauseAtEndOfMediaItems(false);player.prepare();player.play()
-                            }
-                            "next", "append" -> {
-                                if(player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId")!=null)return SessionError.ERROR_BAD_VALUE
-                                if(old.any { !it.mediaId.startsWith("afp-yandex://") })prefs.edit().putString("queueSource","Смешанная очередь").apply()
-                                else prefs.edit().putString("queueSource","Яндекс Музыка").apply()
-                                val at=if(mode=="next" && old.isNotEmpty())(player.currentMediaItemIndex+1).coerceAtMost(old.size) else old.size
-                                player.addMediaItems(at,items)
-                                if(old.isEmpty()) { player.prepare();player.play() }
-                            }
-                            "remove" -> {
-                                val ids=parsed.map { it.mediaId }.toSet()
-                                for(i in player.mediaItemCount-1 downTo 0)if(player.getMediaItemAt(i).mediaId in ids)player.removeMediaItem(i)
-                            }
-                        }
-                        saveState();store.dropQueue(queueId)
-                        SessionResult.RESULT_SUCCESS
-                    }
-                }
-            }
-            PlaybackCommands.START_QUEUE -> {
-                val library = Library(this)
-                val source = args.getString("source").orEmpty()
-                val queue =
-                    library.ordered(library.playableTracks(), source, prefs.getInt("librarySort", 0))
-                val index = queue.indexOfFirst { it.uri == args.getString("uri") }
-                if (index < 0) SessionError.ERROR_BAD_VALUE
-                else {
-                    leaveBook()
-                    prefs.edit().putString("queueSource", source).apply()
-                    // Queue, starting item and repeat mode are applied together on the service
-                    // looper.
-                    player.setMediaItems(queue.map { it.item() }, index, 0)
-                    player.repeatMode =
-                        prefs.getInt("requestedRepeat", player.repeatMode).coerceIn(0, 2)
-                    player.setPauseAtEndOfMediaItems(false)
-                    player.prepare()
-                    player.play()
-                    SessionResult.RESULT_SUCCESS
-                }
-            }
-            PlaybackCommands.REORDER_QUEUE -> {
-                if(player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId")!=null)return SessionResult.RESULT_SUCCESS
-                val source = args.getString("source").orEmpty()
-                if (prefs.getString("queueSource", "") != source || player.mediaItemCount == 0)
-                    SessionResult.RESULT_SUCCESS
-                else {
-                    val library = Library(this)
-                    val old = (0 until player.mediaItemCount).map { player.getMediaItemAt(it) }
-                    val byId = old.groupBy { it.mediaId }
-                    val refresh = args.getBoolean("refreshSource", false)
-                    val playable = library.playableTracks()
-                    val playableIds = playable.map { it.uri }.toSet()
-                    val known =
-                        playable.filter { refresh || it.uri in byId }.associateBy { it.uri }
-                    val sourceIds =
-                        library
-                            .ordered(known.values.toList(), source, prefs.getInt("librarySort", 0))
-                            .map { it.uri }
-                    val extraIds = old.map { it.mediaId }.filter { it !in sourceIds && it in known }
-                    val ordered =
-                        (sourceIds + extraIds).distinct().flatMap {
-                            byId[it]?.map { item->if(refresh)known.getValue(it).item() else item } ?: listOf(known.getValue(it).item())
-                        } + old.filter { it.mediaId !in known && QueueEligibility.playable(it.mediaId,playableIds,OnlineLibraryActions(this).ids("hidden")) }
-                    val current = player.currentMediaItem?.mediaId
-                    val occurrence =
-                        old.take(player.currentMediaItemIndex.coerceAtLeast(0)).count {
-                            it.mediaId == current
-                        }
-                    val index =
-                        ordered.indices
-                            .filter { ordered[it].mediaId == current }
-                            .getOrNull(occurrence) ?: -1
-                    if (index >= 0 && player.playbackState != Player.STATE_ENDED) {
-                        val position = player.currentPosition
-                        val state = player.playbackState
-                        player.setMediaItems(ordered, index, position)
-                        if (state != Player.STATE_IDLE) player.prepare()
-                    }
-                    SessionResult.RESULT_SUCCESS
-                }
-            }
-            PlaybackCommands.SET_REPEAT -> {
-                if(player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId")!=null)return SessionError.ERROR_BAD_VALUE
-                val mode = args.getInt("mode", -1)
-                if (mode !in 0..2) SessionError.ERROR_BAD_VALUE
-                else {
-                    prefs.edit().putInt("requestedRepeat", mode).apply()
-                    player.repeatMode = mode
-                    SessionResult.RESULT_SUCCESS
-                }
-            }
-            else -> SessionError.ERROR_NOT_SUPPORTED
-        }
-        if (result == SessionResult.RESULT_SUCCESS && action in setOf(
-                PlaybackCommands.START_BOOK, PlaybackCommands.START_QUEUE,
-                PlaybackCommands.START_ONLINE_QUEUE)) {
-            cancelRestore()
-            saveState()
-        }
-        return result
+    private val commands by lazy {
+        PlaybackCommandHandler(
+            applicationContext,
+            player,
+            prefs,
+            books,
+            { savePosition() },
+            { saveState() },
+            { cancelRestore() },
+        )
     }
 
-    private fun leaveBook() {
-        savePosition()
-        prefs.edit().remove("activeBook").apply()
-        player.setPlaybackSpeed(1f)
-        player.repeatMode=prefs.getInt("requestedRepeat",Player.REPEAT_MODE_OFF).coerceIn(0,2)
-        player.shuffleModeEnabled=false
-    }
+    internal fun applyPlaybackCommand(action: String, args: Bundle): Int =
+        commands.apply(action, args)
 
     private fun updateEq() {
         val bands = DoubleArray(10) { prefs.getInt("eqBand$it", 0).toDouble() }
@@ -491,13 +389,19 @@ class PlaybackService : MediaSessionService() {
                 player.currentMediaItem?.mediaId.orEmpty(),
                 player.currentPosition.coerceAtLeast(0),
             )
-        val bookId=player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId")
-        if(bookId!=null) {
-            val book=books.book(bookId)
-            val completed=player.playbackState==Player.STATE_ENDED && player.currentMediaItemIndex==player.mediaItemCount-1
-            val previous=book?.let { books.position(it) }
-            val wasCompleted=previous?.completed==true && previous.uri==next.second && next.third>=previous.position && !player.playWhenReady
-            books.savePosition(bookId,next.second,next.third,completed || wasCompleted)
+        val bookId = player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId")
+        if (bookId != null) {
+            val book = books.book(bookId)
+            val completed =
+                player.playbackState == Player.STATE_ENDED &&
+                    player.currentMediaItemIndex == player.mediaItemCount - 1
+            val previous = book?.let { books.position(it) }
+            val wasCompleted =
+                previous?.completed == true &&
+                    previous.uri == next.second &&
+                    next.third >= previous.position &&
+                    !player.playWhenReady
+            books.savePosition(bookId, next.second, next.third, completed || wasCompleted)
         }
         if (next != savedPositionState) {
             positionPrefs
@@ -517,8 +421,12 @@ class PlaybackService : MediaSessionService() {
         if (queueChanged || savedQueue == null) {
             val queue = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
             if (queue != savedQueue) {
-                val metadata=OnlineQueueMetadata.rows((0 until player.mediaItemCount).map { player.getMediaItemAt(it) })
-                OnlineLibraryStore(this).write("playing",org.json.JSONObject().put("tracks",metadata))
+                val metadata =
+                    OnlineQueueMetadata.rows(
+                        (0 until player.mediaItemCount).map { player.getMediaItemAt(it) }
+                    )
+                OnlineLibraryStore(this)
+                    .write("playing", org.json.JSONObject().put("tracks", metadata))
                 edit.putString("queue", JSONArray(queue).toString())
                 savedQueue = queue
                 changed = true

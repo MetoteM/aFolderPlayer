@@ -32,7 +32,7 @@ class DirectLyricsTest {
   val t=Track("file:///direct-$cached-$status.mp3","Cure","Metallica",294000,"Music/Load","Cure.mp3","Load")
   app.getSharedPreferences("library",Context.MODE_PRIVATE).edit().clear().putString("tracks",org.json.JSONArray(listOf(t.json())).toString()).commit()
   shadowOf(app).setComponentNameAndServiceForBindService(android.content.ComponentName(app,PlaybackService::class.java),android.os.Binder());shadowOf(app).setUnbindServiceCallsOnServiceDisconnected(false)
-  val host=Robolectric.buildActivity(MainActivity::class.java).create().start().resume();val a=host.get()
+  val host=Robolectric.buildActivity(MainActivity::class.java).create().start().also { awaitLibrary(it.get()) }.resume();val a=host.get()
   val player=ExoPlayer.Builder(a).build().apply { setMediaItem(t.item()) };val session=MediaSession.Builder(a,player).build()
   val future=MediaController.Builder(a,session.token).buildAsync();await { future.isDone };val controller=future.get();field(a,"controller",controller)
   var calls=0

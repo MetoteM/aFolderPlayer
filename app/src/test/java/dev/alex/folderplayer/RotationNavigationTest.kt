@@ -24,7 +24,7 @@ class RotationNavigationTest {
     @Test fun everyPlayerPageSurvivesRecreation() {
         stub()
         for(page in listOf("player","lyrics","translation","queue","sound")) {
-            val screen=Robolectric.buildActivity(MainActivity::class.java).create().start().resume()
+            val screen=Robolectric.buildActivity(MainActivity::class.java).create().start().also { awaitLibrary(it.get()) }.resume()
             try {
                 MainActivity::class.java.getDeclaredMethod("showPage",String::class.java,Boolean::class.javaPrimitiveType)
                     .apply { isAccessible=true }.invoke(screen.get(),page,false)
@@ -39,7 +39,7 @@ class RotationNavigationTest {
         val app=RuntimeEnvironment.getApplication()
         app.getSharedPreferences("library",0).edit().clear().putString("playlists","{\"Playing\":[\"a\"],\"Browsing\":[\"b\"]}").commit()
         app.getSharedPreferences("playback",0).edit().clear().putString("queue","[\"a\"]").putString("queueSource","Playing").commit()
-        val screen=Robolectric.buildActivity(MainActivity::class.java).create().start().resume()
+        val screen=Robolectric.buildActivity(MainActivity::class.java).create().start().also { awaitLibrary(it.get()) }.resume()
         try {
             MainActivity::class.java.getDeclaredField("selectedPlaylist").apply { isAccessible=true }.set(screen.get(),"Browsing")
             MainActivity::class.java.getDeclaredField("selecting").apply { isAccessible=true }.setBoolean(screen.get(),true)

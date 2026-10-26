@@ -39,34 +39,66 @@
 
 Пользователь 14 октября поручил выполнить релиз 0.8.0. Автоматический CI исходников пройден; перед публикацией выполняется smoke подписанного APK на Android-эмуляторе. Проверка физического ARM64-устройства остаётся открытой: воспроизведение MP3/FLAC через Bluetooth/USB, оба режима определителя, все языки, фоновое управление и сравнение батареи при одинаковых условиях. Эмулятор проверяет установку, совместимость подписи, сохранность плейлиста и поворот; не измеряет расход реального телефона.
 
-## TD-ARCH-095 — lifecycle and library storage after 0.9.5
+## TD-ARCH-095 — рефакторинг после 0.9.5
 
-The review follow-up moves library scanning to an application-context worker retained
-across configuration changes. Final screen destruction interrupts it and detaches
-its observer. Playback startup reads queue metadata on a worker and applies the
-result on the player looper; explicit queue commands invalidate late restoration.
-A pending restore must never write an empty queue or overwrite saved positions.
+Обновлено 26 октября 2026. Изменения подготовлены в 0.9.6-rc.2.
 
-LibraryTrackStore shares an immutable decoded snapshot across Library instances.
-Changes to the original preferences invalidate it; exclusions, hidden tracks and
-manual album years remain outside the raw cache. The 0.9.5 storage format remains
-compatible. This removes repeated JSON decoding, not the cost of cold loading or
-full-list filtering. MainActivity still reads the library synchronously at startup.
+Реализовано:
 
-Remaining work before calling the architecture cleanup complete:
+- MainViewModel владеет состоянием библиотеки через StateFlow. Чтение каталога и
+  миграция выполняются на Dispatchers.IO. Activity наблюдает состояние только
+  в STARTED; поворот не перезапускает загрузку и не удерживает старый экран.
+- Метаданные треков перенесены из SharedPreferences в SQLite: отдельные колонки,
+  URI как первичный ключ, индексы по корню и названию, сохранение исходного порядка.
+  Импорт транзакционный. Исходный JSON дополнительно сохраняется в приватный
+  library-legacy-tracks.json и удаляется из preferences только после коммита БД.
+  Контрольная сумма миграции защищает от повторного импорта старого JSON, если
+  очистка preferences не удалась. Неудачная запись не заменяет старый снимок.
+- Тёплый неизменяемый снимок читается без ожидания фоновой транзакции сканирования.
+  Плейлисты, скрытые/исключённые URI и ручные годы остаются отдельными настройками;
+  миграция треков их не переписывает.
+- ActivityWork отделяет 12 операций с файлами/обложками/текстами и ручной сетевой
+  поиск от UI-колбэков. Работа получает applicationContext; закрытие экрана сразу
+  освобождает колбэки и отменяет задачи, даже если провайдер игнорирует interrupt.
+- LibraryBrowser отвечает за строки, выбор и страницы библиотеки; LyricsEditor —
+  за редактор, разметку и диалоги текстов; PlayerUi — за общие UI-фабрики.
+- Команды сервиса разделены на именованные обработчики PlaybackCommandHandler.
+- MainActivity использует Activity Result API с устойчивыми именованными ключами.
+  Совместимый legacy-вызов оставлен в общих утилитах для обычных Activity;
+  основной клиент его не использует.
 
-- Give remaining Activity workers explicit lifecycle ownership and cancellation;
-  extract library browsing and playback connection responsibilities incrementally.
-- Move cold UI loading off the main thread, with loading/error states and tests
-  for selection and navigation while loading.
-- Measure large libraries on a device; migrate persistent metadata to a repository
-  with indexed storage if justified. Test migration failure, restart and preservation
-  of roots, playlists, exclusions, manual tags and playback references.
-- Perform physical-device checks for background playback, headset commands, service
-  restart and rotation during scanning. Unit tests do not replace these checks.
+Остаётся открытым:
 
-APK identity checks use current signer sets on API 28+ and the legacy API on 26–27.
-All current signers must match exactly. Historical ancestors alone are not trusted.
-Key rotation is intentionally not enabled by this refactor: it needs an explicit
-upgrade policy, Android-version compatibility checks and a recovery exercise using
-verified backups. Preserve the existing release key and signing identity.
+1. Дальнейшее разделение MainActivity: навигация, подключение MediaController,
+   настройки и диалоги плейлистов ещё находятся в Activity. Перенести оставшееся
+   состояние просмотра в ViewModel без регрессий восстановления экранов.
+2. Запись метаданных очереди в PlaybackService.saveState ещё выполняется синхронно.
+   Нужен последовательный фоновый writer с проверкой согласованности очереди,
+   метаданных и позиции при перезапуске/аварийной остановке. Просто перенести
+   write в executor без проверки порядка недостаточно.
+3. Каталог загружается целиком в память. Индексы SQLite пока не заменяют текущую
+   фильтрацию/сортировку; для существенно больших библиотек нужны замеры на
+   устройстве и при необходимости запросы/страницы репозитория.
+4. Пользовательские строки ещё не полностью вынесены в ресурсы. Массовая замена
+   Java на Kotlin не является самостоятельной целью рефакторинга.
+5. Ротация подписи требует отдельного плана совместимости и восстановления.
+   Сейчас API 28+ сравнивает полные наборы текущих подписантов; API 26–27 использует
+   совместимый старый API. Старый сертификат сам по себе не даёт доверия новому APK.
+   Существующий ключ выпуска сохраняется.
+
+## TD-DEVICE-CURRENT — актуальная физическая проверка
+
+Статус: открыт. Исторические разрешения 0.7.7–0.8.0 выше сохраняются как журнал
+решений, а не как подтверждение современных проверок или разрешение пропустить их.
+Актуальные незакрытые сценарии сведены здесь; удалённую историю текстов не проверяем.
+
+- Обновление 0.9.5/RC1 → RC2 на телефоне: каталог, CUE, обложки, плейлисты,
+  скрытие/исключения, ручные годы, позиции книг и музыки после миграции и перезапуска.
+- Телефон и планшет: поворот во время загрузки/сканирования, поиск и выбор треков,
+  Яндекс Музыка, альбомная компоновка, крупный шрифт, отмена/повтор действий.
+- MP3/FLAC, фоновое воспроизведение, Bluetooth/USB, команды гарнитуры и часов,
+  перезапуск сервиса и сравнение расхода батареи в одинаковых условиях.
+- Переводчик: установка/отмена языковых пакетов, работа уже установленных языков
+  и определитель песни. Автотесты и эмулятор не закрывают эти сценарии.
+
+Следующий стабильный APK должен иметь versionCode не ниже 63.
