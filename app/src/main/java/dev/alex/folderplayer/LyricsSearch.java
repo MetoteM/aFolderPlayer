@@ -92,7 +92,7 @@ public final class LyricsSearch {
           parsed = new LyricsDocument(sync);
         } catch (IllegalArgumentException ignored) {
         }
-      timed = parsed != null && !parsed.cues.isEmpty();
+      timed = parsed != null && !parsed.getCues().isEmpty();
       text = timed ? sync : plain;
       if (!text.isEmpty()) new LyricsDocument(text);
     }
@@ -239,7 +239,7 @@ public final class LyricsSearch {
     for (Result r : found) {
       if (!r.text.trim().isEmpty() && related(name, r.title)) {
         String key =
-            clean(r.artist) + "|" + new LyricsDocument(r.text).plain.replaceAll("\\s+", " ").trim();
+            clean(r.artist) + "|" + new LyricsDocument(r.text).getPlain().replaceAll("\\s+", " ").trim();
         if (seen.add(key)) useful.add(r);
       }
     }
