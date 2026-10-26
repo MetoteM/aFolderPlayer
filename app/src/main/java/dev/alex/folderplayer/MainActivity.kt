@@ -24,41 +24,41 @@ import com.google.common.util.concurrent.ListenableFuture
 import java.util.concurrent.Executors
 
 class MainActivity : ThemedActivity() {
-    private lateinit var root: FrameLayout
+    internal lateinit var root: FrameLayout
     internal lateinit var screens: PlayerScreens
     internal var page = "library"
-    private lateinit var pageMotion: SheetMotion
-    private var soundReturn = "player"
-    private var lyricsRequestedId: String? = null
+    internal lateinit var pageMotion: SheetMotion
+    internal var soundReturn = "player"
+    internal var lyricsRequestedId: String? = null
     internal lateinit var lyricsWork: RetainedOperation<List<LyricsSearch.Result>>
     internal var directId: String? = null
     internal var directResults = emptyList<LyricsSearch.Result>()
-    private var mediaGeneration = 0
+    internal var mediaGeneration = 0
     internal var mediaLoadedId: String? = null
     internal var queueTimeline: androidx.media3.common.Timeline? = null
     internal var queueTracks: List<Track>? = null
     internal lateinit var library: Library
-    private lateinit var layout: LinearLayout
-    private lateinit var list: LinearLayout
-    private lateinit var now: TextView
-    private lateinit var position: TextView
-    private lateinit var seek: SeekBar
-    private lateinit var play: Button
-    private lateinit var selectionButton: Button
-    private lateinit var identifyButton: Button
-    private lateinit var hideTracksButton: Button
-    private lateinit var deleteTracksButton: Button
-    private lateinit var bulkButton: Button
-    private lateinit var moreTools: LinearLayout
-    private lateinit var browserTitle: TextView
-    private lateinit var browserCount: TextView
-    private lateinit var search: EditText
+    internal lateinit var layout: LinearLayout
+    internal lateinit var list: LinearLayout
+    internal lateinit var now: TextView
+    internal lateinit var position: TextView
+    internal lateinit var seek: SeekBar
+    internal lateinit var play: Button
+    internal lateinit var selectionButton: Button
+    internal lateinit var identifyButton: Button
+    internal lateinit var hideTracksButton: Button
+    internal lateinit var deleteTracksButton: Button
+    internal lateinit var bulkButton: Button
+    internal lateinit var moreTools: LinearLayout
+    internal lateinit var browserTitle: TextView
+    internal lateinit var browserCount: TextView
+    internal lateinit var search: EditText
     internal var controller: MediaController? = null
     private var future: ListenableFuture<MediaController>? = null
     internal var tracks = emptyList<Track>()
-    private var visible = emptyList<Track>()
+    internal var visible = emptyList<Track>()
     internal var selectedPlaylist: String? = null
-    private var query = ""
+    internal var query = ""
     internal val selection = linkedSetOf<String>()
     internal var selecting = false
     internal var lyricTarget: String? = null
@@ -98,6 +98,12 @@ class MainActivity : ThemedActivity() {
     },openPlayer={ prefs.edit().putBoolean("onlinePlayerOrigin",true).apply();showPage("player") }) }
 
     internal val appUpdates: AppUpdates by lazy { AppUpdates(this, extensionManager) }
+    internal val thumbnails by lazy { LibraryThumbnails(applicationContext,artworkWorker,handler) }
+    internal val artworkWorker=java.util.concurrent.Executors.newSingleThreadExecutor()
+    internal var libraryPage = 0
+    internal var pendingScrollY: Int? = null
+    internal val renderSearch = Runnable { if (alive) render() }
+    internal var lastBrowserSource: String? = null
     internal val albumYears by lazy {
         AlbumYearDialogs(
             this,
@@ -113,10 +119,10 @@ class MainActivity : ThemedActivity() {
     }
     internal val lyricStore by lazy { LyricsStore(this) }
     internal var scanning = false
-    private var dragging = false
+    internal var dragging = false
     internal var alive = true
-    private val trackLabels = linkedMapOf<String, TextView>()
-    private var highlightedId: String? = null
+    internal val trackLabels = linkedMapOf<String, TextView>()
+    internal var highlightedId: String? = null
     internal val executor = Executors.newSingleThreadExecutor()
     internal val handler = Handler(Looper.getMainLooper())
 
@@ -137,7 +143,7 @@ class MainActivity : ThemedActivity() {
         }
     }
     internal val prefs by lazy { getSharedPreferences("playback", MODE_PRIVATE) }
-    private var screenStarted = false
+    internal var screenStarted = false
     private val ticker =
         object : Runnable {
             override fun run() {
@@ -152,7 +158,7 @@ class MainActivity : ThemedActivity() {
             }
         }
 
-    private fun refreshTicker() {
+    internal fun refreshTicker() {
         handler.removeCallbacks(ticker)
         if (screenStarted) handler.post(ticker)
     }
@@ -527,7 +533,7 @@ class MainActivity : ThemedActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+    internal fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     internal fun weight() =
         LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(3), dp(4), dp(3), dp(4)) }
@@ -568,434 +574,6 @@ class MainActivity : ThemedActivity() {
     internal fun clock(ms: Long): String {
         val s = ms.coerceAtLeast(0) / 1000
         return "%d:%02d".format(s / 60, s % 60)
-    }
-
-    private fun updateSelectionTools() {
-        (selectionButton as IconButton).icon =
-            if (selecting) IconButton.Kind.DONE else IconButton.Kind.SELECT
-        selectionButton.contentDescription = if (selecting) "Завершить выбор" else "Выбрать треки"
-        bulkButton.visibility = if (selecting) View.VISIBLE else View.GONE
-        bulkButton.text = "В плейлист (${selection.size})"
-        bulkButton.isEnabled = selection.isNotEmpty()
-        bulkButton.alpha = if (bulkButton.isEnabled) 1f else 0.45f
-        moreTools.visibility = if (selecting) View.VISIBLE else View.GONE
-        identifyButton.visibility = if (selecting) View.GONE else View.VISIBLE
-        val allHidden = selection.isNotEmpty() && selection.all { it in library.hiddenTracks() }
-        hideTracksButton.text = if (allHidden) "👁 Вернуть" else "👁 Скрыть"
-        hideTracksButton.contentDescription = if (allHidden) "Вернуть в воспроизведение" else "Не воспроизводить"
-        deleteTracksButton.contentDescription = "Удалить выбранные треки из библиотеки"
-        listOf(hideTracksButton, deleteTracksButton).forEach {
-            it.isEnabled = selection.isNotEmpty()
-            it.alpha = if (it.isEnabled) 1f else 0.45f
-        }
-    }
-
-    private var libraryPage = 0
-    private var lastBrowserSource:String? = null
-    /** Scroll position to apply on the first render after recreation (rotation). */
-    private var pendingScrollY: Int? = null
-    private val renderSearch = Runnable { if (alive) render() }
-
-    internal fun render() {
-        if (!::list.isInitialized) return
-        updateSelectionTools()
-        val scrollView = list.parent as? ScrollView
-        val scrollY =
-            pendingScrollY
-                ?.also { pendingScrollY = null }
-                ?: scrollView?.scrollY
-                ?: 0
-        thumbnails.begin(scrollView)
-        list.removeAllViews()
-        list.post { thumbnails.loadVisible() }
-        trackLabels.clear()
-        val allowed = selectedPlaylist?.let { library.playlist(it) }
-        val ordered =
-            library.ordered(tracks, selectedPlaylist.orEmpty(), prefs.getInt("librarySort", 0))
-        visible =
-            ordered.filter {
-                (allowed == null || it.uri in allowed) &&
-                    (it.title.contains(query, true) || it.artist.contains(query, true))
-            }
-        browserTitle.text = selectedPlaylist ?: "Библиотека"
-        browserCount.text = if (scanning) "Проверяем папки…" else "${visible.size} песен"
-        if (visible.isEmpty())
-            list.addView(
-                label(
-                    if (library.roots().isEmpty())
-                        "Добавь папку через меню ⋯.\nВ библиотеку попадут песни от 30 секунд."
-                    else "Песен не найдено. Обнови библиотеку через меню ⋯.",
-                    16f,
-                )
-            )
-        val favorites = library.playlist("Избранное")
-        val hidden = library.hiddenTracks()
-        if (selecting)
-            list.addView(
-                button("Выбрать все найденные (${selection.size} выбрано)") {
-                    selection.addAll(visible.map { it.uri })
-                    render()
-                }
-            )
-        if(lastBrowserSource!=selectedPlaylist){libraryPage=0;lastBrowserSource=selectedPlaylist}
-        val pageSize=200
-        val lastPage=((visible.size-1).coerceAtLeast(0))/pageSize
-        libraryPage=libraryPage.coerceIn(0,lastPage)
-        if(lastPage>0)list.addView(label("Страница ${libraryPage+1} из ${lastPage+1}",14f))
-        visible.drop(libraryPage*pageSize).take(pageSize).forEach { track ->
-            val r =
-                row().apply {
-                    setPadding(dp(4), dp(4), dp(4), dp(4))
-                    background =
-                        android.graphics.drawable.GradientDrawable().apply {
-                            setColor(PlayerScreens.bg)
-                            cornerRadius = dp(14).toFloat()
-                        }
-                }
-            if (selecting)
-                r.addView(
-                    CheckBox(this).apply {
-                        isChecked = track.uri in selection
-                        setOnCheckedChangeListener { _, yes ->
-                            if (yes) selection.add(track.uri) else selection.remove(track.uri)
-                            updateSelectionTools()
-                        }
-                    }
-                )
-            if (track.artworkUri.isNotBlank()) {
-                val thumb = ImageView(this).apply { scaleType=ImageView.ScaleType.CENTER_CROP; contentDescription="Обложка: ${track.albumName()}" }
-                r.addView(thumb, LinearLayout.LayoutParams(dp(44),dp(44)).apply { marginEnd=dp(8) })
-                thumbnails.add(thumb,track.artworkUri)
-                thumb.setOnClickListener { if(selecting){if(!selection.add(track.uri))selection.remove(track.uri);render()}else startTrack(track) }
-            }
-            val number =
-                if (selectedPlaylist != null)
-                    (track.trackNumber ?: filenameTrackNumber(track))
-                        ?.let { "№%02d · ".format(it) }
-                        .orEmpty()
-                else ""
-            val details = mutableListOf(track.artist.ifBlank { track.folder })
-            if (selectedPlaylist != null) {
-                details.add(track.albumName())
-                track.year?.let { details.add(it.toString()) }
-                track.discNumber?.let { details.add("диск $it") }
-            }
-            if (track.uri in hidden) details.add("👁 Не воспроизводится")
-            details.add(clock(track.duration))
-            val caption = "$number${track.title}\n${details.joinToString(" · ")}"
-            val styled =
-                android.text.SpannableString(caption).apply {
-                    val start = caption.indexOf('\n') + 1
-                    setSpan(
-                        android.text.style.RelativeSizeSpan(0.76f),
-                        start,
-                        length,
-                        android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                    )
-                    setSpan(
-                        android.text.style.ForegroundColorSpan(PlayerScreens.muted),
-                        start,
-                        length,
-                        android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                    )
-                }
-            val info = label(caption, 18f).apply { text = styled }
-            trackLabels[track.uri] = info
-            info.setOnClickListener {
-                if (selecting) {
-                    if (!selection.add(track.uri)) selection.remove(track.uri)
-                    render()
-                } else startTrack(track)
-            }
-            info.setOnLongClickListener {
-                trackMenu(track)
-                true
-            }
-            r.addView(info, weight())
-            val heart =
-                button(if (track.uri in favorites) "♥" else "♡") {
-                    library.toggleFavorite(track)
-                    render()
-                }
-            heart.contentDescription = "Избранное: ${track.title}"
-            heart.setOnLongClickListener {
-                addToPlaylists(track)
-                true
-            }
-            r.addView(heart, LinearLayout.LayoutParams(dp(48), dp(52)))
-            list.addView(
-                r,
-                LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, dp(3), 0, dp(3)) },
-            )
-        }
-        if(lastPage>0) {
-            val navigation=row()
-            navigation.addView(button("← Назад") { libraryPage--;render();scrollView?.post { scrollView.scrollTo(0,0) } }.apply { isEnabled=libraryPage>0 },weight())
-            navigation.addView(button("Далее →") { libraryPage++;render();scrollView?.post { scrollView.scrollTo(0,0) } }.apply { isEnabled=libraryPage<lastPage },weight())
-            list.addView(navigation)
-        }
-        highlightTrack(true)
-        scrollView?.post { if (alive) scrollView.scrollTo(0, scrollY) }
-    }
-
-    private fun removeUnavailableFromQueue() {
-        if (prefs.getString("activeBook", "").orEmpty().isNotEmpty()) return
-        val playable = library.playableTracks().map { it.uri }.toSet()
-        val onlineHidden=OnlineLibraryActions(this).ids("hidden")
-        controller?.let { c ->
-            for (index in c.mediaItemCount - 1 downTo 0) {
-                if (!QueueEligibility.playable(c.getMediaItemAt(index).mediaId,playable,onlineHidden)) c.removeMediaItem(index)
-            }
-        }
-    }
-
-    private fun toggleSelectedTracksHidden() {
-        if (selection.isEmpty()) return
-        val hide = !selection.all { it in library.hiddenTracks() }
-        library.setTracksHidden(selection.toSet(), hide)
-        removeUnavailableFromQueue()
-        render()
-        toast(if (hide) "Выбранные треки не будут воспроизводиться" else "Треки возвращены в воспроизведение")
-    }
-
-    private fun deleteSelectedTracks() {
-        val ids = selection.toSet()
-        if (ids.isEmpty()) return
-        AlertDialog.Builder(this)
-            .setTitle("Удалить из библиотеки: ${ids.size}?")
-            .setMessage("Файлы останутся на устройстве. Эти треки будут исключены из библиотеки и воспроизведения, в том числе после обновления библиотеки.")
-            .setNegativeButton("Отмена", null)
-            .setPositiveButton("Удалить") { _, _ ->
-                library.excludeTracks(ids)
-                removeUnavailableFromQueue()
-                tracks = library.tracks()
-                selection.clear()
-                render()
-            }
-            .show()
-    }
-
-    private fun startTrack(track: Track) {
-        if (track.uri in library.hiddenTracks()) {
-            toast("Трек скрыт от воспроизведения. Выбери его и нажми «Вернуть»")
-            return
-        }
-        val c = controller ?: return toast("Плеер ещё подключается")
-        prefs.edit().putBoolean("onlinePlayerOrigin",false).apply()
-        sendPlaybackCommand(
-            c,
-            PlaybackCommands.START_QUEUE,
-            Bundle().apply {
-                putString("uri", track.uri)
-                putString("source", selectedPlaylist.orEmpty())
-            },
-        )
-    }
-
-    private fun sendPlaybackCommand(c: MediaController, action: String, args: Bundle) {
-        val request = c.sendCustomCommand(SessionCommand(action, Bundle.EMPTY), args)
-        request.addListener(
-            {
-                if (alive)
-                    runCatching { request.get() }
-                        .onSuccess {
-                            if (it.resultCode != SessionResult.RESULT_SUCCESS)
-                                toast("Не удалось применить действие плеера")
-                            updatePlayer()
-                        }
-                        .onFailure { toast("Не удалось применить действие плеера") }
-            },
-            java.util.concurrent.Executor { handler.post(it) },
-        )
-    }
-
-    private fun repeatDialog() {
-        val c = controller ?: return toast("Плеер ещё подключается")
-        val modes =
-            intArrayOf(Player.REPEAT_MODE_OFF, Player.REPEAT_MODE_ALL, Player.REPEAT_MODE_ONE)
-        AlertDialog.Builder(this)
-            .setTitle("Повтор")
-            .setSingleChoiceItems(
-                arrayOf(
-                    "Без повтора — остановиться в конце списка",
-                    "Повтор всего списка",
-                    "Повтор одной песни",
-                ),
-                modes.indexOf(c.repeatMode),
-            ) { dialog, index ->
-                sendPlaybackCommand(
-                    c,
-                    PlaybackCommands.SET_REPEAT,
-                    Bundle().apply { putInt("mode", modes[index]) },
-                )
-                dialog.dismiss()
-            }
-            .setNegativeButton("Отмена", null)
-            .show()
-    }
-
-    private fun restorePlayingSource() {
-        if (prefs.getString("queue", "[]") == "[]" && (controller?.mediaItemCount ?: 0) == 0) return
-        // Browsing another list does not change the source of the playing queue.
-        val source = prefs.getString("queueSource", "").orEmpty()
-        selectedPlaylist =
-            source.takeIf {
-                it.isNotEmpty() && (it == "Избранное" || it in library.playlistNames())
-            }
-        selecting = false
-        selection.clear()
-        query = ""
-        search.setText("")
-        render()
-    }
-
-    /** Single play/pause toggle for every entry point (sheet, transport row, lyrics screen). */
-    internal fun togglePlay() {
-        controller?.let {
-            if (it.isPlaying) it.pause()
-            else {
-                if (it.playbackState == Player.STATE_IDLE) it.prepare()
-                it.play()
-            }
-        }
-    }
-
-    private fun updatePlayer() {
-        if (!screenStarted) return
-        val c = controller ?: return
-        highlightTrack(false)
-        now.text = c.currentMediaItem?.mediaMetadata?.title?.toString() ?: "Выбери песню"
-        play.text = if (c.isPlaying) "❚❚" else "▶"
-        val d = c.duration.takeIf { it != C.TIME_UNSET && it > 0 }
-            ?: c.currentMediaItem?.mediaMetadata?.extras?.getLong("onlineDuration") ?: 0L
-        position.text =
-            getString(
-                dev.alex.folderplayer.R.string.duration_format,
-                clock(c.currentPosition),
-                clock(d),
-            )
-        onlineSection.updateNowPlaying(now.text.toString(),position.text.toString())
-        if (!dragging)
-            seek.progress =
-                if (d > 0) (c.currentPosition * 1000 / d).toInt().coerceIn(0, 1000) else 0
-        val track = currentTrack()
-        val id = c.currentMediaItem?.mediaId
-        if (directId != null && directId != id) stopDirectLyrics(true)
-        screens.update(
-            PlayerScreens.State(
-                id,
-                now.text.toString(),
-                track?.artist ?: c.mediaMetadata.artist?.toString().orEmpty(),
-                listOfNotNull(track?.album?.takeIf { it.isNotBlank() }, track?.year?.toString())
-                    .joinToString(" · "),
-                prefs.getString("queueSource", "").orEmpty().ifBlank { "Библиотека" },
-                c.isPlaying,
-                if(id?.startsWith("afp-yandex://")==true) OnlineLibraryActions(this).contains("favorites",Uri.parse(id).lastPathSegment.orEmpty())
-                else id != null && id in library.playlist("Избранное"),
-                c.repeatMode,
-                c.currentPosition,
-                d,
-                prefs.getInt("seekSeconds", 10),
-            )
-        )
-        if (page == "queue" && (queueTimeline !== c.currentTimeline || queueTracks !== tracks)) {
-            queueTimeline = c.currentTimeline
-            queueTracks = tracks
-            val byId = tracks.associateBy { it.uri }
-            val entries =
-                (0 until c.mediaItemCount).map { i ->
-                    val item = c.getMediaItemAt(i)
-                    val local = byId[item.mediaId]
-                    PlayerScreens.Entry(
-                        item.mediaId,
-                        local?.title ?: item.mediaMetadata.title?.toString().orEmpty(),
-                        local?.artist ?: item.mediaMetadata.artist?.toString().orEmpty(),
-                        local?.duration ?: item.mediaMetadata.extras?.getLong("onlineDuration") ?: 0L,
-                    )
-                }
-            screens.setQueue(entries)
-        }
-        if (page != "library" && track != null && mediaLoadedId != id) loadScreenMedia(track)
-        if (page == "translation" && track != null && translationId != id) translate(track)
-    }
-
-    private fun skip(direction: Int) {
-        controller?.let { c ->
-            val step = prefs.getInt("seekSeconds", 10) * 1000L
-            val target = (c.currentPosition + step * direction).coerceAtLeast(0)
-            c.seekTo(if (c.duration > 0) target.coerceAtMost(c.duration) else target)
-        }
-    }
-
-    private fun trackMenu(track: Track) {
-        val options = mutableListOf("Добавить в плейлист", "В конец очереди", "Сведения")
-        if (selectedPlaylist != null)
-            options.addAll(listOf("Убрать из этого плейлиста", "Выше", "Ниже"))
-        options.add("Обложка и текст")
-        options.add("Год альбома")
-        AlertDialog.Builder(this)
-            .setTitle(track.title)
-            .setItems(options.toTypedArray()) { _, which ->
-                if (which == options.lastIndex)
-                    albumYears.show(tracks.filter { it.albumIdentity() == track.albumIdentity() })
-                else
-                    when (which) {
-                        0 -> addToPlaylists(track)
-                        1 -> {
-                            if (track.uri in library.hiddenTracks())
-                                toast("Трек скрыт от воспроизведения. Сначала верни его кнопкой глаза")
-                            else controller?.addMediaItem(track.item())
-                        }
-                        2 ->
-                            AlertDialog.Builder(this)
-                                .setTitle(track.title)
-                                .setMessage(
-                                    "${track.artist}\nФайл: ${track.filename.ifBlank { androidx.documentfile.provider.DocumentFile.fromSingleUri(this,Uri.parse(track.sourceUri))?.name ?: "Неизвестно" }}\nПапка: ${track.folder}\n${clock(track.duration)}"
-                                )
-                                .setPositiveButton("Закрыть", null)
-                                .show()
-                        3 ->
-                            if (selectedPlaylist == null) manageMedia(track)
-                            else
-                                selectedPlaylist?.let { name ->
-                                    library.removeTrack(name, track.uri)?.let { removed ->
-                                        render()
-                                        AlertDialog.Builder(this)
-                                            .setMessage(
-                                                "Песня удалена из плейлиста. Файл сохранён."
-                                            )
-                                            .setPositiveButton("Вернуть") { _, _ ->
-                                                if (library.restoreTrack(removed)) render()
-                                                else toast("Плейлист уже удалён")
-                                            }
-                                            .setNegativeButton("Закрыть", null)
-                                            .show()
-                                    }
-                                }
-                        4 -> moveTrack(track, -1)
-                        5 -> moveTrack(track, 1)
-                        else -> manageMedia(track)
-                    }
-            }
-            .show()
-    }
-
-    private fun moveTrack(track: Track, delta: Int) {
-        val name = selectedPlaylist ?: return
-        val saved = library.playlist(name)
-        val items =
-            (library.ordered(tracks, name, prefs.getInt("librarySort", 0)).map { it.uri } +
-                    saved.filter { id -> tracks.none { it.uri == id } })
-                .toMutableList()
-        val from = items.indexOf(track.uri)
-        val to = from + delta
-        if (from < 0 || to !in items.indices) return
-        java.util.Collections.swap(items, from, to)
-        library.savePlaylist(name, items)
-        library.setPlaylistSort(name, SORT_MANUAL)
-        library.clearRandom(name)
-        reorderPlayingQueue(name)
-        render()
     }
 
     internal fun reorderPlayingQueue(name: String, refreshSource: Boolean = false) {
@@ -1118,69 +696,6 @@ class MainActivity : ThemedActivity() {
         super.onSaveInstanceState(out)
     }
 
-    private fun currentSongMenu(track: Track) {
-        stopDirectLyrics()
-        SongMenu.show(this, track.title, track.uri.startsWith("afp-yandex://")) { action ->
-            when (action) {
-                SongMenu.Action.SAVE_MP3 -> YandexSaveActivity.open(this,track.uri,track.title,track.artist,controller?.currentMediaItem?.takeIf { it.mediaId==track.uri }?.mediaMetadata?.artworkUri?.toString().orEmpty())
-                SongMenu.Action.SHARE -> YandexTrackShare.show(this,track.uri,track.title)
-                SongMenu.Action.SEARCH -> {
-                    showPage("lyrics")
-                    directLyrics(track)
-                }
-                SongMenu.Action.IMPORT -> {
-                    lyricTarget = track.uri
-                    startActivityForResult(
-                        Intent(Intent.ACTION_OPEN_DOCUMENT)
-                            .setType("*/*")
-                            .addCategory(Intent.CATEGORY_OPENABLE),
-                        101,
-                    )
-                }
-                SongMenu.Action.PLAYLIST -> addToPlaylists(track)
-                SongMenu.Action.YEAR ->
-                    albumYears.show(tracks.filter { it.albumIdentity() == track.albumIdentity() })
-                SongMenu.Action.SEARCH_NAME -> editSearchName(track)
-                SongMenu.Action.LANGUAGE -> editSongLanguage(track)
-                SongMenu.Action.RETRANSLATE -> {
-                    showPage("translation")
-                    renewTranslation(track)
-                }
-                else ->
-                    runAsync({ loadLyrics(track).orEmpty() }) { result ->
-                        val raw = result.getOrNull().orEmpty()
-                        when (action) {
-                            SongMenu.Action.EDIT -> editLyrics(track, raw)
-                            SongMenu.Action.TIMING -> markLyrics(track, raw)
-                            SongMenu.Action.EXPORT ->
-                                if (raw.isBlank()) toast("Сначала добавь текст")
-                                else {
-                                    lyricTarget = track.uri
-                                    val timed = LyricsDocument(raw).cues.isNotEmpty()
-                                    startActivityForResult(
-                                        Intent(Intent.ACTION_CREATE_DOCUMENT)
-                                            .setType("text/plain")
-                                            .addCategory(Intent.CATEGORY_OPENABLE)
-                                            .putExtra(
-                                                Intent.EXTRA_TITLE,
-                                                track.title.replace(
-                                                    Regex("[\\/:*?\"<>|]"),
-                                                    "_",
-                                                ) + if (timed) ".lrc" else ".txt",
-                                            ),
-                                        102,
-                                    )
-                                }
-                            else -> Unit
-                        }
-                    }
-            }
-        }
-    }
-
-    private val thumbnails by lazy { LibraryThumbnails(applicationContext,artworkWorker,handler) }
-    private val artworkWorker=java.util.concurrent.Executors.newSingleThreadExecutor()
-
     internal fun currentTrack(): Track? {
         val item=controller?.currentMediaItem ?: return null
         tracks.find { it.uri==item.mediaId }?.let { return it }
@@ -1190,139 +705,8 @@ class MainActivity : ThemedActivity() {
             meta.extras?.getLong("onlineDuration") ?: 0L,"Яндекс Музыка")
     }
 
-    private fun backPage() {
-        val target =
-            when (page) {
-                "player" -> "library"
-                "sound" -> soundReturn
-                "translation" -> "lyrics"
-                else -> "player"
-            }
-        if (page == "player") {
-            showPage(target)
-            if(prefs.getBoolean("onlinePlayerOrigin",false))onlineSection.show()
-        }
-        else pageMotion.leavePage { if (alive) showPage(target) }
-    }
-
-    private fun previewPlayer(travel: Float) {
-        if (prefs.getString("activeBook", "").orEmpty().isNotEmpty()) return
-        if (page != "library") return
-        if (screens.view.visibility != View.VISIBLE) {
-            screens.show("player")
-            updatePlayer()
-            currentTrack()?.let { loadScreenMedia(it) }
-        }
-        pageMotion.preview(root.height, travel)
-    }
-
-    internal fun showPage(value: String, animate: Boolean = true) {
-        val before = page
-        page =
-            value.takeIf { it in setOf("player", "lyrics", "translation", "queue", "sound") }
-                ?: "library"
-        if (page != "translation") cancelTranslation()
-        refreshTicker()
-        if (page != "lyrics") {
-            stopDirectLyrics()
-            lyricsRequestedId = null
-        }
-        prefs.edit().putString("uiPage", page).apply()
-        layout.visibility = View.VISIBLE
-        layout.importantForAccessibility =
-            if (page == "library") View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
-            else View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-        val revealStart =
-            if (before == "library" && screens.view.visibility == View.VISIBLE)
-                screens.view.translationY
-            else null
-        if (page != "library") {
-            if (page == "queue") queueTimeline = null
-            screens.show(page)
-            updatePlayer()
-        }
-        pageMotion.show(
-            page != "library",
-            root.height,
-            animate && before != page,
-            before == "library",
-            revealStart,
-        )
-        if (page == "translation") currentTrack()?.let { translate(it) }
-    }
-
-    private fun openLyrics() {
-        val track = currentTrack() ?: return toast("Сначала включи песню")
-        lyricsRequestedId = track.uri
-        mediaLoadedId = null
-        showPage("lyrics")
-    }
-
-    @Deprecated("Framework back compatibility")
     override fun onBackPressed() {
         if (page != "library") backPage() else super.onBackPressed()
-    }
-
-    private fun loadScreenMedia(track: Track) {
-        mediaLoadedId = track.uri
-        val generation = ++mediaGeneration
-        screens.setArtwork(track.uri, null)
-        screens.lyricsSearching(track.uri, false, "Читаем локальный текст…")
-        // Capture artwork from this queue item, never the aggregated (possibly previous) metadata.
-        val cover=controller?.currentMediaItem?.mediaMetadata?.artworkUri?.toString().orEmpty()
-        executor.execute {
-            val bitmap = runCatching {
-                if(track.uri.startsWith("afp-yandex://")) OnlineArtwork(applicationContext).load(cover)
-                else LocalArtwork.read(this, track.sourceUri, track.artworkUri)
-            }.getOrNull()
-            val lyrics = runCatching { loadLyrics(track)?.let { LyricsDocument(it) } }
-            postUi {
-                if (
-                    generation == mediaGeneration &&
-                        controller?.currentMediaItem?.mediaId == track.uri
-                ) {
-                    screens.setArtwork(track.uri, bitmap)
-                    screens.setLyrics(
-                        track.uri,
-                        lyrics.getOrNull(),
-                        if (lyrics.isFailure)
-                            "Не удалось прочитать локальный текст. Можно найти слова или добавить свой через ⋮."
-                        else null,
-                    )
-                    if (page == "lyrics" && lyricsWork.state().key == track.uri)
-                        lyricsWork.attach { showLyricsSearch(it) }
-                    if (page == "lyrics" && lyricsRequestedId == track.uri) {
-                        lyricsRequestedId = null
-                        if (lyrics.getOrNull() == null) directLyrics(track, false)
-                    }
-                }
-            }
-        }
-    }
-
-    internal var translationForeground = false
-
-
-    private fun equalizer() {
-        if (page != "sound") soundReturn = page
-        showPage("sound")
-    }
-
-    private fun highlightTrack(force: Boolean) {
-        val currentId = controller?.currentMediaItem?.mediaId
-        if (!force && currentId == highlightedId) return
-        highlightedId = currentId
-        trackLabels.forEach { (uri, label) ->
-            val current = uri == currentId
-            label.setTextColor(if (current) PlayerScreens.accent else AppAppearance.textColor)
-            label.setTypeface(null, if (current) Typeface.BOLD else Typeface.NORMAL)
-            label.isSelected = current
-            (label.parent as? View)?.background =
-                android.graphics.drawable.GradientDrawable().apply {
-                    setColor(if (current) AppAppearance.palette.selected else PlayerScreens.bg)
-                    cornerRadius = dp(14).toFloat()
-                }
-        }
     }
 
     override fun onTrimMemory(level: Int) {
