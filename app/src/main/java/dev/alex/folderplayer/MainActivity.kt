@@ -35,8 +35,8 @@ class MainActivity : ThemedActivity() {
     internal var directResults = emptyList<LyricsSearch.Result>()
     private var mediaGeneration = 0
     internal var mediaLoadedId: String? = null
-    private var queueTimeline: androidx.media3.common.Timeline? = null
-    private var queueTracks: List<Track>? = null
+    internal var queueTimeline: androidx.media3.common.Timeline? = null
+    internal var queueTracks: List<Track>? = null
     internal lateinit var library: Library
     private lateinit var layout: LinearLayout
     private lateinit var list: LinearLayout
@@ -74,6 +74,30 @@ class MainActivity : ThemedActivity() {
     internal val networkExecutor = Executors.newSingleThreadExecutor()
     internal var networkCancel: LyricsSearch.Cancel? = null
     internal var networkTask: java.util.concurrent.Future<*>? = null
+    internal val onlineSection: OnlineSection by lazy { OnlineSection(this, { raw,index,mode,done ->
+        val c=controller
+        if(c==null)done(if(mode=="remove")null else "Плеер ещё подключается. Повтори запуск")
+        else {
+            val request=c.sendCustomCommand(SessionCommand(PlaybackCommands.START_ONLINE_QUEUE,Bundle.EMPTY),Bundle().apply {
+                putString("queueId",raw);putInt("index",index);putString("mode",mode)
+            })
+            request.addListener({
+                if(alive) {
+                    val error=runCatching { request.get().resultCode }.fold(
+                        { if(it==SessionResult.RESULT_SUCCESS)null else "Плеер отклонил очередь. Повтори действие" },
+                        { "Не удалось передать очередь плееру. Повтори действие" })
+                    done(error)
+                    if(error==null && mode=="play") {
+                        prefs.edit().putBoolean("onlinePlayerOrigin",true).apply()
+                        showPage("player")
+                    }
+                    updatePlayer()
+                }
+            },java.util.concurrent.Executor { handler.post(it) })
+        }
+    },openPlayer={ prefs.edit().putBoolean("onlinePlayerOrigin",true).apply();showPage("player") }) }
+
+    internal val appUpdates: AppUpdates by lazy { AppUpdates(this, extensionManager) }
     internal val albumYears by lazy {
         AlbumYearDialogs(
             this,
@@ -88,7 +112,7 @@ class MainActivity : ThemedActivity() {
         )
     }
     internal val lyricStore by lazy { LyricsStore(this) }
-    private var scanning = false
+    internal var scanning = false
     private var dragging = false
     internal var alive = true
     private val trackLabels = linkedMapOf<String, TextView>()
@@ -987,163 +1011,6 @@ class MainActivity : ThemedActivity() {
         }
     }
 
-    private fun recognitionMenu() {
-        val track =
-            currentTrack()
-                ?: run {
-                    toast("Сначала включи песню")
-                    return
-                }
-        AlertDialog.Builder(this)
-            .setTitle("Определить песню")
-            .setItems(arrayOf("Текущий трек · по умолчанию", "Музыка рядом")) { _, i ->
-                if (i == 1) identifySong()
-                else
-                    startActivity(
-                        Intent(this, RecognitionActivity::class.java)
-                            .putExtra("localUri", track.uri)
-                            .putExtra("localPosition", controller?.currentPosition ?: 0L)
-                            .putExtra("localDuration", track.duration)
-                    )
-            }
-            .setNegativeButton("Отмена", null)
-            .show()
-    }
-
-    private fun identifySong() {
-        controller?.pause()
-        startActivity(Intent(this, RecognitionActivity::class.java))
-    }
-
-    private fun importExtensionFolder(uri: Uri) {
-        if (uri.scheme != "content") return
-        runCatching {
-            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            check(androidx.documentfile.provider.DocumentFile.fromTreeUri(this, uri)?.isDirectory == true)
-            library.setRoots((library.roots() + uri.toString()).distinct())
-            scan()
-        }.onFailure {
-            toast("Подтверди папку музыки для доступа плеера")
-            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
-                .putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, uri)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION), 100)
-        }
-    }
-
-    private fun settings() {
-        SettingsMenu.show(this) { action ->
-            when (action) {
-                SettingsMenu.Action.ADD_FOLDER ->
-                    startActivityForResult(
-                        Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
-                            .addFlags(
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-                            ),
-                        100,
-                    )
-                SettingsMenu.Action.FOLDERS -> folders()
-                SettingsMenu.Action.SCAN -> scan()
-                SettingsMenu.Action.SEEK ->
-                    AlertDialog.Builder(this)
-                        .setTitle("Шаг перемотки")
-                        .setSingleChoiceItems(
-                            arrayOf("10 секунд", "20 секунд"),
-                            if (prefs.getInt("seekSeconds", 10) == 10) 0 else 1,
-                        ) { d, n ->
-                            prefs.edit().putInt("seekSeconds", if (n == 0) 10 else 20).apply()
-                            d.dismiss()
-                        }
-                        .show()
-                SettingsMenu.Action.SLEEP ->
-                    AlertDialog.Builder(this)
-                        .setTitle("Остановить музыку через…")
-                        .setItems(
-                            arrayOf("15 минут", "30 минут", "60 минут", "Выключить таймер")
-                        ) { _, n ->
-                            prefs
-                                .edit()
-                                .putLong(
-                                    "sleepDeadline",
-                                    if (n == 3) 0
-                                    else System.currentTimeMillis() + listOf(15, 30, 60)[n] * 60000L,
-                                )
-                                .apply()
-                            toast(if (n == 3) "Таймер выключен" else "Таймер установлен")
-                        }
-                        .show()
-                SettingsMenu.Action.EXTENSIONS -> extensions()
-                SettingsMenu.Action.BOOKS -> startActivity(Intent(this, BooksActivity::class.java))
-                SettingsMenu.Action.CRASH -> CrashNotes.show(this)
-                SettingsMenu.Action.THEME -> ThemePicker.show(this)
-                SettingsMenu.Action.ABOUT -> about()
-            }
-        }
-    }
-
-    private fun folders() {
-        val roots = library.roots()
-        if (roots.isEmpty()) return toast("Папки ещё не выбраны")
-        val labels =
-            roots.map {
-                androidx.documentfile.provider.DocumentFile.fromTreeUri(this, Uri.parse(it))?.name
-                    ?: it
-            }
-        AlertDialog.Builder(this)
-            .setTitle("Нажми папку, чтобы убрать")
-            .setItems(labels.toTypedArray()) { _, i ->
-                AlertDialog.Builder(this)
-                    .setTitle("Убрать «${labels[i]}»?")
-                    .setMessage("Файлы останутся на телефоне.")
-                    .setPositiveButton("Убрать") { _, _ ->
-                        if (scanning) toast("Дождись завершения проверки")
-                        else {
-                            library.setRoots(roots.filterIndexed { n, _ -> n != i })
-                            runCatching {
-                                contentResolver.releasePersistableUriPermission(
-                                    Uri.parse(roots[i]),
-                                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                                )
-                            }
-                            controller?.pause()
-                            controller?.clearMediaItems()
-                            scan()
-                        }
-                    }
-                    .setNegativeButton("Отмена", null)
-                    .show()
-            }
-            .setNegativeButton("Закрыть", null)
-            .show()
-    }
-
-    private fun scan() {
-        LocalArtwork.clear()
-        if (scanning) return
-        scanning = true
-        render()
-        runAsync({ library.scan() }) { result ->
-            scanning = false
-            result
-                .onSuccess { (items, errors, retainedRoots) ->
-                    tracks = items
-                    mediaLoadedId=null;queueTimeline=null;queueTracks=null
-                    render()
-                    reorderPlayingQueue(prefs.getString("queueSource", "").orEmpty(), true)
-                    toast(
-                        "В библиотеке ${items.size} песен" +
-                            (if (retainedRoots > 0) ". Сохранены данные недоступных папок: $retainedRoots" else "") +
-                            if (errors > 0) ". Не удалось прочитать файлов/папок: $errors"
-                            else ""
-                    )
-                }
-                .onFailure {
-                    render()
-                    toast("Не удалось обновить библиотеку")
-                }
-        }
-    }
-
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == ExternalExtensions.REQUEST && resultCode == RESULT_OK) {
@@ -1486,7 +1353,7 @@ class MainActivity : ThemedActivity() {
         onlineSection.resume()
     }
 
-    private val extensionManager: ExtensionManager by lazy {
+    internal val extensionManager: ExtensionManager by lazy {
         ExtensionManager(
             this,
             translationClient,
@@ -1503,55 +1370,6 @@ class MainActivity : ThemedActivity() {
             online = { onlineSection.show() },
             updates = { appUpdates.check() },
         )
-    }
-
-    private fun extensions() {
-        extensionManager.show()
-    }
-
-    private val onlineSection: OnlineSection by lazy { OnlineSection(this, { raw,index,mode,done ->
-        val c=controller
-        if(c==null)done(if(mode=="remove")null else "Плеер ещё подключается. Повтори запуск")
-        else {
-            val request=c.sendCustomCommand(SessionCommand(PlaybackCommands.START_ONLINE_QUEUE,Bundle.EMPTY),Bundle().apply {
-                putString("queueId",raw);putInt("index",index);putString("mode",mode)
-            })
-            request.addListener({
-                if(alive) {
-                    val error=runCatching { request.get().resultCode }.fold(
-                        { if(it==SessionResult.RESULT_SUCCESS)null else "Плеер отклонил очередь. Повтори действие" },
-                        { "Не удалось передать очередь плееру. Повтори действие" })
-                    done(error)
-                    if(error==null && mode=="play") {
-                        prefs.edit().putBoolean("onlinePlayerOrigin",true).apply()
-                        showPage("player")
-                    }
-                    updatePlayer()
-                }
-            },java.util.concurrent.Executor { handler.post(it) })
-        }
-    },openPlayer={ prefs.edit().putBoolean("onlinePlayerOrigin",true).apply();showPage("player") }) }
-
-    private val appUpdates: AppUpdates by lazy { AppUpdates(this, extensionManager) }
-
-    private fun about() {
-        AlertDialog.Builder(this)
-            .setTitle("aFolderPlayer · ${appUpdates.installedVersion()}")
-            .setMessage(
-                "Музыка по папкам, тексты песен и перевод. Без рекламы и аналитики.\n\nИнтернет используется только по твоему запросу. Перевод работает на телефоне после установки языкового пакета."
-            )
-            .setPositiveButton("Закрыть", null)
-            .setNeutralButton("Проверить обновления") { _, _ -> appUpdates.check() }
-            .setNegativeButton("Подробнее") { _, _ ->
-                AlertDialog.Builder(this)
-                    .setTitle("Сервисы и лицензии")
-                    .setMessage(
-                        "Поиск текстов: LRCLIB. Годы альбомов: MusicBrainz. Обновления: GitHub. Распознавание: неофициальный интерфейс Shazam; отправляется звуковой отпечаток, запись и геолокация не отправляются.\n\nMedia3 / AndroidX: Apache 2.0. Языковые пакеты: см. лицензии пакетов. ONNX Runtime: MIT. Алгоритм распознавания адаптирован из ShazamIO 0.4.0.0, MIT, © 2021 dotX12.\n\nРазработка при участии ChatGPT."
-                    )
-                    .setPositiveButton("Закрыть", null)
-                    .show()
-            }
-            .show()
     }
 
     override fun onStart() {
