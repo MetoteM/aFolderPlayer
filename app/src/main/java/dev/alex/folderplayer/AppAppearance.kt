@@ -97,6 +97,6 @@ internal object ThemePicker {
             dialog.dismiss()
             val choice=AppAppearance.choices[index]
             if(choice.id!=current) { AppAppearance.save(host,choice);host.recreate() }
-        }.setNegativeButton("Отмена",null).show()
+        }.setNegativeButton(host.afp(R.string.cancel),null).show()
     }
 }

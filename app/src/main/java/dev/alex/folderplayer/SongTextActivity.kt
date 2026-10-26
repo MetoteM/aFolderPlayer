@@ -74,7 +74,7 @@ class SongTextActivity : ThemedActivity() {
         box.addView(actions)
         translate =
             Button(this).apply {
-                text = "Перевести"
+                text = afp(R.string.translate)
                 setOnClickListener { chooseTranslation() }
                 visibility =
                     if (russian(source)) android.view.View.GONE else android.view.View.VISIBLE
@@ -95,15 +95,15 @@ class SongTextActivity : ThemedActivity() {
         if (russian(source))
             actions.addView(
                 Button(this).apply {
-                    text = "Дополнительно"
+                    text = afp(R.string.more)
                     setOnClickListener {
                         AlertDialog.Builder(this@SongTextActivity)
-                            .setItems(arrayOf("Перевод")) { _, _ ->
+                            .setItems(arrayOf(afp(R.string.translation))) { _, _ ->
                                 AlertDialog.Builder(this@SongTextActivity)
                                     .setMessage(
                                         "Текст уже на русском. Доступные языковые пакеты переводят на русский; обратный перевод пока не поддерживается."
                                     )
-                                    .setPositiveButton("Закрыть", null)
+                                    .setPositiveButton(afp(R.string.close), null)
                                     .show()
                             }
                             .show()
@@ -120,7 +120,7 @@ class SongTextActivity : ThemedActivity() {
         )
         box.addView(
             Button(this).apply {
-                text = "Назад"
+                text = afp(R.string.back)
                 setOnClickListener { finish() }
             }
         )
@@ -189,7 +189,7 @@ class SongTextActivity : ThemedActivity() {
                         .setNeutralButton("Выбрать вручную") { _, _ ->
                             chooseInstalledLanguage(models, null)
                         }
-                        .setPositiveButton("Закрыть", null)
+                        .setPositiveButton(afp(R.string.close), null)
                         .show()
             }
             SongTranslation.Decision.Choose ->
@@ -224,7 +224,7 @@ class SongTextActivity : ThemedActivity() {
                     .onSuccess { launchTranslation(ordered[index]) }
                     .onFailure { status.text = "Не удалось сохранить выбор языка" }
             }
-            .setNegativeButton("Отмена", null)
+            .setNegativeButton(afp(R.string.cancel), null)
             .show()
     }
 

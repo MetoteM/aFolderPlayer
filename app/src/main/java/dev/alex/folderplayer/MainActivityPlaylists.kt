@@ -44,10 +44,10 @@ internal fun MainActivity.sortDialog() {
                                 .show()
                     }
                 }
-                .setNeutralButton("Годы альбомов") { _, _ ->
+                .setNeutralButton(afp(R.string.album_years)) { _, _ ->
                     albumYears.show(tracks.filter { it.uri in library.playlist(name) })
                 }
-                .setNegativeButton("Отмена", null)
+                .setNegativeButton(afp(R.string.cancel), null)
                 .show()
             return
         }
@@ -67,7 +67,7 @@ internal fun MainActivity.sortDialog() {
                 reorderPlayingQueue("")
                 d.dismiss()
             }
-            .setNeutralButton("Годы альбомов") { _, _ -> albumYears.show(tracks) }
+            .setNeutralButton(afp(R.string.album_years)) { _, _ -> albumYears.show(tracks) }
             .show()
     }
 
@@ -103,8 +103,8 @@ internal fun MainActivity.addFolderToPlaylist(name: String, onDone: () -> Unit =
                 val follow =
                     CheckBox(this).apply {
                         text = "Добавлять новые песни при обновлении библиотеки"
-                        isChecked = name != "Избранное"
-                        visibility = if (name == "Избранное") View.GONE else View.VISIBLE
+                        isChecked = name != afp(R.string.favorites)
+                        visibility = if (name == afp(R.string.favorites)) View.GONE else View.VISIBLE
                     }
                 fun updateCount() {
                     count.text =
@@ -118,8 +118,8 @@ internal fun MainActivity.addFolderToPlaylist(name: String, onDone: () -> Unit =
                 AlertDialog.Builder(this)
                     .setTitle(folder.path)
                     .setView(panel)
-                    .setPositiveButton("Добавить") { _, _ ->
-                        if (name != "Избранное" && name !in library.playlistNames())
+                    .setPositiveButton(afp(R.string.add)) { _, _ ->
+                        if (name != afp(R.string.favorites) && name !in library.playlistNames())
                             toast("Плейлист уже удалён")
                         else {
                             val added =
@@ -134,11 +134,11 @@ internal fun MainActivity.addFolderToPlaylist(name: String, onDone: () -> Unit =
                         }
                         onDone()
                     }
-                    .setNegativeButton("Отмена") { _, _ -> onDone() }
+                    .setNegativeButton(afp(R.string.cancel)) { _, _ -> onDone() }
                     .setOnCancelListener { onDone() }
                     .show()
             }
-            .setNegativeButton("Отмена") { _, _ -> onDone() }
+            .setNegativeButton(afp(R.string.cancel)) { _, _ -> onDone() }
             .setOnCancelListener { onDone() }
             .show()
     }
@@ -148,14 +148,14 @@ internal fun MainActivity.bulkAdd() {
             toast("Нажми «Выбрать» и отметь песни")
             return
         }
-        val names = (listOf("Избранное") + library.playlistNames()).distinct()
+        val names = (listOf(afp(R.string.favorites)) + library.playlistNames()).distinct()
         val checked = BooleanArray(names.size)
         AlertDialog.Builder(this)
             .setTitle("Добавить ${selection.size} песен")
             .setMultiChoiceItems(names.toTypedArray(), checked) { _, i, value ->
                 checked[i] = value
             }
-            .setPositiveButton("Добавить") { _, _ ->
+            .setPositiveButton(afp(R.string.add)) { _, _ ->
                 names.forEachIndexed { i, name ->
                     if (checked[i]) library.savePlaylist(name, library.playlist(name) + selection)
                 }
@@ -164,7 +164,7 @@ internal fun MainActivity.bulkAdd() {
                 render()
             }
             .setNeutralButton("Новый") { _, _ -> createPlaylist { bulkAdd() } }
-            .setNegativeButton("Отмена", null)
+            .setNegativeButton(afp(R.string.cancel), null)
             .show()
     }
 
@@ -175,8 +175,8 @@ internal fun MainActivity.renamePlaylist() {
             AlertDialog.Builder(this)
                 .setTitle("Переименовать плейлист")
                 .setView(input)
-                .setPositiveButton("Сохранить", null)
-                .setNegativeButton("Отмена", null)
+                .setPositiveButton(afp(R.string.save), null)
+                .setNegativeButton(afp(R.string.cancel), null)
                 .create()
         d.setOnShowListener {
             d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -209,13 +209,13 @@ internal fun MainActivity.createPlaylist(after: (String) -> Unit) {
                 .setTitle("Новый плейлист")
                 .setView(panel)
                 .setPositiveButton("Создать", null)
-                .setNegativeButton("Отмена", null)
+                .setNegativeButton(afp(R.string.cancel), null)
                 .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val name = input.text.toString().trim()
                 if (name.isBlank()) input.error = "Введи название"
-                else if (name == "Избранное" || name in library.playlistNames())
+                else if (name == afp(R.string.favorites) || name in library.playlistNames())
                     input.error = "Такое название уже есть"
                 else {
                     library.savePlaylist(name, emptyList())
@@ -229,7 +229,7 @@ internal fun MainActivity.createPlaylist(after: (String) -> Unit) {
     }
 
 internal fun MainActivity.choosePlaylist() {
-        val names = (listOf("Избранное") + library.playlistNames()).distinct()
+        val names = (listOf(afp(R.string.favorites)) + library.playlistNames()).distinct()
         AlertDialog.Builder(this)
             .setTitle("Плейлисты")
             .setItems((names + "＋ Создать плейлист").toTypedArray()) { _, i ->
@@ -251,20 +251,20 @@ internal fun MainActivity.choosePlaylist() {
                 if (selectedPlaylist != null)
                     setNeutralButton("Текущий плейлист") { _, _ -> playlistMenu() }
             }
-            .setNegativeButton("Закрыть", null)
+            .setNegativeButton(afp(R.string.close), null)
             .show()
     }
 
 internal fun MainActivity.addToPlaylists(track: Track) {
         if(track.uri.startsWith("afp-yandex://")) { toast("Смешанные сохраняемые плейлисты — следующий этап. Избранное доступно кнопкой ♥");return }
-        val names = (listOf("Избранное") + library.playlistNames()).distinct()
+        val names = (listOf(afp(R.string.favorites)) + library.playlistNames()).distinct()
         val checked = names.map { track.uri in library.playlist(it) }.toBooleanArray()
         AlertDialog.Builder(this)
             .setTitle("${track.title}: плейлисты")
             .setMultiChoiceItems(names.toTypedArray(), checked) { _, i, value ->
                 checked[i] = value
             }
-            .setPositiveButton("Сохранить") { _, _ ->
+            .setPositiveButton(afp(R.string.save)) { _, _ ->
                 names.forEachIndexed { i, name ->
                     val uris = library.playlist(name).toMutableSet()
                     if (checked[i]) uris.add(track.uri) else uris.remove(track.uri)
@@ -273,14 +273,14 @@ internal fun MainActivity.addToPlaylists(track: Track) {
                 render()
             }
             .setNeutralButton("Новый") { _, _ -> createPlaylist { addToPlaylists(track) } }
-            .setNegativeButton("Отмена", null)
+            .setNegativeButton(afp(R.string.cancel), null)
             .show()
     }
 
 internal fun MainActivity.playlistMenu() {
         val name = selectedPlaylist ?: return
-        val options = mutableListOf("Добавить из папки", "Годы альбомов")
-        if (name != "Избранное")
+        val options = mutableListOf("Добавить из папки", afp(R.string.album_years))
+        if (name != afp(R.string.favorites))
             options.addAll(listOf("Связанные папки", "Переименовать", "Удалить плейлист"))
         AlertDialog.Builder(this)
             .setTitle(name)
@@ -294,14 +294,14 @@ internal fun MainActivity.playlistMenu() {
                         AlertDialog.Builder(this)
                             .setTitle("Удалить «$name»?")
                             .setMessage("Песни останутся на телефоне.")
-                            .setPositiveButton("Удалить") { _, _ ->
+                            .setPositiveButton(afp(R.string.delete)) { _, _ ->
                                 library.removePlaylist(name)
                                 if (prefs.getString("queueSource", "") == name)
                                     prefs.edit().putString("queueSource", "").apply()
                                 selectedPlaylist = null
                                 render()
                             }
-                            .setNegativeButton("Отмена", null)
+                            .setNegativeButton(afp(R.string.cancel), null)
                             .show()
                 }
             }
@@ -328,7 +328,7 @@ internal fun MainActivity.linkedPlaylistFolders(name: String) {
                     AlertDialog.Builder(this)
                         .setTitle(link.folder.path)
                         .setView(recursive)
-                        .setPositiveButton("Сохранить") { _, _ ->
+                        .setPositiveButton(afp(R.string.save)) { _, _ ->
                             library.configureFolder(name, link.folder, recursive.isChecked)
                             library.syncFolderPlaylists(tracks)
                             render()
@@ -339,11 +339,11 @@ internal fun MainActivity.linkedPlaylistFolders(name: String) {
                             render()
                             toast("Автопополнение отключено. Песни оставлены.")
                         }
-                        .setNegativeButton("Отмена", null)
+                        .setNegativeButton(afp(R.string.cancel), null)
                         .show()
                 }
             }
-            .setNegativeButton("Закрыть", null)
+            .setNegativeButton(afp(R.string.close), null)
             .show()
     }
 

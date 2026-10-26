@@ -68,8 +68,8 @@ internal fun MainActivity.renewTranslation(track: Track) {
             .setMessage(
                 "Сохранённый перевод этой песни будет заменён только после успешного завершения. Остальные переводы останутся."
             )
-            .setPositiveButton("Перевести") { _, _ -> translate(track, true, true) }
-            .setNegativeButton("Отмена", null)
+            .setPositiveButton(afp(R.string.translate)) { _, _ -> translate(track, true, true) }
+            .setNegativeButton(afp(R.string.cancel), null)
             .show()
     }
 
@@ -101,7 +101,7 @@ internal fun MainActivity.chooseSongLanguage(
                     .onSuccess { translate(track, true) }
                     .onFailure { toast("Не удалось сохранить выбор языка") }
             }
-            .setNegativeButton("Отмена", null)
+            .setNegativeButton(afp(R.string.cancel), null)
             .show()
     }
 

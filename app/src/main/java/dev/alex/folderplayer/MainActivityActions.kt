@@ -130,7 +130,7 @@ internal fun MainActivity.buildActions(): PlayerScreens.Actions {
                     }
 
                     override fun lyricsMenu() {
-                        currentTrack()?.let { currentSongMenu(it) } ?: toast("Сначала включи песню")
+                        currentTrack()?.let { currentSongMenu(it) } ?: toast(afp(R.string.pick_song_first))
                     }
 
                     override fun select(index: Int) {

@@ -41,8 +41,8 @@ internal fun MainActivity.deleteSelectedTracks() {
         AlertDialog.Builder(this)
             .setTitle("Удалить из библиотеки: ${ids.size}?")
             .setMessage("Файлы останутся на устройстве. Эти треки будут исключены из библиотеки и воспроизведения, в том числе после обновления библиотеки.")
-            .setNegativeButton("Отмена", null)
-            .setPositiveButton("Удалить") { _, _ ->
+            .setNegativeButton(afp(R.string.cancel), null)
+            .setPositiveButton(afp(R.string.delete)) { _, _ ->
                 library.excludeTracks(ids)
                 removeUnavailableFromQueue()
                 tracks = library.tracks()
@@ -57,7 +57,7 @@ internal fun MainActivity.startTrack(track: Track) {
             toast("Трек скрыт от воспроизведения. Выбери его и нажми «Вернуть»")
             return
         }
-        val c = controller ?: return toast("Плеер ещё подключается")
+        val c = controller ?: return toast(afp(R.string.player_connecting))
         prefs.edit().putBoolean("onlinePlayerOrigin",false).apply()
         sendPlaybackCommand(
             c,
@@ -87,7 +87,7 @@ internal fun MainActivity.sendPlaybackCommand(c: MediaController, action: String
     }
 
 internal fun MainActivity.repeatDialog() {
-        val c = controller ?: return toast("Плеер ещё подключается")
+        val c = controller ?: return toast(afp(R.string.player_connecting))
         val modes =
             intArrayOf(Player.REPEAT_MODE_OFF, Player.REPEAT_MODE_ALL, Player.REPEAT_MODE_ONE)
         AlertDialog.Builder(this)
@@ -107,7 +107,7 @@ internal fun MainActivity.repeatDialog() {
                 )
                 dialog.dismiss()
             }
-            .setNegativeButton("Отмена", null)
+            .setNegativeButton(afp(R.string.cancel), null)
             .show()
     }
 
@@ -117,7 +117,7 @@ internal fun MainActivity.restorePlayingSource() {
         val source = prefs.getString("queueSource", "").orEmpty()
         selectedPlaylist =
             source.takeIf {
-                it.isNotEmpty() && (it == "Избранное" || it in library.playlistNames())
+                it.isNotEmpty() && (it == afp(R.string.favorites) || it in library.playlistNames())
             }
         selecting = false
         selection.clear()
@@ -165,10 +165,10 @@ internal fun MainActivity.updatePlayer() {
                 track?.artist ?: c.mediaMetadata.artist?.toString().orEmpty(),
                 listOfNotNull(track?.album?.takeIf { it.isNotBlank() }, track?.year?.toString())
                     .joinToString(" · "),
-                prefs.getString("queueSource", "").orEmpty().ifBlank { "Библиотека" },
+                prefs.getString("queueSource", "").orEmpty().ifBlank { afp(R.string.library) },
                 c.isPlaying,
                 if(id?.startsWith("afp-yandex://")==true) OnlineLibraryActions(this).contains("favorites",Uri.parse(id).lastPathSegment.orEmpty())
-                else id != null && id in library.playlist("Избранное"),
+                else id != null && id in library.playlist(afp(R.string.favorites)),
                 c.repeatMode,
                 c.currentPosition,
                 d,
@@ -229,7 +229,7 @@ internal fun MainActivity.trackMenu(track: Track) {
                                 .setMessage(
                                     "${track.artist}\nФайл: ${track.filename.ifBlank { androidx.documentfile.provider.DocumentFile.fromSingleUri(this,Uri.parse(track.sourceUri))?.name ?: "Неизвестно" }}\nПапка: ${track.folder}\n${clock(track.duration)}"
                                 )
-                                .setPositiveButton("Закрыть", null)
+                                .setPositiveButton(afp(R.string.close), null)
                                 .show()
                         3 ->
                             if (selectedPlaylist == null) manageMedia(track)
@@ -245,7 +245,7 @@ internal fun MainActivity.trackMenu(track: Track) {
                                                 if (library.restoreTrack(removed)) render()
                                                 else toast("Плейлист уже удалён")
                                             }
-                                            .setNegativeButton("Закрыть", null)
+                                            .setNegativeButton(afp(R.string.close), null)
                                             .show()
                                     }
                                 }
@@ -338,7 +338,7 @@ internal fun MainActivity.currentSongMenu(track: Track) {
 
 
 internal fun MainActivity.openLyrics() {
-        val track = currentTrack() ?: return toast("Сначала включи песню")
+        val track = currentTrack() ?: return toast(afp(R.string.pick_song_first))
         lyricsRequestedId = track.uri
         mediaLoadedId = null
         showPage("lyrics")

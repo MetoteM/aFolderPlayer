@@ -141,7 +141,7 @@ internal class AppUpdates(
         busy =
             AlertDialog.Builder(host)
                 .setMessage(title)
-                .setNegativeButton("Отмена") { _, _ -> cancel() }
+                .setNegativeButton(host.afp(R.string.cancel)) { _, _ -> cancel() }
                 .create()
                 .apply {
                     setOnCancelListener { cancel() }
@@ -163,7 +163,7 @@ internal class AppUpdates(
     }
 
     private fun active() {
-        check(!closed && !cancelled) { "Отменено" }
+        check(!closed && !cancelled) { host.afp(R.string.cancelled) }
     }
 
     private fun showError(error: Throwable) {
@@ -180,7 +180,7 @@ internal class AppUpdates(
                     else -> error.message ?: "Не удалось проверить обновление. Попробуй позже."
                 }
             )
-            .setPositiveButton("Закрыть", null)
+            .setPositiveButton(host.afp(R.string.close), null)
             .show()
     }
 
@@ -282,7 +282,7 @@ internal class AppUpdates(
                         AlertDialog.Builder(host)
                             .setTitle(row.title)
                             .setMessage(row.detail)
-                            .setPositiveButton("Закрыть", null)
+                            .setPositiveButton(host.afp(R.string.close), null)
                             .show()
                 }
             }
@@ -294,7 +294,7 @@ internal class AppUpdates(
         AlertDialog.Builder(host)
             .setTitle("Обновления плеера и расширений")
             .setItems(labels.toTypedArray()) { _, index -> actions[index]?.invoke() }
-            .setPositiveButton("Закрыть", null)
+            .setPositiveButton(host.afp(R.string.close), null)
             .setNeutralButton("Расширения") { _, _ -> extensions.show() }
             .show()
     }

@@ -66,9 +66,9 @@ internal class AlbumYearDialogs(
                     else ""
             }
         AlertDialog.Builder(activity)
-            .setTitle(if (missingOnly) "Найти недостающие годы" else "Годы альбомов")
+            .setTitle(if (missingOnly) "Найти недостающие годы" else activity.afp(R.string.album_years))
             .setItems(labels.toTypedArray()) { _, i -> details(groups[i]) }
-            .setNegativeButton("Закрыть", null)
+            .setNegativeButton(activity.afp(R.string.close), null)
             .show()
     }
 
@@ -119,7 +119,7 @@ internal class AlbumYearDialogs(
                                     }
                                     .onFailure { toast(it) }
                             }
-                            .setNegativeButton("Отмена", null)
+                            .setNegativeButton(activity.afp(R.string.cancel), null)
                             .show()
                     }
                 }
@@ -129,7 +129,7 @@ internal class AlbumYearDialogs(
                 .setTitle("Год альбома")
                 .setView(ScrollView(activity).apply { addView(p) })
                 .setPositiveButton("Найти в интернете") { _, _ -> search(group) }
-                .setNegativeButton("Закрыть", null)
+                .setNegativeButton(activity.afp(R.string.close), null)
                 .create()
         active = dialog
         dialog.show()
@@ -150,8 +150,8 @@ internal class AlbumYearDialogs(
                 .setMessage(
                     "Применится ко всему альбому внутри плеера, включая треки с годом в тегах. Музыкальные файлы не меняются."
                 )
-                .setPositiveButton("Сохранить", null)
-                .setNegativeButton("Отмена", null)
+                .setPositiveButton(activity.afp(R.string.save), null)
+                .setNegativeButton(activity.afp(R.string.cancel), null)
                 .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -201,7 +201,7 @@ internal class AlbumYearDialogs(
                 .setTitle("Найти год альбома")
                 .setView(ScrollView(activity).apply { addView(p) })
                 .setPositiveButton("Поиск", null)
-                .setNegativeButton("Закрыть", null)
+                .setNegativeButton(activity.afp(R.string.close), null)
                 .create()
         active = dialog
         dialog.setOnDismissListener {
@@ -266,7 +266,7 @@ internal class AlbumYearDialogs(
                 preview(group, found[i])
             }
             .setNeutralButton("Другой запрос") { _, _ -> search(group) }
-            .setNegativeButton("Закрыть", null)
+            .setNegativeButton(activity.afp(R.string.close), null)
             .show()
     }
 
@@ -282,8 +282,8 @@ internal class AlbumYearDialogs(
             AlertDialog.Builder(activity)
                 .setTitle("Проверить год альбома")
                 .setView(ScrollView(activity).apply { addView(p) })
-                .setPositiveButton("Сохранить", null)
-                .setNegativeButton("Отмена", null)
+                .setPositiveButton(activity.afp(R.string.save), null)
+                .setNegativeButton(activity.afp(R.string.cancel), null)
                 .create()
         active = dialog
         dialog.setOnShowListener {

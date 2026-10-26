@@ -106,7 +106,7 @@ internal class OnlineSection(
     fun show() {
         if(closed)return
         dialog?.let { if(suspended) { suspended=false;it.show();adapter.notifyDataSetChanged() };return }
-        if(!extension.installed()) { AlertDialog.Builder(host).setTitle("Яндекс Музыка").setMessage("Установи AFP Online из того же тестового комплекта.").setPositiveButton("Закрыть",null).show();return }
+        if(!extension.installed()) { AlertDialog.Builder(host).setTitle(host.afp(R.string.yandex_music)).setMessage("Установи AFP Online из того же тестового комплекта.").setPositiveButton(host.afp(R.string.close),null).show();return }
         val screen=Dialog(host,android.R.style.Theme_Material_NoActionBar)
         dialog=screen;generation++;busy=false;buttons.clear();selected.clear();selecting=false;query="";sort=0;rows=JSONArray();shown=emptyList()
         val root=LinearLayout(host).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(8),dp(4),dp(8),dp(4));setBackgroundColor(PlayerScreens.bg) }
@@ -277,7 +277,7 @@ internal class OnlineSection(
                 9->selectedRows().optJSONObject(0)?.let { YandexSaveActivity.open(host,"afp-yandex://track/${it.optString("id")}",it.optString("title"),it.optString("artist"),it.optString("cover")) }
                 8->selectedRows().optJSONObject(0)?.let { YandexTrackShare.show(host,"afp-yandex://track/${it.optString("id")}",it.optString("title")) }
             }
-        }.setNegativeButton("Закрыть",null).show()
+        }.setNegativeButton(host.afp(R.string.close),null).show()
     }
     private fun changeDecision(kind:String,enabled:Boolean) {
         if(busy)return

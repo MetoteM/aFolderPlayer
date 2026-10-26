@@ -51,7 +51,7 @@ class RecognitionActivity : ThemedActivity() {
             }
         panel.addView(
             TextView(this).apply {
-                text = "Определить песню"
+                text = afp(R.string.recognize_song)
                 textSize = 24f
             }
         )
@@ -78,7 +78,7 @@ class RecognitionActivity : ThemedActivity() {
         panel.addView(start)
         stop =
             Button(this).apply {
-                text = "Отмена"
+                text = afp(R.string.cancel)
                 isEnabled = false
                 setOnClickListener {
                     cancel()
@@ -107,7 +107,7 @@ class RecognitionActivity : ThemedActivity() {
                                 "Из текущего трека читается фрагмент до 30 секунд. Для онлайн-трека он запрашивается у Яндекса и обрабатывается на устройстве. Микрофон не используется.") +
                                 " На сервер Shazam отправляется звуковой отпечаток; сам звук, имя файла и геолокация не отправляются. Аудио не сохраняется. Используется неофициальный интерфейс сервиса: его доступность может меняться."
                         )
-                        .setPositiveButton("Закрыть", null)
+                        .setPositiveButton(afp(R.string.close), null)
                         .show()
                 }
             }
@@ -470,7 +470,7 @@ class RecognitionActivity : ThemedActivity() {
                 .setTitle("Поиск текста")
                 .setView(panel)
                 .setPositiveButton("Поиск", null)
-                .setNegativeButton("Закрыть", null)
+                .setNegativeButton(afp(R.string.close), null)
                 .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -503,7 +503,7 @@ class RecognitionActivity : ThemedActivity() {
                 .setTitle("Слова песни")
                 .setView(field)
                 .setPositiveButton("Открыть", null)
-                .setNegativeButton("Закрыть", null)
+                .setNegativeButton(afp(R.string.close), null)
                 .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {

@@ -182,14 +182,14 @@ internal class PlayerScreens(private val context: Context, private val actions: 
         active = Int.MIN_VALUE
         val header = row()
         header.addView(
-            button("‹", "Назад") { actions.back() },
+            button("‹", context.afp(R.string.back)) { actions.back() },
             LinearLayout.LayoutParams(dp(52), dp(52)),
         )
         headerTitle =
             text(
                     when (page) {
                         "lyrics" -> "Текст песни"
-                        "translation" -> "Перевод"
+                        "translation" -> context.afp(R.string.translation)
                         "queue" -> "Очередь"
                         "sound" -> "Звук"
                         else -> "Сейчас играет"
@@ -229,7 +229,7 @@ internal class PlayerScreens(private val context: Context, private val actions: 
                 weight(),
             )
             tabs.addView(
-                button("Перевод", "Открыть машинный перевод") { actions.open("translation") }
+                button(context.afp(R.string.translation), "Открыть машинный перевод") { actions.open("translation") }
                     .apply { setTextColor(if (page == "translation") accent else muted) },
                 weight(),
             )
@@ -240,7 +240,7 @@ internal class PlayerScreens(private val context: Context, private val actions: 
                 title = text("", 18f)
                 content!!.addView(title)
                 content!!.addView(
-                    button("Дополнительно", "Действия с переводом этой песни") {
+                    button(context.afp(R.string.more), "Действия с переводом этой песни") {
                         android.app.AlertDialog.Builder(context)
                             .setTitle("Перевод этой песни")
                             .setItems(
@@ -258,7 +258,7 @@ internal class PlayerScreens(private val context: Context, private val actions: 
                                     3 -> actions.installTranslationModel()
                                 }
                             }
-                            .setNegativeButton("Закрыть", null)
+                            .setNegativeButton(context.afp(R.string.close), null)
                             .show()
                     }
                 )
@@ -377,7 +377,7 @@ internal class PlayerScreens(private val context: Context, private val actions: 
                             android.app.AlertDialog.Builder(context)
                                 .setTitle(s.title)
                                 .setMessage(s.artist + "\n" + s.album)
-                                .setPositiveButton("Закрыть", null)
+                                .setPositiveButton(context.afp(R.string.close), null)
                                 .show()
                         }
                     }
@@ -432,7 +432,7 @@ internal class PlayerScreens(private val context: Context, private val actions: 
                 links.addView(repeat, weight())
                 playback.addView(links)
                 playback.addView(
-                    button("Определить песню", "Выбрать режим определения песни") {
+                    button(context.afp(R.string.recognize_song), "Выбрать режим определения песни") {
                         actions.recognize()
                     },
                     LinearLayout.LayoutParams(-1, dp(48)),

@@ -47,7 +47,7 @@ internal fun MainActivity.editSearchName(track: Track) {
                 .setTitle("Поисковое название")
                 .setView(panel)
                 .setPositiveButton("Искать", null)
-                .setNegativeButton("Отмена", null)
+                .setNegativeButton(afp(R.string.cancel), null)
                 .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -254,7 +254,7 @@ internal fun MainActivity.manageMedia(track: Track) {
                         101,
                     )
                 }
-                .setPositiveButton("Закрыть", null)
+                .setPositiveButton(afp(R.string.close), null)
                 .create()
         online.setOnClickListener {
             dialog.dismiss()
@@ -424,8 +424,8 @@ internal fun MainActivity.editLyrics(track: Track, initial: String) {
             AlertDialog.Builder(this)
                 .setTitle("Текст: ${track.title}")
                 .setView(input)
-                .setPositiveButton("Сохранить", null)
-                .setNegativeButton("Отмена", null)
+                .setPositiveButton(afp(R.string.save), null)
+                .setNegativeButton(afp(R.string.cancel), null)
                 .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -520,7 +520,7 @@ internal fun MainActivity.markLyrics(track: Track, raw: String) {
                 .setTitle("Разметка: ${track.title}")
                 .setView(panel)
                 .setPositiveButton("Сохранить LRC", null)
-                .setNegativeButton("Отмена", null)
+                .setNegativeButton(afp(R.string.cancel), null)
                 .create()
         caption.text = "1 / ${lines.size}\n${lines[0]}"
         next.setOnClickListener {
@@ -600,7 +600,7 @@ internal fun MainActivity.dialogSearch(track: Track) {
                 .setTitle("Поиск текста")
                 .setView(ScrollView(this).apply { addView(panel) })
                 .setPositiveButton("Поиск", null)
-                .setNegativeButton("Закрыть", null)
+                .setNegativeButton(afp(R.string.close), null)
                 .setNeutralButton("В интернете", null)
                 .create()
         dialog.setOnDismissListener {
@@ -670,7 +670,7 @@ internal fun MainActivity.lyricsResults(track: Track, found: List<LyricsSearch.R
             .setTitle("Выбери запись · ${clock(track.duration)} на телефоне")
             .setItems(labels.toTypedArray()) { _, i -> previewLyrics(track, found[i]) }
             .setNeutralButton("Другой запрос") { _, _ -> dialogSearch(track) }
-            .setNegativeButton("Закрыть", null)
+            .setNegativeButton(afp(R.string.close), null)
             .show()
     }
 
@@ -698,8 +698,8 @@ internal fun MainActivity.previewLyrics(track: Track, item: LyricsSearch.Result)
             AlertDialog.Builder(this)
                 .setTitle("Проверить текст")
                 .setView(ScrollView(this).apply { addView(panel) })
-                .setPositiveButton("Сохранить", null)
-                .setNegativeButton("Отмена", null)
+                .setPositiveButton(afp(R.string.save), null)
+                .setNegativeButton(afp(R.string.cancel), null)
                 .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = item.text.isNotBlank()

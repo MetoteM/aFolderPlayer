@@ -41,7 +41,7 @@ internal object CrashNotes {
         val prefs=host.getSharedPreferences("local_crash",0)
         val text=prefs.getString("fatal",null) ?: prefs.getString("trace",null) ?: "В этой версии сбоев пока не зафиксировано"
         AlertDialog.Builder(host).setTitle("Последний сбой · локально").setMessage(text)
-            .setPositiveButton("Закрыть",null).setNeutralButton("Копировать") { _,_->
+            .setPositiveButton(host.afp(R.string.close),null).setNeutralButton("Копировать") { _,_->
                 host.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Сбой плеера",text))
             }.show()
     }

@@ -49,7 +49,7 @@ internal fun MainActivity.render() {
                 (allowed == null || it.uri in allowed) &&
                     (it.title.contains(query, true) || it.artist.contains(query, true))
             }
-        browserTitle.text = selectedPlaylist ?: "Библиотека"
+        browserTitle.text = selectedPlaylist ?: afp(R.string.library)
         browserCount.text = if (scanning) "Проверяем папки…" else "${visible.size} песен"
         if (visible.isEmpty())
             list.addView(
@@ -60,7 +60,7 @@ internal fun MainActivity.render() {
                     16f,
                 )
             )
-        val favorites = library.playlist("Избранное")
+        val favorites = library.playlist(afp(R.string.favorites))
         val hidden = library.hiddenTracks()
         if (selecting)
             list.addView(

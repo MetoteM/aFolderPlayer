@@ -258,7 +258,7 @@ class MainActivity : ThemedActivity() {
         if(OnlinePlayback.trackId(Uri.parse(item.mediaId))==null)return null
         val meta=item.mediaMetadata
         return Track(item.mediaId,meta.title?.toString().orEmpty(),meta.artist?.toString().orEmpty(),
-            meta.extras?.getLong("onlineDuration") ?: 0L,"Яндекс Музыка")
+            meta.extras?.getLong("onlineDuration") ?: 0L,afp(R.string.yandex_music))
     }
 
     override fun onBackPressed() {
@@ -283,8 +283,8 @@ class MainActivity : ThemedActivity() {
             intent.data?.takeIf { it.scheme == "content" }?.let { uri ->
                 AlertDialog.Builder(this).setTitle("Добавить папку музыки?")
                     .setMessage("Плеер прочитает аудиофайлы в выбранной папке и её подпапках.")
-                    .setPositiveButton("Добавить") { _, _ -> importExtensionFolder(uri) }
-                    .setNegativeButton("Отмена", null).show()
+                    .setPositiveButton(afp(R.string.add)) { _, _ -> importExtensionFolder(uri) }
+                    .setNegativeButton(afp(R.string.cancel), null).show()
             }
         }
         translationForeground = true

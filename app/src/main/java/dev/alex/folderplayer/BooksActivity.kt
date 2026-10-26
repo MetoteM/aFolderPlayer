@@ -74,7 +74,7 @@ class BooksActivity:ThemedActivity() {
         transport.addView(button("−15 с") { skip(-15000) },LinearLayout.LayoutParams(0,-2,1f))
         play=button("Продолжить") {
             val b=selected?.let { books.book(it) } ?: return@button toast("Добавь или выбери книгу")
-            val c=controller ?: return@button toast("Плеер ещё подключается")
+            val c=controller ?: return@button toast(afp(R.string.player_connecting))
             if(active() && c.playbackState!=Player.STATE_ENDED && !books.position(b).completed){ if(c.isPlaying)c.pause() else { if(c.playbackState==Player.STATE_IDLE)c.prepare();c.play() } }
             else start(b)
         };transport.addView(play,LinearLayout.LayoutParams(0,-2,1f))
@@ -85,7 +85,7 @@ class BooksActivity:ThemedActivity() {
         options.addView(button("Закладки") { bookmarks() },LinearLayout.LayoutParams(0,-2,1f));controls.addView(options)
         val footer=LinearLayout(this)
         footer.addView(button("Таймер сна") { sleepTimer() },LinearLayout.LayoutParams(0,-2,1f))
-        footer.addView(button("Назад") { finish() },LinearLayout.LayoutParams(0,-2,1f));controls.addView(footer);setContentView(box)
+        footer.addView(button(afp(R.string.back)) { finish() },LinearLayout.LayoutParams(0,-2,1f));controls.addView(footer);setContentView(box)
         val f=MediaController.Builder(this,SessionToken(this,ComponentName(this,PlaybackService::class.java))).buildAsync();connection=f
         f.addListener({ if(alive)runCatching { f.get() }.onSuccess { c -> controller=c
             c.addListener(object:Player.Listener {
@@ -123,33 +123,33 @@ class BooksActivity:ThemedActivity() {
         command(PlaybackCommands.START_BOOK,Bundle().apply { putString("bookId",b.id);if(uri!=null){putString("uri",uri);putLong("position",position)} })
     }
     private fun command(action:String,args:Bundle){
-        val c=controller ?: return toast("Плеер ещё подключается")
+        val c=controller ?: return toast(afp(R.string.player_connecting))
         val f=c.sendCustomCommand(SessionCommand(action,Bundle.EMPTY),args)
         f.addListener({if(alive)runCatching { f.get() }.onSuccess { if(it.resultCode!=SessionResult.RESULT_SUCCESS)toast("Не удалось применить действие") }.onFailure { toast("Не удалось применить действие") }},java.util.concurrent.Executor { handler.post(it) })
     }
     private fun skip(delta:Long){controller?.takeIf { active() }?.let { c -> val target=(c.currentPosition+delta).coerceAtLeast(0);val d=duration(c);c.seekTo(if(d>0)target.coerceAtMost(d) else target) }}
     private fun chapters(){
         val b=selected?.let { books.book(it) } ?: return
-        AlertDialog.Builder(this).setTitle("Главы · ${b.title}").setItems(b.chapters.mapIndexed { i,c -> "${i+1}. ${c.title} · ${clock(c.duration)}" }.toTypedArray()) { _,i -> start(b,b.chapters[i].uri) }.setNegativeButton("Закрыть",null).show()
+        AlertDialog.Builder(this).setTitle("Главы · ${b.title}").setItems(b.chapters.mapIndexed { i,c -> "${i+1}. ${c.title} · ${clock(c.duration)}" }.toTypedArray()) { _,i -> start(b,b.chapters[i].uri) }.setNegativeButton(afp(R.string.close),null).show()
     }
     private fun speed(){
         val b=selected?.let { books.book(it) } ?: return
         val values=floatArrayOf(.5f,.75f,1f,1.25f,1.5f,1.75f,2f,2.5f)
         AlertDialog.Builder(this).setTitle("Скорость книги").setSingleChoiceItems(values.map { "$it×" }.toTypedArray(),values.indexOfFirst { it==books.speed(b.id) }) { d,i ->
             books.setSpeed(b.id,values[i]);if(active())command(PlaybackCommands.BOOK_SPEED,Bundle().apply { putFloat("speed",values[i]) });updatePlayback();d.dismiss()
-        }.setNegativeButton("Отмена",null).show()
+        }.setNegativeButton(afp(R.string.cancel),null).show()
     }
     private fun bookmarks(){
         val b=selected?.let { books.book(it) } ?: return
         val marks=books.bookmarks(b.id)
         val dialog=AlertDialog.Builder(this).setTitle("Закладки · ${b.title}").setItems(marks.map { "${it.title} · ${clock(it.position)}" }.toTypedArray()) { _,i ->
             val m=marks[i];AlertDialog.Builder(this).setTitle(m.title).setMessage(clock(m.position))
-                .setPositiveButton("Слушать") { _,_ -> start(b,m.uri,m.position) }.setNeutralButton("Удалить") { _,_ -> books.removeBookmark(b.id,m.id);bookmarks() }.setNegativeButton("Отмена",null).show()
+                .setPositiveButton("Слушать") { _,_ -> start(b,m.uri,m.position) }.setNeutralButton(afp(R.string.delete)) { _,_ -> books.removeBookmark(b.id,m.id);bookmarks() }.setNegativeButton(afp(R.string.cancel),null).show()
         }.setPositiveButton("Добавить текущую") { _,_ ->
             val c=controller
             if(!active() || c?.currentMediaItem==null)toast("Сначала запусти выбранную книгу")
             else runCatching { books.addBookmark(b.id,c.currentMediaItem!!.mediaId,c.currentPosition,c.currentMediaItem!!.mediaMetadata.title?.toString().orEmpty()) }.onSuccess { toast("Закладка добавлена") }.onFailure { toast(it.message ?: "Не удалось добавить закладку") }
-        }.setNegativeButton("Закрыть",null).create()
+        }.setNegativeButton(afp(R.string.close),null).create()
         dialog.show()
     }
     private fun sleepTimer(){
@@ -158,7 +158,7 @@ class BooksActivity:ThemedActivity() {
             val edit=getSharedPreferences("playback",0).edit()
             if(minutes[i]==0)edit.remove("sleepDeadline") else edit.putLong("sleepDeadline",System.currentTimeMillis()+minutes[i]*60000L)
             edit.apply();toast(if(minutes[i]==0)"Таймер выключен" else "Таймер установлен")
-        }.setNegativeButton("Отмена",null).show()
+        }.setNegativeButton(afp(R.string.cancel),null).show()
     }
     private fun bookOptions(b:Audiobook){
         AlertDialog.Builder(this).setTitle(b.title).setItems(arrayOf("Обновить файлы книги","Удалить из списка")) { _,i ->
@@ -166,11 +166,11 @@ class BooksActivity:ThemedActivity() {
                 if(controller?.currentMediaItem?.mediaMetadata?.extras?.getString("bookId")==b.id)toast("Перед обновлением книги включи музыку или другую книгу")
                 else importBook(Uri.parse(b.root),android.provider.DocumentsContract.isTreeUri(Uri.parse(b.root)))
             } else AlertDialog.Builder(this).setTitle("Удалить книгу из списка?").setMessage("Аудиофайлы останутся. Позиция и закладки этой книги будут удалены.")
-                .setPositiveButton("Удалить") { _,_ ->
+                .setPositiveButton(afp(R.string.delete)) { _,_ ->
                     if(controller?.currentMediaItem?.mediaMetadata?.extras?.getString("bookId")==b.id){controller?.pause();controller?.clearMediaItems()}
                     books.remove(b.id);refresh();updatePlayback()
-                }.setNegativeButton("Отмена",null).show()
-        }.setNegativeButton("Отмена",null).show()
+                }.setNegativeButton(afp(R.string.cancel),null).show()
+        }.setNegativeButton(afp(R.string.cancel),null).show()
     }
     private fun pick(folder:Boolean){
         if(importing)return

@@ -58,10 +58,10 @@ internal class ExtensionManager(
         choices.add("Скачать расширения")
         choices.add("Проверить обновления")
         choices.add("Источник загрузки")
-        choices.add("Онлайн")
+        choices.add(host.afp(R.string.online))
         choices.add("Установить переводчик из файла")
         if (installed) {
-            choices.add("Пакет для отдельных документов")
+            choices.add(host.afp(R.string.document_pack))
             choices.add("Добавить язык из файла")
             choices.add("Установленный язык")
             choices.add("Удалить движок AFP Translate")
@@ -82,7 +82,7 @@ internal class ExtensionManager(
                 "Скачать расширения" -> fetchCatalog()
                 "Проверить обновления" -> updates()
                 "Источник загрузки" -> address()
-                "Онлайн" -> online()
+                host.afp(R.string.online) -> online()
                 "Установить переводчик из файла" ->
                     host.startActivityForResult(
                         Intent(Intent.ACTION_OPEN_DOCUMENT)
@@ -90,7 +90,7 @@ internal class ExtensionManager(
                             .addCategory(Intent.CATEGORY_OPENABLE),
                         104,
                     )
-                "Пакет для отдельных документов" ->
+                host.afp(R.string.document_pack) ->
                     run("Проверяем установленные языки…") {
                         val models = engine.availableModels().toList()
                         main.post {
@@ -98,7 +98,7 @@ internal class ExtensionManager(
                                 if (models.isEmpty()) message("Сначала установи языковой пакет")
                                 else
                                     AlertDialog.Builder(host)
-                                        .setTitle("Пакет для отдельных документов")
+                                        .setTitle(host.afp(R.string.document_pack))
                                         .setMessage(
                                             "Для песен язык определяется автоматически. Этот выбор используется только для документов без выбранного языка."
                                         )
@@ -113,7 +113,7 @@ internal class ExtensionManager(
                                             changed()
                                             dialog.dismiss()
                                         }
-                                        .setNegativeButton("Отмена", null)
+                                        .setNegativeButton(host.afp(R.string.cancel), null)
                                         .show()
                             }
                         }
@@ -130,7 +130,7 @@ internal class ExtensionManager(
                                         if (bytes < 0) "Пакет не установлен"
                                         else "На устройстве: ${bytes/1_000_000} МБ"
                                     )
-                                    .setPositiveButton("Закрыть", null)
+                                    .setPositiveButton(host.afp(R.string.close), null)
                                     .apply {
                                         if (bytes >= 0)
                                             setNegativeButton("Удалить пакет") { _, _ ->
@@ -156,7 +156,7 @@ internal class ExtensionManager(
                                 out.setLevel(0)
                                 for (name in
                                     listOf("encoder.onnx", "decoder.onnx", "tokenizer.json")) {
-                                    check(!cancelled) { "Отменено" }
+                                    check(!cancelled) { host.afp(R.string.cancelled) }
                                     out.putNextEntry(java.util.zip.ZipEntry(name))
                                     File(old, name).inputStream().use { it.copyTo(out) }
                                     out.closeEntry()
@@ -190,13 +190,13 @@ internal class ExtensionManager(
                         .setMessage(
                             "Удалить старую модель из плеера? Сохранённые переводы останутся. Для отдельного движка пакет устанавливается заново."
                         )
-                        .setPositiveButton("Удалить") { _, _ ->
+                        .setPositiveButton(host.afp(R.string.delete)) { _, _ ->
                             run("Удаляем старую модель…") {
                                 File(host.filesDir, "translation/opus-en-ru-v1").deleteRecursively()
                                 main.post { message("Старая модель удалена") }
                             }
                         }
-                        .setNegativeButton("Отмена", null)
+                        .setNegativeButton(host.afp(R.string.cancel), null)
                         .show()
             }
         }
@@ -224,8 +224,8 @@ internal class ExtensionManager(
                     "Собственный HTTPS-сервер или зеркало. Адрес сохраняется без подключения; запрос — только по кнопке загрузки."
                 )
                 .setView(field)
-                .setPositiveButton("Сохранить", null)
-                .setNegativeButton("Отмена", null)
+                .setPositiveButton(host.afp(R.string.save), null)
+                .setNegativeButton(host.afp(R.string.cancel), null)
                 .create()
         dialog.setOnShowListener {
             dialog.getButton(-1).setOnClickListener {
@@ -260,7 +260,7 @@ internal class ExtensionManager(
         busy =
             AlertDialog.Builder(host)
                 .setView(content)
-                .setNegativeButton("Отмена") { _, _ ->
+                .setNegativeButton(host.afp(R.string.cancel)) { _, _ ->
                     cancelled = true
                     connection?.disconnect()
                 }
@@ -308,7 +308,7 @@ internal class ExtensionManager(
         run("Загружаем каталог…") {
             val result =
                 ExtensionCatalogueSource(host)
-                    .read({ check(!closed && !cancelled) { "Отменено" } }, { connection = it })
+                    .read({ check(!closed && !cancelled) { host.afp(R.string.cancelled) } }, { connection = it })
             main.post {
                 if (!closed && !cancelled)
                     AlertDialog.Builder(host)
@@ -320,7 +320,7 @@ internal class ExtensionManager(
                         ) { _, index ->
                             confirm(result.base, result.catalog.entries[index])
                         }
-                        .setNegativeButton("Закрыть", null)
+                        .setNegativeButton(host.afp(R.string.close), null)
                         .show()
             }
         }
@@ -358,7 +358,7 @@ internal class ExtensionManager(
                     "Для этого языка нужен новый переводчик. В списке расширений сначала выбери «Переводчик», установи обновление, затем добавь язык."
                 )
                 .setPositiveButton("К списку") { _, _ -> fetchCatalog() }
-                .setNegativeButton("Закрыть", null)
+                .setNegativeButton(host.afp(R.string.close), null)
                 .show()
             return
         }
@@ -374,7 +374,7 @@ internal class ExtensionManager(
                     else " Пакет будет установлен в AFP Translate.")
             )
             .setPositiveButton("Скачать") { _, _ -> download(base, entry) }
-            .setNegativeButton("Отмена", null)
+            .setNegativeButton(host.afp(R.string.cancel), null)
             .show()
     }
 
@@ -467,7 +467,7 @@ internal class ExtensionManager(
                         var count = 0L
                         val buffer = ByteArray(65536)
                         while (true) {
-                            check(!cancelled) { "Отменено" }
+                            check(!cancelled) { host.afp(R.string.cancelled) }
                             val n = input.read(buffer)
                             if (n < 0) break
                             count += n

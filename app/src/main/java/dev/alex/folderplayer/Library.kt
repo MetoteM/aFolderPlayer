@@ -424,7 +424,7 @@ internal class Library(private val context: Context) {
 
     fun restoreTrack(item: RemovedTrack): Boolean {
         synchronized(storeLock) {
-            if (item.playlist !in playlistNames() && item.playlist != "Избранное") return false
+            if (item.playlist !in playlistNames() && item.playlist != context.afp(R.string.favorites)) return false
             val current = playlist(item.playlist).toMutableList()
             if (item.uri !in current) current.add(item.index.coerceIn(0, current.size), item.uri)
             savePlaylist(item.playlist, current)
@@ -517,7 +517,7 @@ internal class Library(private val context: Context) {
 
     fun renamePlaylist(old: String, name: String): Boolean {
         synchronized(storeLock) {
-            if (name.isBlank() || name == "Избранное" || old == "Избранное") return false
+            if (name.isBlank() || name == context.afp(R.string.favorites) || old == context.afp(R.string.favorites)) return false
             val data = lists()
             if (data.has(name) || !data.has(old)) return false
             data.put(name, data.getJSONArray(old))
@@ -558,9 +558,9 @@ internal class Library(private val context: Context) {
 
     fun toggleFavorite(track: Track) {
         synchronized(storeLock) {
-            val set = playlist("Избранное").toMutableSet()
+            val set = playlist(context.afp(R.string.favorites)).toMutableSet()
             if (!set.add(track.uri)) set.remove(track.uri)
-            savePlaylist("Избранное", set)
+            savePlaylist(context.afp(R.string.favorites), set)
         }
     }
 

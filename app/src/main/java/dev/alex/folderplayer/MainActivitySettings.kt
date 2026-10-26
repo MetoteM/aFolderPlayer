@@ -10,11 +10,11 @@ internal fun MainActivity.recognitionMenu() {
         val track =
             currentTrack()
                 ?: run {
-                    toast("Сначала включи песню")
+                    toast(afp(R.string.pick_song_first))
                     return
                 }
         AlertDialog.Builder(this)
-            .setTitle("Определить песню")
+            .setTitle(afp(R.string.recognize_song))
             .setItems(arrayOf("Текущий трек · по умолчанию", "Музыка рядом")) { _, i ->
                 if (i == 1) identifySong()
                 else
@@ -25,7 +25,7 @@ internal fun MainActivity.recognitionMenu() {
                             .putExtra("localDuration", track.duration)
                     )
             }
-            .setNegativeButton("Отмена", null)
+            .setNegativeButton(afp(R.string.cancel), null)
             .show()
     }
 
@@ -129,10 +129,10 @@ internal fun MainActivity.folders() {
                             scan()
                         }
                     }
-                    .setNegativeButton("Отмена", null)
+                    .setNegativeButton(afp(R.string.cancel), null)
                     .show()
             }
-            .setNegativeButton("Закрыть", null)
+            .setNegativeButton(afp(R.string.close), null)
             .show()
     }
 
@@ -175,7 +175,7 @@ internal fun MainActivity.about() {
             .setMessage(
                 "Музыка по папкам, тексты песен и перевод. Без рекламы и аналитики.\n\nИнтернет используется только по твоему запросу. Перевод работает на телефоне после установки языкового пакета."
             )
-            .setPositiveButton("Закрыть", null)
+            .setPositiveButton(afp(R.string.close), null)
             .setNeutralButton("Проверить обновления") { _, _ -> appUpdates.check() }
             .setNegativeButton("Подробнее") { _, _ ->
                 AlertDialog.Builder(this)
@@ -183,7 +183,7 @@ internal fun MainActivity.about() {
                     .setMessage(
                         "Поиск текстов: LRCLIB. Годы альбомов: MusicBrainz. Обновления: GitHub. Распознавание: неофициальный интерфейс Shazam; отправляется звуковой отпечаток, запись и геолокация не отправляются.\n\nMedia3 / AndroidX: Apache 2.0. Языковые пакеты: см. лицензии пакетов. ONNX Runtime: MIT. Алгоритм распознавания адаптирован из ShazamIO 0.4.0.0, MIT, © 2021 dotX12.\n\nРазработка при участии ChatGPT."
                     )
-                    .setPositiveButton("Закрыть", null)
+                    .setPositiveButton(afp(R.string.close), null)
                     .show()
             }
             .show()

@@ -38,9 +38,9 @@ internal class OnlineSettings(context:Context) {
         val mobile=quality("Качество по мобильной / другой сети","mobileQuality")
         root.addView(TextView(host).apply { text="Качество применяется при следующем открытии потока. Только Wi-Fi блокирует новые запросы и дальнейшее чтение потока вне Wi-Fi; буфер может доиграть. VPN без подтверждённого Wi-Fi тоже блокируется. Вход в Яндекс и внешние сервисы текста/распознавания имеют отдельный сетевой доступ." })
         AlertDialog.Builder(host).setTitle("Яндекс Музыка · сеть и качество").setView(root)
-            .setPositiveButton("Сохранить") { _,_-> prefs.edit().putBoolean("wifiOnly",only.isChecked)
+            .setPositiveButton(context.afp(R.string.save)) { _,_-> prefs.edit().putBoolean("wifiOnly",only.isChecked)
                 .putString("wifiQuality",if(wifi.selectedItemPosition==1)"high" else "economy")
                 .putString("mobileQuality",if(mobile.selectedItemPosition==1)"high" else "economy").apply() }
-            .setNegativeButton("Отмена",null).show()
+            .setNegativeButton(context.afp(R.string.cancel),null).show()
     }
 }

@@ -381,13 +381,13 @@ class PlaybackService : MediaSessionService() {
                         when(mode) {
                             "play" -> {
                                 leaveBook()
-                                prefs.edit().putString("queueSource","Яндекс Музыка"+store.queueSource(queueId).takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()).remove("onlineQueueId").remove("onlineQueue").apply()
+                                prefs.edit().putString("queueSource",afp(R.string.yandex_music)+store.queueSource(queueId).takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()).remove("onlineQueueId").remove("onlineQueue").apply()
                                 player.setMediaItems(items,index,0);player.setPauseAtEndOfMediaItems(false);player.prepare();player.play()
                             }
                             "next", "append" -> {
                                 if(player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId")!=null)return SessionError.ERROR_BAD_VALUE
                                 if(old.any { !it.mediaId.startsWith("afp-yandex://") })prefs.edit().putString("queueSource","Смешанная очередь").apply()
-                                else prefs.edit().putString("queueSource","Яндекс Музыка").apply()
+                                else prefs.edit().putString("queueSource",afp(R.string.yandex_music)).apply()
                                 val at=if(mode=="next" && old.isNotEmpty())(player.currentMediaItemIndex+1).coerceAtMost(old.size) else old.size
                                 player.addMediaItems(at,items)
                                 if(old.isEmpty()) { player.prepare();player.play() }

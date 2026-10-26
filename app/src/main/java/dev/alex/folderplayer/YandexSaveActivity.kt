@@ -39,7 +39,7 @@ class YandexSaveActivity:ThemedActivity() {
         if(destination!=null) { if(!completed)deleteDestination();finish();return }
         if(OnlinePlayback.trackId(Uri.parse(mediaId))==null) { finish();return }
         if(state?.getBoolean("picker")==true)return
-        val filename=intent.getStringExtra("filename").orEmpty().replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"),"_").trim().trimEnd('.').take(150).ifBlank { "Яндекс Музыка" }+".mp3"
+        val filename=intent.getStringExtra("filename").orEmpty().replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"),"_").trim().trimEnd('.').take(150).ifBlank { afp(R.string.yandex_music) }+".mp3"
         try {
             startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/mpeg").putExtra(Intent.EXTRA_TITLE,filename),1)
         } catch(_:Exception) { fail("Не удалось открыть выбор места сохранения") }
@@ -118,7 +118,7 @@ class YandexSaveActivity:ThemedActivity() {
     }
     private fun checkActive() { if(cancelled || closed || Thread.currentThread().isInterrupted)throw CancellationException("Сохранение отменено") }
     private fun deleteDestination() { destination?.let { runCatching { DocumentsContract.deleteDocument(contentResolver,it) } } }
-    private fun fail(message:String) { status.text=message;progress.visibility=android.view.View.GONE;cancel.isEnabled=true;cancel.text="Закрыть";cancel.setOnClickListener { finish() } }
+    private fun fail(message:String) { status.text=message;progress.visibility=android.view.View.GONE;cancel.isEnabled=true;cancel.text=afp(R.string.close);cancel.setOnClickListener { finish() } }
     private fun stop() { cancelled=true;connection?.disconnect() }
     override fun onDestroy() { closed=true;stop();worker.shutdown();super.onDestroy() }
     companion object {

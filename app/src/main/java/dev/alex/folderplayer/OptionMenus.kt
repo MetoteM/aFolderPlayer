@@ -15,7 +15,7 @@ internal fun optionMenu(
         AlertDialog.Builder(host)
             .setTitle(title)
             .setItems(choices.toTypedArray(), null)
-            .setNegativeButton("Закрыть", null)
+            .setNegativeButton(host.afp(R.string.close), null)
             .create()
     dialog.show()
     dialog.listView.setOnItemClickListener { _, _, index, _ ->

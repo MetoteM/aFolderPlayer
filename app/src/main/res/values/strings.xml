@@ -1,1 +1,22 @@
-<resources><string name="duration_format">%1$s / %2$s</string></resources>
+<resources>
+    <string name="duration_format">%1$s / %2$s</string>
+    <string name="cancel">Отмена</string>
+    <string name="favorites">Избранное</string>
+    <string name="close">Закрыть</string>
+    <string name="save">Сохранить</string>
+    <string name="delete">Удалить</string>
+    <string name="library">Библиотека</string>
+    <string name="back">Назад</string>
+    <string name="yandex_music">Яндекс Музыка</string>
+    <string name="translation">Перевод</string>
+    <string name="add">Добавить</string>
+    <string name="recognize_song">Определить песню</string>
+    <string name="translate">Перевести</string>
+    <string name="more">Дополнительно</string>
+    <string name="online">Онлайн</string>
+    <string name="cancelled">Отменено</string>
+    <string name="pick_song_first">Сначала включи песню</string>
+    <string name="player_connecting">Плеер ещё подключается</string>
+    <string name="album_years">Годы альбомов</string>
+    <string name="document_pack">Пакет для отдельных документов</string>
+</resources>

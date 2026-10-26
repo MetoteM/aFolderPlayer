@@ -13,20 +13,20 @@ import androidx.media3.common.PlaybackException
 
 /** Main-screen chrome (library toolbar, list, player row, controller): extracted from onCreate (roadmap 4.2). */
 internal fun MainActivity.buildUi(state: Bundle?) {
-        browserTitle = label("Библиотека", 24f)
+        browserTitle = label(afp(R.string.library), 24f)
         layout.addView(browserTitle)
         browserCount = label("", 13f).apply { setTextColor(PlayerScreens.muted) }
         layout.addView(browserCount)
         val sources = row()
         sources.addView(button("На устройстве") { selectedPlaylist=null;render() },weight())
-        sources.addView(button("Яндекс Музыка") { onlineSection.show() },weight())
+        sources.addView(button(afp(R.string.yandex_music)) { onlineSection.show() },weight())
         layout.addView(sources)
         val tools = row()
         moreTools = row()
         fun command(kind: IconButton.Kind, label: String, action: () -> Unit) =
             IconButton(this, kind, label, action)
         tools.addView(
-            command(IconButton.Kind.LIBRARY, "Библиотека") {
+            command(IconButton.Kind.LIBRARY, afp(R.string.library)) {
                 selectedPlaylist = null
                 selecting = false
                 selection.clear()
@@ -57,12 +57,12 @@ internal fun MainActivity.buildUi(state: Bundle?) {
         moreTools.addView(bulkButton, weight().apply { height = dp(48) })
         layout.addView(tools)
         hideTracksButton = button("👁") { toggleSelectedTracksHidden() }
-        deleteTracksButton = button("Удалить") { deleteSelectedTracks() }
+        deleteTracksButton = button(afp(R.string.delete)) { deleteSelectedTracks() }
         moreTools.addView(hideTracksButton, weight().apply { height = dp(48) })
         moreTools.addView(deleteTracksButton, weight().apply { height = dp(48) })
         layout.addView(moreTools)
         val quick = row()
-        identifyButton = button("Определить песню") { identifySong() }
+        identifyButton = button(afp(R.string.recognize_song)) { identifySong() }
         quick.addView(
             identifyButton,
             LinearLayout.LayoutParams(0, dp(48), 2f),

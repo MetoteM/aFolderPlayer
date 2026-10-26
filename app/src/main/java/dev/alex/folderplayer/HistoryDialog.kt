@@ -58,7 +58,7 @@ internal object HistoryDialog {
             AlertDialog.Builder(host)
                 .setTitle(title)
                 .setView(panel)
-                .setNegativeButton("Закрыть", null)
+                .setNegativeButton(host.afp(R.string.close), null)
                 .create()
         list.setOnItemClickListener { _, _, i, _ ->
             val entry = shown[i]
@@ -90,12 +90,12 @@ internal object HistoryDialog {
                                         )
                                         .show()
                             }
-                            .setNegativeButton("Закрыть", null)
+                            .setNegativeButton(host.afp(R.string.close), null)
                             .show()
                     } else
                         Toast.makeText(host, "Не удалось удалить запись", Toast.LENGTH_SHORT).show()
                 }
-                .setNegativeButton("Отмена", null)
+                .setNegativeButton(host.afp(R.string.cancel), null)
                 .show()
         }
         render()
