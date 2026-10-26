@@ -107,9 +107,9 @@ internal class Library(private val context: Context) {
         }
     }
 
-    private fun storedTracks(): List<Track> =
+    private fun legacyTracks(): List<Track> =
         runCatching {
-                val a = JSONArray(prefs.getString("tracks", "[]"))
+                val a = org.json.JSONArray(prefs.getString("tracks", "[]"))
                 (0 until a.length()).map { i ->
                     a.getJSONObject(i).let {
                         Track(
@@ -135,6 +135,23 @@ internal class Library(private val context: Context) {
                 }
             }
             .getOrDefault(emptyList())
+
+    /**
+     * Room-backed track list. On the first open after the upgrade the legacy
+     * JSON blob is imported into the database and then removed from prefs;
+     * from that point the database is the single source of truth.
+     */
+    private fun storedTracks(): List<Track> {
+        val dao = LibraryDatabase.get(context).trackDao()
+        if (dao.count() == 0 && prefs.contains("tracks")) {
+            val legacy = legacyTracks()
+            if (legacy.isNotEmpty()) {
+                dao.replaceAll(legacy.map { it.toEntity() })
+                prefs.edit().remove("tracks").apply()
+            }
+        }
+        return dao.all().map { it.toTrack() }
+    }
 
     fun tracks(): List<Track> {
         val excluded=prefs.getStringSet("excludedTracks", emptySet())!!.toSet()
@@ -264,7 +281,8 @@ internal class Library(private val context: Context) {
                 previous.filter { it.rootUri in failedRoots }
             val complete = published.distinctBy { it.uri }.sortedBy { it.title.lowercase() }
             migrateCueReferences(complete)
-            prefs.edit().putString("tracks", JSONArray(complete.map { it.json() }).toString()).apply()
+            LibraryDatabase.get(context).trackDao().replaceAll(complete.map { it.toEntity() })
+            prefs.edit().remove("tracks").apply()
             syncFolderPlaylists(complete)
             return ScanResult(tracks(), errors, failedRoots.count { root -> previous.any { it.rootUri == root } })
         }

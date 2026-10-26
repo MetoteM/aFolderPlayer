@@ -38,7 +38,7 @@ class PlaylistFeaturesTest {
    service.applyPlaybackCommand(PlaybackCommands.START_QUEUE,Bundle().apply { putString("uri",one.uri) })
    val player=PlaybackService::class.java.getDeclaredField("player").apply { isAccessible=true }.get(service) as Player
    player.pause();player.seekTo(0,1200);player.repeatMode=Player.REPEAT_MODE_ALL
-   app.getSharedPreferences("library",Context.MODE_PRIVATE).edit().putString("tracks",JSONArray(listOf(one,two).map { it.json() }).toString()).commit()
+   resetDb(app);app.getSharedPreferences("library",Context.MODE_PRIVATE).edit().putString("tracks",JSONArray(listOf(one,two).map { it.json() }).toString()).commit()
    service.applyPlaybackCommand(PlaybackCommands.REORDER_QUEUE,Bundle().apply { putBoolean("refreshSource",true) })
    assertEquals(2,player.mediaItemCount);assertEquals(one.uri,player.currentMediaItem?.mediaId);assertEquals(1200L,player.currentPosition);assertFalse(player.playWhenReady);assertEquals(Player.REPEAT_MODE_ALL,player.repeatMode)
   }finally{host.destroy()}
@@ -55,9 +55,10 @@ class PlaylistFeaturesTest {
   library.removePlaylist("P");assertFalse(library.restoreTrack(removed))
  }
  private fun track(id:String,title:String=id,folder:String="Music/Album",filename:String="$title.mp3",album:String="",year:Int?=null,number:Int?=null,disc:Int?=null,root:String="r")=Track(id,title,"Artist",30000,folder,filename,album,"",year,number,disc,root)
+ private fun resetDb(app:android.content.Context)=LibraryDatabase.resetForTests(app)
  private fun save(tracks:List<Track>):Library {
   val app=RuntimeEnvironment.getApplication()
-  app.getSharedPreferences("library",Context.MODE_PRIVATE).edit().clear().putString("tracks",JSONArray(tracks.map { it.json() }).toString()).commit()
+  resetDb(app);app.getSharedPreferences("library",Context.MODE_PRIVATE).edit().clear().putString("tracks",JSONArray(tracks.map { it.json() }).toString()).commit()
   return Library(app)
  }
  @Test fun naturalSortingHandlesUnpaddedPaddedAndLargeNumbersWithoutChangingNames() {

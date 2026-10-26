@@ -1,5 +1,5 @@
 import java.util.Properties
-plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
+plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("com.google.devtools.ksp") }
 val signingProps = Properties().apply { val file=rootProject.file("signing/signing.properties"); if(file.exists())file.inputStream().use { load(it) } }
 android {
  namespace = "dev.alex.folderplayer"
@@ -25,4 +25,6 @@ dependencies {
  implementation("androidx.media3:media3-exoplayer:1.6.1")
  implementation("androidx.media3:media3-session:1.6.1")
  implementation("androidx.documentfile:documentfile:1.0.1")
+ implementation("androidx.room:room-runtime:2.6.1")
+ ksp("androidx.room:room-compiler:2.6.1")
 }
