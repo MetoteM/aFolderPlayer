@@ -45,6 +45,7 @@ internal class OnlineSection(
         if(dialog==null && !returning)return null
         return Bundle().apply {
             putBoolean("returning",returning)
+            putBoolean("loading",busy)
             putBoolean("visible",dialog?.isShowing==true && !suspended)
             putString("operation",operation);putString("sourceId",sourceId);putString("sourceTitle",sourceTitle)
             putString("query",query);putInt("sort",sort);putBoolean("selecting",selecting)
@@ -189,7 +190,7 @@ internal class OnlineSection(
             operation=restored.getString("operation","collectionPage")!!
             sourceId=restored.getString("sourceId","")!!
             sourceTitle=restored.getString("sourceTitle","Мне нравится в Яндексе")!!
-            val value=cached?.let { runCatching { JSONObject(it) }.getOrNull() }
+            val value=cached?.takeUnless { restored.getBoolean("loading") }?.let { runCatching { JSONObject(it) }.getOrNull() }
             if(value!=null)apply(value) else choose(operation,sourceId,sourceTitle,true)
             if(!restored.getBoolean("visible",true)) { suspended=true;screen.hide() }
         }

@@ -287,4 +287,36 @@ class OnlineSectionTest {
         } finally { first.close();second?.close();host.pause().stop().destroy() }
     }
 
+    @Test fun rotatingDuringInitialLoadRetriesInsteadOfRestoringAnEmptyCompletedList() {
+        val host=Robolectric.buildActivity(Activity::class.java).setup()
+        val entered=java.util.concurrent.CountDownLatch(1)
+        val release=java.util.concurrent.CountDownLatch(1)
+        val slow=object:OnlineCatalogue {
+            override fun installed()=true
+            override fun request(operation:String,argument:String):JSONObject {
+                entered.countDown();release.await()
+                return JSONObject().put("connected",true).put("sessionKey","pending-rotation")
+            }
+        }
+        val first=OnlineSection(host.get(),{ _,_,_,done -> done(null) },slow)
+        var second:OnlineSection?=null
+        try {
+            first.show();assertTrue(entered.await(2,TimeUnit.SECONDS))
+            val saved=first.saveNavigation()!!;val retained=first.snapshot()!!
+            assertTrue(saved.getBoolean("loading"))
+            first.close()
+            val ready=object:OnlineCatalogue {
+                override fun installed()=true
+                override fun request(operation:String,argument:String):JSONObject {
+                    assertEquals("collectionPage",operation)
+                    return JSONObject().put("tracks",JSONArray((1..3).map { JSONObject().put("id",it).put("title","Loaded $it") })).put("total",3)
+                }
+            }
+            val next=OnlineSection(host.get(),{ _,_,_,done -> done(null) },ready,Direct());second=next
+            next.restore(saved,retained);idle()
+            val root=ShadowDialog.getLatestDialog().window!!.decorView
+            assertEquals(3,all(root).filterIsInstance<ListView>().single().adapter.count)
+        } finally { release.countDown();first.close();second?.close();host.pause().stop().destroy() }
+    }
+
 }
