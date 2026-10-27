@@ -43,24 +43,14 @@ internal fun MainActivity.importExtensionFolder(uri: Uri) {
             scan()
         }.onFailure {
             toast("Подтверди папку музыки для доступа плеера")
-            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
-                .putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, uri)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION), 100)
+            folderPicker.launch(uri)
         }
     }
 
 internal fun MainActivity.settings() {
         SettingsMenu.show(this) { action ->
             when (action) {
-                SettingsMenu.Action.ADD_FOLDER ->
-                    startActivityForResult(
-                        Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
-                            .addFlags(
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-                            ),
-                        100,
-                    )
+                SettingsMenu.Action.ADD_FOLDER -> folderPicker.launch(null)
                 SettingsMenu.Action.FOLDERS -> folders()
                 SettingsMenu.Action.SCAN -> scan()
                 SettingsMenu.Action.SEEK ->

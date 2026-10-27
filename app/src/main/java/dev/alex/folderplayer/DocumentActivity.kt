@@ -60,7 +60,7 @@ class DocumentActivity : ThemedActivity() {
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         operation =
-            (lastNonConfigurationInstance as? RetainedOperation<DocumentResult>)
+            (lastCustomNonConfigurationInstance as? RetainedOperation<DocumentResult>)
                 ?: RetainedOperation()
         source = intent.getStringExtra("source") ?: ""
         initialSource = source
@@ -345,7 +345,7 @@ class DocumentActivity : ThemedActivity() {
         return out
     }
 
-    override fun onRetainNonConfigurationInstance(): Any = operation
+    override fun onRetainCustomNonConfigurationInstance(): Any = operation
 
     override fun onSaveInstanceState(out: Bundle) {
         out.putString("appliedOperationId", appliedOperationId)

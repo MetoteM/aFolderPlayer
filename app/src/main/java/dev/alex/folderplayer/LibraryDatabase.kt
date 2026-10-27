@@ -21,7 +21,10 @@ import androidx.room.Transaction
  * One-way migration: on first open after upgrade the legacy JSON is imported
  * and then dropped from prefs (see Library.storedTracks).
  */
-@Entity(tableName = "tracks")
+@Entity(
+    tableName = "tracks",
+    indices = [androidx.room.Index("folder"), androidx.room.Index("album"), androidx.room.Index("albumArtist")],
+)
 internal data class TrackEntity(
     @PrimaryKey val uri: String,
     val title: String,
@@ -105,12 +108,21 @@ internal interface TrackDao {
     }
 }
 
-@Database(entities = [TrackEntity::class], version = 1, exportSchema = false)
+@Database(entities = [TrackEntity::class], version = 2, exportSchema = false)
 internal abstract class LibraryDatabase : RoomDatabase() {
     abstract fun trackDao(): TrackDao
 
     companion object {
         private const val NAME = "library-db"
+
+        /** v1 -> v2: add folder/album/artist indices for faster grouping. */
+        private val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_tracks_folder ON tracks(folder)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_tracks_album ON tracks(album)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_tracks_albumArtist ON tracks(albumArtist)")
+            }
+        }
         @Volatile private var instance: LibraryDatabase? = null
         private var owner: Context? = null
 
@@ -121,6 +133,7 @@ internal abstract class LibraryDatabase : RoomDatabase() {
                 instance =
                     Room.databaseBuilder(app, LibraryDatabase::class.java, NAME)
                         .allowMainThreadQueries()
+                        .addMigrations(MIGRATION_1_2)
                         .build()
                 owner = app
             }

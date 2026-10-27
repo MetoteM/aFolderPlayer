@@ -30,7 +30,7 @@ class SongTextActivity : ThemedActivity() {
         super.onCreate(state)
         @Suppress("UNCHECKED_CAST")
         val retained =
-            lastNonConfigurationInstance as? RetainedOperation<List<Pair<String, String>>>
+            lastCustomNonConfigurationInstance as? RetainedOperation<List<Pair<String, String>>>
         languageWork = retained ?: RetainedOperation()
         translationRequested =
             state?.getBoolean("translationRequested") ?: (retained?.state()?.key != null)
@@ -259,7 +259,7 @@ class SongTextActivity : ThemedActivity() {
         super.onStop()
     }
 
-    override fun onRetainNonConfigurationInstance(): Any = languageWork
+    override fun onRetainCustomNonConfigurationInstance(): Any = languageWork
 
     override fun onSaveInstanceState(out: Bundle) {
         out.putBoolean("translationRequested", translationRequested)

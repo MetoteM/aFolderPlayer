@@ -477,6 +477,9 @@ internal class ExtensionManager(
                     }
                 } ?: error("Не удалось открыть APK")
                 validateEngine(part)
+                // Remember the digest of a manually imported engine too, so
+                // resume() re-verifies the same file before installing.
+                prefs.edit().putString("pendingHashEngine", ApkIntegrity.sha256(part)).apply()
                 check(part.renameTo(file))
                 main.post { if (!closed && !cancelled) installEngine() }
             } finally {

@@ -3,6 +3,7 @@ package dev.alex.folderplayer
 import android.os.Bundle
 import android.content.ComponentName
 import android.content.Intent
+import android.view.View
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
@@ -13,14 +14,66 @@ import androidx.media3.common.PlaybackException
 
 /** Main-screen chrome (library toolbar, list, player row, controller): extracted from onCreate (roadmap 4.2). */
 internal fun MainActivity.buildUi(state: Bundle?) {
-        browserTitle = label(afp(R.string.library), 24f)
-        layout.addView(browserTitle)
+    buildChrome()
+    connectController(state)
+}
+
+/**
+ * Rebuilds the static chrome. Called from onCreate, and again on
+ * onConfigurationChanged so a rotated phone re-flows without recreating the
+ * Activity (the manifest opts out of recreation).
+ *
+ * Landscape follows a content-first UX rule: the track list is the primary
+ * surface, so ALL toolbar rows (sources, tools, selection actions, recognise)
+ * collapse into one horizontally scrollable compact strip, the title shrinks
+ * and the search field gets a fixed compact height. That leaves roughly 60%
+ * of the screen height to the list — previously four stacked 48dp rows plus
+ * the large heading left "almost only buttons" visible.
+ */
+internal fun MainActivity.buildChrome() {
+    layout.removeAllViews()
+    // NOTE: in landscape screenWidthDp is the LONG side (~800dp on a phone),
+    // so a `screenWidthDp < 600` check never fires. The scarce dimension in
+    // landscape is the short side, so measure screenHeightDp instead.
+    val landscape =
+        resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE &&
+            (resources.configuration.screenHeightDp < 600)
+    val left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    val right = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    fun target(): LinearLayout = if (landscape) left else layout
+    fun playerTarget(): LinearLayout = if (landscape) right else layout
+    // Collapsing toolbar: in landscape every toolbar row is parked in one
+    // horizontally scrollable strip instead of eating vertical space.
+    val strip = if (landscape) HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false } else null
+    val stripRow = if (landscape) row() else null
+    fun attachToolbar(view: View) {
+        if (landscape) stripRow!!.addView(view) else target().addView(view)
+    }
+    fun toolParams(): LinearLayout.LayoutParams =
+        if (landscape) LinearLayout.LayoutParams(dp(124), dp(44)).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) }
+        else weight().apply { height = dp(48) }
+    fun wideToolParams(): LinearLayout.LayoutParams =
+        if (landscape) LinearLayout.LayoutParams(dp(150), dp(44)).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) }
+        else LinearLayout.LayoutParams(0, dp(48), 2f)
+        browserTitle = label(afp(R.string.library), if (landscape) 16f else 24f)
+        target().addView(browserTitle)
         browserCount = label("", 13f).apply { setTextColor(PlayerScreens.muted) }
-        layout.addView(browserCount)
+        target().addView(browserCount)
         val sources = row()
-        sources.addView(button("На устройстве") { selectedPlaylist=null;render() },weight())
-        sources.addView(button(afp(R.string.yandex_music)) { onlineSection.show() },weight())
-        layout.addView(sources)
+        if (landscape) {
+            sources.addView(
+                button("На устройстве") { selectedPlaylist=null;render() },
+                LinearLayout.LayoutParams(dp(130), dp(44)).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) },
+            )
+            sources.addView(
+                button(afp(R.string.yandex_music)) { onlineSection.show() },
+                LinearLayout.LayoutParams(dp(150), dp(44)).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) },
+            )
+        } else {
+            sources.addView(button("На устройстве") { selectedPlaylist=null;render() },weight())
+            sources.addView(button(afp(R.string.yandex_music)) { onlineSection.show() },weight())
+        }
+        attachToolbar(sources)
         val tools = row()
         moreTools = row()
         fun command(kind: IconButton.Kind, label: String, action: () -> Unit) =
@@ -32,15 +85,15 @@ internal fun MainActivity.buildUi(state: Bundle?) {
                 selection.clear()
                 render()
             },
-            weight().apply { height = dp(48) },
+            toolParams(),
         )
         tools.addView(
             command(IconButton.Kind.PLAYLIST, "Плейлисты") { choosePlaylist() },
-            weight().apply { height = dp(48) },
+            toolParams(),
         )
         tools.addView(
             command(IconButton.Kind.SORT, "Сортировка") { sortDialog() },
-            weight().apply { height = dp(48) },
+            toolParams(),
         )
         selectionButton =
             command(IconButton.Kind.SELECT, "Выбрать треки") {
@@ -48,27 +101,29 @@ internal fun MainActivity.buildUi(state: Bundle?) {
                 selection.clear()
                 render()
             }
-        tools.addView(selectionButton, weight().apply { height = dp(48) })
+        tools.addView(selectionButton, toolParams())
         tools.addView(
             command(IconButton.Kind.MENU, "Меню") { settings() },
-            weight().apply { height = dp(48) },
+            toolParams(),
         )
         bulkButton = button("В плейлист") { bulkAdd() }
-        moreTools.addView(bulkButton, weight().apply { height = dp(48) })
-        layout.addView(tools)
+        moreTools.addView(bulkButton, toolParams())
+        attachToolbar(tools)
         hideTracksButton = button("👁") { toggleSelectedTracksHidden() }
         deleteTracksButton = button(afp(R.string.delete)) { deleteSelectedTracks() }
-        moreTools.addView(hideTracksButton, weight().apply { height = dp(48) })
-        moreTools.addView(deleteTracksButton, weight().apply { height = dp(48) })
-        layout.addView(moreTools)
+        moreTools.addView(hideTracksButton, toolParams())
+        moreTools.addView(deleteTracksButton, toolParams())
+        attachToolbar(moreTools)
         val quick = row()
         identifyButton = button(afp(R.string.recognize_song)) { identifySong() }
         quick.addView(
             identifyButton,
-            LinearLayout.LayoutParams(0, dp(48), 2f),
+            wideToolParams(),
         )
-
-        layout.addView(quick)
+        attachToolbar(quick)
+        if (landscape) {
+            target().addView(strip, LinearLayout.LayoutParams(-1, dp(48)))
+        }
         search =
             EditText(this).apply {
                 setText(query)
@@ -96,11 +151,16 @@ internal fun MainActivity.buildUi(state: Bundle?) {
                 override fun afterTextChanged(s: android.text.Editable?) {}
             }
         )
-        layout.addView(search)
+        if (landscape) {
+            target().addView(
+                search,
+                LinearLayout.LayoutParams(-1, dp(40)).apply { setMargins(dp(6), dp(2), dp(6), dp(2)) },
+            )
+        } else target().addView(search)
         val scroller = ScrollView(this)
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         scroller.addView(list)
-        layout.addView(scroller, LinearLayout.LayoutParams(-1, 0, 1f))
+        target().addView(scroller, LinearLayout.LayoutParams(-1, 0, 1f))
         val current =
             NowPlayingStrip(
                 this,
@@ -112,14 +172,14 @@ internal fun MainActivity.buildUi(state: Bundle?) {
             }
         now = current.title
         position = current.time
-        layout.addView(current, LinearLayout.LayoutParams(-1, -2))
+        playerTarget().addView(current, LinearLayout.LayoutParams(-1, -2))
         seek =
             SeekBar(this).apply {
                 max = 1000
                 progressTintList = android.content.res.ColorStateList.valueOf(PlayerScreens.accent)
                 thumbTintList = android.content.res.ColorStateList.valueOf(PlayerScreens.accent)
             }
-        layout.addView(seek)
+        playerTarget().addView(seek)
         seek.setOnSeekBarChangeListener(
             object : SeekBar.OnSeekBarChangeListener {
                 override fun onStartTrackingTouch(bar: SeekBar) {
@@ -142,7 +202,20 @@ internal fun MainActivity.buildUi(state: Bundle?) {
         play = button("▶") { togglePlay() }
         controls.addView(play, weight())
         controls.addView(button("⏭") { controller?.seekToNextMediaItem() }, weight())
-        layout.addView(controls)
+        playerTarget().addView(controls)
+        if (landscape) {
+            val columns = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            columns.addView(left, LinearLayout.LayoutParams(0, -1, 1f))
+            columns.addView(
+                right,
+                LinearLayout.LayoutParams(0, -1, 0.85f).apply { setMargins(dp(6), 0, dp(6), 0) },
+            )
+            layout.addView(columns, LinearLayout.LayoutParams(-1, 0, 1f))
+        }
+}
+
+/** MediaController wiring + first render/page: runs once per Activity, not on rotation. */
+internal fun MainActivity.connectController(state: Bundle?) {
         val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
         val f = MediaController.Builder(this, token).buildAsync()
         future = f

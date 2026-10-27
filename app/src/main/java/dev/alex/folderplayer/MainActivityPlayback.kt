@@ -287,12 +287,7 @@ internal fun MainActivity.currentSongMenu(track: Track) {
                 }
                 SongMenu.Action.IMPORT -> {
                     lyricTarget = track.uri
-                    startActivityForResult(
-                        Intent(Intent.ACTION_OPEN_DOCUMENT)
-                            .setType("*/*")
-                            .addCategory(Intent.CATEGORY_OPENABLE),
-                        101,
-                    )
+                    lyricsImporter.launch(arrayOf("*/*"))
                 }
                 SongMenu.Action.PLAYLIST -> addToPlaylists(track)
                 SongMenu.Action.YEAR ->
@@ -314,18 +309,11 @@ internal fun MainActivity.currentSongMenu(track: Track) {
                                 else {
                                     lyricTarget = track.uri
                                     val timed = LyricsDocument(raw).cues.isNotEmpty()
-                                    startActivityForResult(
-                                        Intent(Intent.ACTION_CREATE_DOCUMENT)
-                                            .setType("text/plain")
-                                            .addCategory(Intent.CATEGORY_OPENABLE)
-                                            .putExtra(
-                                                Intent.EXTRA_TITLE,
-                                                track.title.replace(
-                                                    Regex("[\\/:*?\"<>|]"),
-                                                    "_",
-                                                ) + if (timed) ".lrc" else ".txt",
-                                            ),
-                                        102,
+                                    lyricsExporter.launch(
+                                        track.title.replace(
+                                            Regex("[\\/:*?\"<>|]"),
+                                            "_",
+                                        ) + if (timed) ".lrc" else ".txt",
                                     )
                                 }
                             else -> Unit

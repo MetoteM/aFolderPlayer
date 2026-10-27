@@ -247,12 +247,7 @@ internal fun MainActivity.manageMedia(track: Track) {
                 .setView(scroll)
                 .setNeutralButton("Импорт TXT / LRC") { _, _ ->
                     lyricTarget = track.uri
-                    startActivityForResult(
-                        Intent(Intent.ACTION_OPEN_DOCUMENT)
-                            .setType("*/*")
-                            .addCategory(Intent.CATEGORY_OPENABLE),
-                        101,
-                    )
+                    lyricsImporter.launch(arrayOf("*/*"))
                 }
                 .setPositiveButton(afp(R.string.close), null)
                 .create()
@@ -269,18 +264,12 @@ internal fun MainActivity.manageMedia(track: Track) {
             markLyrics(track, raw)
         }
         export.setOnClickListener {
+            dialog.dismiss()
             lyricTarget = track.uri
             val timed = LyricsDocument(raw).cues.isNotEmpty()
-            startActivityForResult(
-                Intent(Intent.ACTION_CREATE_DOCUMENT)
-                    .setType("text/plain")
-                    .addCategory(Intent.CATEGORY_OPENABLE)
-                    .putExtra(
-                        Intent.EXTRA_TITLE,
-                        track.title.replace(Regex("[\\/:*?\"<>|]"), "_") +
-                            if (timed) ".lrc" else ".txt",
-                    ),
-                102,
+            lyricsExporter.launch(
+                track.title.replace(Regex("[\\/:*?\"<>|]"), "_") +
+                    if (timed) ".lrc" else ".txt",
             )
         }
         dialog.setOnDismissListener { lyricUpdate = null }

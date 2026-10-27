@@ -25,7 +25,7 @@ object ExtensionHttp {
 
     @JvmStatic
     @Throws(IOException::class)
-    internal fun redirect(original: URI, current: URI, location: String?): URI {
+    fun redirect(original: URI, current: URI, location: String?): URI {
         if (location.isNullOrBlank()) throw IOException("Сервер не указал адрес загрузки")
         val target =
             try {

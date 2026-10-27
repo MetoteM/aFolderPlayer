@@ -3,7 +3,7 @@ package dev.alex.folderplayer
 import android.content.Intent
 import android.net.Uri
 
-/** Activity-result routing: extracted from MainActivity (roadmap 4.2). */
+/** Activity-result routing: legacy codes (103/104/107/REQUEST) + helpers for the Activity Result API launchers. */
 internal fun MainActivity.handleActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (requestCode == ExternalExtensions.REQUEST && resultCode == android.app.Activity.RESULT_OK) {
             data?.data?.let { importExtensionFolder(it) }
@@ -41,47 +41,37 @@ internal fun MainActivity.handleActivityResult(requestCode: Int, resultCode: Int
                         }
                 }
             }
-        if (requestCode == 101 && resultCode == android.app.Activity.RESULT_OK)
-            data?.data?.let { uri ->
-                val target = lyricTarget ?: return@let
-                runAsync({
-                    lyricStore.importText(uri).also {
-                        lyricStore.save(target, it)
-                        prefs.edit().remove("lyricsSource:$target").apply()
-                    }
-                }) { result ->
-                    result
-                        .onSuccess {
-                            tracks.find { it.uri == target }?.let { localMedia(it) }
-                        }
-                        .onFailure { toast(it.message ?: "Не удалось импортировать текст") }
+}
+
+/** Lyric-text import from a SAF document (launcher lyricsImporter, ex-requestCode 101). */
+internal fun MainActivity.importLyricsFrom(uri: android.net.Uri) {
+        val target = lyricTarget ?: return
+        runAsync({
+            lyricStore.importText(uri).also {
+                lyricStore.save(target, it)
+                prefs.edit().remove("lyricsSource:$target").apply()
+            }
+        }) { result ->
+            result
+                .onSuccess {
+                    tracks.find { it.uri == target }?.let { localMedia(it) }
                 }
-            }
-        if (requestCode == 102 && resultCode == android.app.Activity.RESULT_OK)
-            data?.data?.let { uri ->
-                val target = lyricTarget ?: return@let
-                runAsync({
-                    val text = lyricStore.read(target) ?: error("Нет сохранённого текста")
-                    contentResolver.openOutputStream(uri, "wt")?.use {
-                        it.write(text.toByteArray(Charsets.UTF_8))
-                    } ?: error("Не удалось открыть файл")
-                }) { result ->
-                    toast(
-                        if (result.isSuccess) "Текст экспортирован"
-                        else "Не удалось экспортировать текст"
-                    )
-                }
-            }
-        if (requestCode == 100 && resultCode == android.app.Activity.RESULT_OK)
-            data?.data?.let { uri ->
-                runCatching {
-                        contentResolver.takePersistableUriPermission(
-                            uri,
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                        )
-                        library.setRoots((library.roots() + uri.toString()).distinct())
-                        scan()
-                    }
-                    .onFailure { toast("Не удалось сохранить доступ к папке") }
-            }
+                .onFailure { toast(it.message ?: "Не удалось импортировать текст") }
+        }
+}
+
+/** Lyric-text export to a SAF document (launcher lyricsExporter, ex-requestCode 102). */
+internal fun MainActivity.exportLyricsTo(uri: android.net.Uri) {
+        val target = lyricTarget ?: return
+        runAsync({
+            val text = lyricStore.read(target) ?: error("Нет сохранённого текста")
+            contentResolver.openOutputStream(uri, "wt")?.use {
+                it.write(text.toByteArray(Charsets.UTF_8))
+            } ?: error("Не удалось открыть файл")
+        }) { result ->
+            toast(
+                if (result.isSuccess) "Текст экспортирован"
+                else "Не удалось экспортировать текст"
+            )
+        }
 }

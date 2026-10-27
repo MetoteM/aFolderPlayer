@@ -126,6 +126,24 @@ class MainActivity : ThemedActivity() {
     internal val executor = Executors.newSingleThreadExecutor()
     internal val handler = Handler(Looper.getMainLooper())
 
+    /** SAF-выбор корневой папки библиотеки (замена requestCode 100). */
+    internal val folderPicker =
+        registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()) { uri ->
+            uri?.let { if (alive) importExtensionFolder(it) }
+        }
+
+    /** Импорт текста песни из файла (замена requestCode 101). */
+    internal val lyricsImporter =
+        registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let { if (alive) importLyricsFrom(it) }
+        }
+
+    /** Экспорт текста песни в файл (замена requestCode 102). */
+    internal val lyricsExporter =
+        registerForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/plain"),
+        ) { uri -> uri?.let { if (alive) exportLyricsTo(it) } }
+
     /**
      * Single seam for the background→UI hand-off. Replaces the previous ~13
      * copies of `executor.execute { handler.post { if (alive) ... } }`: the
@@ -166,7 +184,7 @@ class MainActivity : ThemedActivity() {
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         CrashNotes.install(this)
-        val retained = lastNonConfigurationInstance as? MainOperations
+        val retained = lastCustomNonConfigurationInstance as? MainOperations
         translationWork = retained?.translation ?: RetainedOperation()
         lyricsWork = retained?.lyrics ?: RetainedOperation()
         soundReturn = state?.getString("soundReturn") ?: "player"
@@ -233,7 +251,7 @@ class MainActivity : ThemedActivity() {
         handleActivityResult(requestCode, resultCode, data)
     }
 
-    override fun onRetainNonConfigurationInstance(): Any =
+    override fun onRetainCustomNonConfigurationInstance(): Any =
         MainOperations(translationWork, lyricsWork)
 
     override fun onSaveInstanceState(out: Bundle) {
@@ -269,6 +287,14 @@ class MainActivity : ThemedActivity() {
         super.onTrimMemory(level)
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW)
             LocalArtwork.clear()
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (alive && ::layout.isInitialized && ::list.isInitialized) {
+            buildChrome()
+            render()
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

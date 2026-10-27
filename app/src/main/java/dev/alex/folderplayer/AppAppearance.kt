@@ -48,7 +48,7 @@ object AppAppearance {
     }
 }
 
-open class ThemedActivity:Activity() {
+open class ThemedActivity:androidx.activity.ComponentActivity() {
     private var appliedTheme=""
     override fun onCreate(state:Bundle?) {
         appliedTheme=AppAppearance.apply(this).id

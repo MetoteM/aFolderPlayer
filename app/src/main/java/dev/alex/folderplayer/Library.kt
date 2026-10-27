@@ -144,10 +144,20 @@ internal class Library(private val context: Context) {
     private fun storedTracks(): List<Track> {
         val dao = LibraryDatabase.get(context).trackDao()
         if (dao.count() == 0 && prefs.contains("tracks")) {
-            val legacy = legacyTracks()
-            if (legacy.isNotEmpty()) {
-                dao.replaceAll(legacy.map { it.toEntity() })
-                prefs.edit().remove("tracks").apply()
+            // Defended migration: only treat the legacy blob as a real track
+            // list if it plausibly is one (a truncated write used to throw and
+            // leave the library empty). The raw JSON is backed up before it is
+            // dropped, so data can still be recovered manually.
+            val json = prefs.getString("tracks", null).orEmpty()
+            if (json.length > 2 && json.startsWith("[")) {
+                val legacy = runCatching { legacyTracks() }.getOrElse { emptyList() }
+                if (legacy.isNotEmpty()) {
+                    synchronized(storeLock) {
+                        prefs.edit().putString("tracksBackup", json).apply()
+                        dao.replaceAll(legacy.map { it.toEntity() })
+                        prefs.edit().remove("tracks").apply()
+                    }
+                }
             }
         }
         return dao.all().map { it.toTrack() }
