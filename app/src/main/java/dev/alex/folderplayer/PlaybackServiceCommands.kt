@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.media3.common.Player
 import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
 
 /**
  * Playback-service command handlers, split out of PlaybackService.applyPlaybackCommand
@@ -11,7 +13,7 @@ import androidx.media3.session.SessionResult
  * delegating, so every command below runs against a generation that invalidates
  * an in-flight async restore.
  */
-
+@OptIn(UnstableApi::class)
 internal fun PlaybackService.commandStartBook(args: Bundle): Int {
     val book = books.book(args.getString("bookId").orEmpty())
     if (book == null) return SessionError.ERROR_BAD_VALUE
@@ -35,6 +37,7 @@ internal fun PlaybackService.commandStartBook(args: Bundle): Int {
     return SessionResult.RESULT_SUCCESS
 }
 
+@OptIn(UnstableApi::class)
 internal fun PlaybackService.commandBookSpeed(args: Bundle): Int {
     val id = player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId")
     val speed = args.getFloat("speed", 1f)
@@ -43,6 +46,7 @@ internal fun PlaybackService.commandBookSpeed(args: Bundle): Int {
     return SessionResult.RESULT_SUCCESS
 }
 
+@OptIn(UnstableApi::class)
 internal fun PlaybackService.commandStartOnlineQueue(args: Bundle): Int {
     val store = OnlineLibraryStore(this)
     val queueId = args.getString("queueId").orEmpty()
@@ -77,6 +81,7 @@ internal fun PlaybackService.commandStartOnlineQueue(args: Bundle): Int {
     return SessionResult.RESULT_SUCCESS
 }
 
+@OptIn(UnstableApi::class)
 internal fun PlaybackService.commandStartQueue(args: Bundle): Int {
     val library = Library(this)
     val source = args.getString("source").orEmpty()
@@ -97,6 +102,7 @@ internal fun PlaybackService.commandStartQueue(args: Bundle): Int {
     return SessionResult.RESULT_SUCCESS
 }
 
+@OptIn(UnstableApi::class)
 internal fun PlaybackService.commandReorderQueue(args: Bundle): Int {
     if (player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId") != null) return SessionResult.RESULT_SUCCESS
     val source = args.getString("source").orEmpty()
@@ -137,6 +143,7 @@ internal fun PlaybackService.commandReorderQueue(args: Bundle): Int {
     return SessionResult.RESULT_SUCCESS
 }
 
+@OptIn(UnstableApi::class)
 internal fun PlaybackService.commandSetRepeat(args: Bundle): Int {
     if (player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId") != null) return SessionError.ERROR_BAD_VALUE
     val mode = args.getInt("mode", -1)
