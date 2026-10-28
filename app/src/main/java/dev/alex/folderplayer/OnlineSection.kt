@@ -109,17 +109,26 @@ internal class OnlineSection(
         if(!extension.installed()) { AlertDialog.Builder(host).setTitle(host.afp(R.string.yandex_music)).setMessage("Установи AFP Online из того же тестового комплекта.").setPositiveButton(host.afp(R.string.close),null).show();return }
         val screen=Dialog(host,android.R.style.Theme_Material_NoActionBar)
         dialog=screen;generation++;busy=false;buttons.clear();selected.clear();selecting=false;query="";sort=0;rows=JSONArray();shown=emptyList()
-        val root=LinearLayout(host).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(8),dp(4),dp(8),dp(4));setBackgroundColor(PlayerScreens.bg) }
-        fun button(label:String,action:()->Unit)=Button(host).apply { text=label;setOnClickListener { if(!busy)action() };buttons+=this }
+        // Landscape follows the content-first rule of the main chrome (see
+        // buildChrome): the scarce dimension is the short side, so every control
+        // row is compacted and the track list keeps ~60% of the height.
+        val landscape=host.resources.configuration.orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE &&
+            host.resources.configuration.screenHeightDp<600
+        fun btnH()=dp(if(landscape)40 else 48)
+        val root=LinearLayout(host).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(if(landscape)6 else 8),dp(if(landscape)2 else 4),dp(if(landscape)6 else 8),dp(if(landscape)2 else 4));setBackgroundColor(PlayerScreens.bg) }
+        fun button(label:String,action:()->Unit)=Button(host).apply { text=label;setOnClickListener { if(!busy)action() };buttons+=this;minimumHeight=0 }
         fun pair(a:View,b:View) { root.addView(LinearLayout(host).apply { addView(a,LinearLayout.LayoutParams(0,-2,1f));addView(b,LinearLayout.LayoutParams(0,-2,1f)) }) }
-        pair(Button(host).apply { text="← Назад";setOnClickListener { if(busy)cancelWork() else if(operation=="playlistPage")choose("playlists","","Плейлисты") else screen.dismiss() } },
-            Button(host).apply { text="Вход / аккаунт";setOnClickListener { if(!busy)openLogin() } })
-        title=TextView(host).apply { textSize=22f;setTextColor(AppAppearance.textColor) };root.addView(title)
-        status=TextView(host).apply { textSize=13f;setTextColor(PlayerScreens.muted) };root.addView(status)
+        fun rowOf(vararg views:View) { root.addView(LinearLayout(host).apply { views.forEach { addView(it,LinearLayout.LayoutParams(0,btnH(),1f).apply { setMargins(dp(2),0,dp(2),0) }) } },LinearLayout.LayoutParams(-1,btnH())) }
+        pair(Button(host).apply { text="← Назад";minimumHeight=0;setOnClickListener { if(busy)cancelWork() else if(operation=="playlistPage")choose("playlists","","Плейлисты") else screen.dismiss() } },
+            Button(host).apply { text="Вход / аккаунт";minimumHeight=0;setOnClickListener { if(!busy)openLogin() } })
+        title=TextView(host).apply { textSize=if(landscape)15f else 22f;setTextColor(AppAppearance.textColor);setPadding(0,dp(if(landscape)2 else 6),0,dp(if(landscape)1 else 4)) };root.addView(title)
+        status=TextView(host).apply { textSize=if(landscape)11f else 13f;setTextColor(PlayerScreens.muted) };root.addView(status)
         val tabs=LinearLayout(host)
+        val tabsHost=if(landscape) HorizontalScrollView(host).apply { isHorizontalScrollBarEnabled=false } else null
         fun tool(kind:IconButton.Kind,label:String,action:()->Unit) {
             val view=IconButton(host,kind,label) { if(!busy)action() };buttons+=view
-            tabs.addView(view,LinearLayout.LayoutParams(0,dp(48),1f))
+            if(landscape) tabsHost!!.addView(view,LinearLayout.LayoutParams(dp(118),dp(44)).apply { setMargins(dp(2),dp(1),dp(2),dp(1)) })
+            else tabs.addView(view,LinearLayout.LayoutParams(0,dp(48),1f))
         }
         tool(IconButton.Kind.LIBRARY,"Коллекция") { choose("collectionPage","","Мне нравится в Яндексе") }
         tool(IconButton.Kind.PLAYLIST,"Плейлисты") { choose("playlists","","Плейлисты") }
@@ -131,7 +140,7 @@ internal class OnlineSection(
         }
         tool(IconButton.Kind.SELECT,"Выбрать треки") { selecting=!selecting;selected.clear();render() }
         tool(IconButton.Kind.MENU,"⋮") { sourceMenu() }
-        root.addView(tabs)
+        if(landscape) { tabsHost!!.addView(tabs);root.addView(tabsHost,LinearLayout.LayoutParams(-1,dp(46))) } else root.addView(tabs)
         search=EditText(host).apply { hint="Фильтр списка / поиск";isSingleLine=true;setTextColor(AppAppearance.textColor);setHintTextColor(PlayerScreens.muted) }
         search.addTextChangedListener(object:TextWatcher {
             override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
@@ -146,15 +155,20 @@ internal class OnlineSection(
             override fun onItemSelected(parent:AdapterView<*>?,view:View?,position:Int,id:Long) { sort=position;render() }
         }
         sortView.visibility=View.GONE;root.addView(sortView)
-        root.addView(button("Действия") { actionsMenu() })
-        selection=TextView(host).apply { setTextColor(Color.CYAN);setOnClickListener { if(!busy) { selected.clear();selecting=false;render() } } };root.addView(selection)
-        playAll=button("▶ Играть список целиком") { prepare("play",null) };root.addView(playAll)
+        // Secondary actions share rows in landscape instead of stacking.
+        val actionsButton=button("Действия") { actionsMenu() }
+        playAll=button("▶ Играть список целиком") { prepare("play",null) }
+        if(landscape) rowOf(actionsButton,playAll)
+        else { root.addView(actionsButton);root.addView(playAll) }
+        selection=TextView(host).apply { setTextColor(Color.CYAN);setTextSize(if(landscape)11f else 14f);setOnClickListener { if(!busy) { selected.clear();selecting=false;render() } } };root.addView(selection)
         list=ListView(host).apply { adapter=this@OnlineSection.adapter;descendantFocusability=ViewGroup.FOCUS_BLOCK_DESCENDANTS }
         list.setOnItemClickListener { _,_,position,_ -> shown.getOrNull(position)?.let { if(!busy) { if(playlistMode)openPlaylist(it.song) else if(selecting || operation=="hidden") { selecting=true;toggle(it.sourceIndex) } else prepare("play",it.sourceIndex) } } }
         root.addView(list,LinearLayout.LayoutParams(-1,0,1f))
-        more=button("Показать ещё") { next()?.let { fetch(it,false) } };root.addView(more)
-        retry=button("Повторить загрузку") { fetch(0,true) };root.addView(retry)
-        cancel=Button(host).apply { text="Отменить загрузку";setOnClickListener { cancelWork() } };root.addView(cancel)
+        more=button("Показать ещё") { next()?.let { fetch(it,false) } }
+        retry=button("Повторить загрузку") { fetch(0,true) }
+        cancel=Button(host).apply { text="Отменить загрузку";minimumHeight=0;setOnClickListener { cancelWork() } }
+        if(landscape) rowOf(more,retry,cancel)
+        else { root.addView(more);root.addView(retry);root.addView(cancel) }
         now=NowPlayingStrip(host) { if(!busy) { suspended=true;screen.hide();openPlayer() } }.also { root.addView(it,LinearLayout.LayoutParams(-1,-2)) }
         SystemBarInsets.apply(root);screen.setContentView(root)
         screen.setOnDismissListener { generation++;pending?.cancel(true);pending=null;dialog=null;suspended=false;busy=false;handingOff=false }
