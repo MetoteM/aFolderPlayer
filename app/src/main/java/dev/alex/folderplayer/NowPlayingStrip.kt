@@ -18,9 +18,9 @@ internal class NowPlayingStrip(
     val title =
         TextView(context).apply {
             text = "Выбери песню"
-            textSize = 18f
+            textSize = 16f
             setTextColor(AppAppearance.textColor)
-            setPadding(dp(8), dp(6), dp(8), dp(2))
+            setPadding(dp(8), dp(4), dp(8), dp(0))
         }
     val time =
         TextView(context).apply {
@@ -33,7 +33,7 @@ internal class NowPlayingStrip(
     init {
         orientation = VERTICAL
         gravity = Gravity.CENTER_VERTICAL
-        minimumHeight = dp(76)
+        minimumHeight = dp(64)
         setPadding(0, dp(4), 0, dp(2))
         val grip =
             View(context).apply {

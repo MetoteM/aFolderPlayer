@@ -17,7 +17,16 @@ android {
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  buildFeatures { aidl = true }
  kotlinOptions { jvmTarget = "17" }
- testOptions { unitTests.isReturnDefaultValues = true; unitTests.isIncludeAndroidResources = true }
+ testOptions {
+        unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            // Sandbox egress rate-limits Maven Central (HTTP 429) — Robolectric fetches
+            // android-all SDKs at test runtime, so point it at a mirror.
+            it.systemProperty("robolectric.dependency.repo.url", "https://repo.huaweicloud.com/repository/maven")
+            it.systemProperty("robolectric.dependency.repo.id", "huawei-mirror")
+        }
+    }
 }
 dependencies {
  testImplementation("junit:junit:4.13.2")

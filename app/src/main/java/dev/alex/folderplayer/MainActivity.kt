@@ -53,6 +53,8 @@ class MainActivity : ThemedActivity() {
     internal lateinit var browserTitle: TextView
     internal lateinit var browserCount: TextView
     internal lateinit var search: EditText
+    internal var chromeHeader: LinearLayout? = null
+    internal var chromeHidden = false
     internal var controller: MediaController? = null
     internal var future: ListenableFuture<MediaController>? = null
     internal var tracks = emptyList<Track>()

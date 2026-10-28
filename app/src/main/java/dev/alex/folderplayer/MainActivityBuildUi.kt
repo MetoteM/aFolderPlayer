@@ -29,6 +29,11 @@ internal fun MainActivity.buildUi(state: Bundle?) {
  * and the search field gets a fixed compact height. That leaves roughly 60%
  * of the screen height to the list — previously four stacked 48dp rows plus
  * the large heading left "almost only buttons" visible.
+ *
+ * "Quiet chrome" (UI refactor A): title, toolbar and search live in a single
+ * header container that auto-hides when the list is scrolled down and slides
+ * back on the first scroll up — in BOTH orientations. Playback strip, seek
+ * bar and transport stay pinned, so controls never disappear completely.
  */
 internal fun MainActivity.buildChrome() {
     layout.removeAllViews()
@@ -42,12 +47,15 @@ internal fun MainActivity.buildChrome() {
     val right = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
     fun target(): LinearLayout = if (landscape) left else layout
     fun playerTarget(): LinearLayout = if (landscape) right else layout
+    chromeHidden = false
+    val header = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    chromeHeader = header
     // Collapsing toolbar: in landscape every toolbar row is parked in one
     // horizontally scrollable strip instead of eating vertical space.
     val strip = if (landscape) HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false } else null
     val stripRow = if (landscape) row() else null
     fun attachToolbar(view: View) {
-        if (landscape) stripRow!!.addView(view) else target().addView(view)
+        if (landscape) stripRow!!.addView(view) else header.addView(view)
     }
     fun toolParams(): LinearLayout.LayoutParams =
         if (landscape) LinearLayout.LayoutParams(dp(124), dp(44)).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) }
@@ -55,10 +63,16 @@ internal fun MainActivity.buildChrome() {
     fun wideToolParams(): LinearLayout.LayoutParams =
         if (landscape) LinearLayout.LayoutParams(dp(150), dp(44)).apply { setMargins(dp(3), dp(2), dp(3), dp(2)) }
         else LinearLayout.LayoutParams(0, dp(48), 2f)
-        browserTitle = label(afp(R.string.library), if (landscape) 16f else 24f)
-        target().addView(browserTitle)
-        browserCount = label("", 13f).apply { setTextColor(PlayerScreens.muted) }
-        target().addView(browserCount)
+        browserTitle = label(afp(R.string.library), if (landscape) 15f else 19f).apply {
+            setPadding(dp(12), dp(10), dp(8), dp(2))
+            letterSpacing = 0.01f
+        }
+        header.addView(browserTitle)
+        browserCount = label("", 12f).apply {
+            setTextColor(PlayerScreens.muted)
+            setPadding(dp(12), dp(0), dp(8), dp(6))
+        }
+        header.addView(browserCount)
         val sources = row()
         if (landscape) {
             sources.addView(
@@ -122,7 +136,7 @@ internal fun MainActivity.buildChrome() {
         )
         attachToolbar(quick)
         if (landscape) {
-            target().addView(strip, LinearLayout.LayoutParams(-1, dp(48)))
+            header.addView(strip, LinearLayout.LayoutParams(-1, dp(48)))
         }
         search =
             EditText(this).apply {
@@ -144,6 +158,10 @@ internal fun MainActivity.buildChrome() {
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                     query = s.toString()
                     libraryPage = 0
+                    chromeHeader?.takeIf { chromeHidden }?.let {
+                        chromeHidden = false
+                        it.animate().translationY(0f).setDuration(140).start()
+                    }
                     handler.removeCallbacks(renderSearch)
                     handler.postDelayed(renderSearch, 180)
                 }
@@ -152,15 +170,41 @@ internal fun MainActivity.buildChrome() {
             }
         )
         if (landscape) {
-            target().addView(
+            header.addView(
                 search,
-                LinearLayout.LayoutParams(-1, dp(40)).apply { setMargins(dp(6), dp(2), dp(6), dp(2)) },
+                LinearLayout.LayoutParams(-1, dp(38)).apply { setMargins(dp(8), dp(2), dp(8), dp(4)) },
             )
-        } else target().addView(search)
+        } else {
+            header.addView(
+                search,
+                LinearLayout.LayoutParams(-1, dp(42)).apply { setMargins(dp(8), dp(4), dp(8), dp(6)) },
+            )
+        }
         val scroller = ScrollView(this)
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         scroller.addView(list)
+        target().addView(header, LinearLayout.LayoutParams(-1, -2))
         target().addView(scroller, LinearLayout.LayoutParams(-1, 0, 1f))
+        scroller.setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
+            val headerView = chromeHeader ?: return@setOnScrollChangeListener
+            val down = scrollY - oldScrollY
+            when {
+                down > dp(4) && scrollY > dp(24) && !chromeHidden -> {
+                    chromeHidden = true
+                    headerView.animate().translationY(-headerView.height.toFloat()).setDuration(180)
+                        .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+                }
+                down < -dp(2) && chromeHidden -> {
+                    chromeHidden = false
+                    headerView.animate().translationY(0f).setDuration(180)
+                        .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+                }
+                scrollY == 0 && chromeHidden -> {
+                    chromeHidden = false
+                    headerView.animate().translationY(0f).setDuration(180).start()
+                }
+            }
+        }
         val current =
             NowPlayingStrip(
                 this,

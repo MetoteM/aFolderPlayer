@@ -1,0 +1,1 @@
+Private signing backup for Folder Player. Contains private key AND its password. Do not publish or share. Extract into the project root; the signing folder must be next to settings.gradle.kts. Preserve this backup for future app updates.

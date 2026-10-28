@@ -1,4 +1,4 @@
-pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
-dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
+pluginManagement { repositories { maven("https://repo.huaweicloud.com/repository/maven"); google(); mavenCentral(); gradlePluginPortal() } }
+dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { maven("https://repo.huaweicloud.com/repository/maven"); google(); mavenCentral() } }
 rootProject.name = "FolderPlayer"
 include(":app",":translator",":online")

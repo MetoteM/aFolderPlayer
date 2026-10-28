@@ -57,7 +57,7 @@ internal fun MainActivity.render() {
                     if (library.roots().isEmpty())
                         "Добавь папку через меню ⋯.\nВ библиотеку попадут песни от 30 секунд."
                     else "Песен не найдено. Обнови библиотеку через меню ⋯.",
-                    16f,
+                    15f,
                 )
             )
         val favorites = library.playlist(afp(R.string.favorites))
@@ -73,15 +73,15 @@ internal fun MainActivity.render() {
         val pageSize=200
         val lastPage=((visible.size-1).coerceAtLeast(0))/pageSize
         libraryPage=libraryPage.coerceIn(0,lastPage)
-        if(lastPage>0)list.addView(label("Страница ${libraryPage+1} из ${lastPage+1}",14f))
+        if(lastPage>0)list.addView(label("Страница ${libraryPage+1} из ${lastPage+1}",12f))
         visible.drop(libraryPage*pageSize).take(pageSize).forEach { track ->
             val r =
                 row().apply {
-                    setPadding(dp(4), dp(4), dp(4), dp(4))
+                    setPadding(dp(8), dp(6), dp(4), dp(6))
                     background =
                         android.graphics.drawable.GradientDrawable().apply {
                             setColor(PlayerScreens.bg)
-                            cornerRadius = dp(14).toFloat()
+                            cornerRadius = dp(12).toFloat()
                         }
                 }
             if (selecting)
@@ -119,7 +119,7 @@ internal fun MainActivity.render() {
                 android.text.SpannableString(caption).apply {
                     val start = caption.indexOf('\n') + 1
                     setSpan(
-                        android.text.style.RelativeSizeSpan(0.76f),
+                        android.text.style.RelativeSizeSpan(0.78f),
                         start,
                         length,
                         android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
@@ -131,7 +131,7 @@ internal fun MainActivity.render() {
                         android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
                     )
                 }
-            val info = label(caption, 18f).apply { text = styled }
+            val info = label(caption, 15f).apply { text = styled }
             trackLabels[track.uri] = info
             info.setOnClickListener {
                 if (selecting) {
@@ -154,10 +154,10 @@ internal fun MainActivity.render() {
                 addToPlaylists(track)
                 true
             }
-            r.addView(heart, LinearLayout.LayoutParams(dp(48), dp(52)))
+            r.addView(heart, LinearLayout.LayoutParams(dp(44), dp(48)))
             list.addView(
                 r,
-                LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, dp(3), 0, dp(3)) },
+                LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(4), dp(2), dp(4), dp(2)) },
             )
         }
         if(lastPage>0) {
