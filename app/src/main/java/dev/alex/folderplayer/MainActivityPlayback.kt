@@ -210,9 +210,13 @@ internal fun MainActivity.trackMenu(track: Track) {
             options.addAll(listOf("Убрать из этого плейлиста", "Выше", "Ниже"))
         options.add("Обложка и текст")
         options.add("Год альбома")
-        AlertDialog.Builder(this)
-            .setTitle(track.title)
-            .setItems(options.toTypedArray()) { _, which ->
+        BottomSheet.show(
+            this,
+            title = track.title,
+            subtitle = track.artist,
+            items = options,
+        ) { which ->
+            if (which < 0) return@show
                 if (which == options.lastIndex)
                     albumYears.show(tracks.filter { it.albumIdentity() == track.albumIdentity() })
                 else

@@ -63,23 +63,15 @@ class YandexLabActivity : Activity() {
         val root =
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(24, 24, 24, 24)
+                setPadding(24, 16, 24, 24)
             }
         setContentView(ScrollView(this).apply { addView(root) })
-        fun label(text: String) =
-            TextView(this).apply {
-                this.text = text
-                setPadding(0, 12, 0, 12)
-                root.addView(this)
-            }
+        LabUi.header(this, root, "Яндекс Музыка · эксперимент")
+        fun label(text: String) = LabUi.body(this, root, text)
         fun button(text: String, gated: Boolean = false, action: () -> Unit): Button {
-            return Button(this).apply {
-                this.text = text
-                setOnClickListener { action() }
-                root.addView(this)
-                if (gated) actions += this
-            }
+            return LabUi.button(this, root, text, gated, actions, action)
         }
+        LabUi.section(this, root, "Вход")
         label(
             "Пререлизный стенд AFP Online. Здесь проверяем реальный доступ к Яндекс Музыкау. Встроенный вход через Яндекс ID пока не реализован."
         )
@@ -93,15 +85,7 @@ class YandexLabActivity : Activity() {
             "Для этого эксперимента нужен токен собственной сессии Яндекс Музыки. Он вводится только здесь и хранится до закрытия экрана. Не отправляй его в чат."
         )
         label("Используй существующий OAuth-токен своего аккаунта с доступом к Музыке. Встроенного получения токена нет. Пароль сюда вводить не нужно.")
-        token =
-            EditText(this).apply {
-                hint = "Токен сессии · локально"
-                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-                isSingleLine = true
-                isSaveEnabled = false
-                importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
-                root.addView(this)
-            }
+        token = LabUi.tokenField(this, root)
         button("Подключить и проверить") {
             if (!busy) {
                 disconnect()
@@ -155,13 +139,9 @@ class YandexLabActivity : Activity() {
                 }
             }
         }
-        status = label("Не подключено")
-        query =
-            EditText(this).apply {
-                hint = "Песня или исполнитель"
-                isSingleLine = true
-                root.addView(this)
-            }
+        status = LabUi.status(this, root)
+        LabUi.section(this, root, "Поиск и проверка")
+        query = LabUi.queryField(this, root)
         button("Поиск", true) {
             val value = query.text.toString()
             execute("Ищем…", "search", { client!!.search(value) }, ::showSongs)
@@ -241,13 +221,15 @@ class YandexLabActivity : Activity() {
         status.text =
             if (songs.isEmpty()) "Треки не найдены" else "Выбери трек для проверки воспроизведения"
         songs.forEach { song ->
-            list.addView(
-                Button(this).apply {
-                    text = "${song.title}\n${song.artist}"
-                    setOnClickListener {
-                        if (!connected || busy) return@setOnClickListener
-                        stopPlayback()
-                        execute("Получаем поток…", "stream", { client!!.stream(song.id) }) { uri ->
+            LabUi.songRow(
+                this,
+                list,
+                song.title,
+                song.artist,
+            ) {
+                if (!connected || busy) return@songRow
+                stopPlayback()
+                execute("Получаем поток…", "stream", { client!!.stream(song.id) }) { uri ->
                             AlertDialog.Builder(this@YandexLabActivity)
                                 .setTitle("Проверить воспроизведение?")
                                 .setMessage(
@@ -256,10 +238,8 @@ class YandexLabActivity : Activity() {
                                 .setPositiveButton("Слушать") { _, _ -> play(uri) }
                                 .setNegativeButton("Отмена", null)
                                 .show()
-                        }
-                    }
-                }
-            )
+            }
+        }
         }
     }
 

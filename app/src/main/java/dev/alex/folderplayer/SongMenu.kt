@@ -22,11 +22,17 @@ internal object SongMenu {
 
     fun show(context: Context, title: String, online:Boolean=false, chosen: (Action) -> Unit) {
         val actions = Action.values().filter { if(online)it !in listOf(Action.YEAR,Action.PLAYLIST) else it !in listOf(Action.SHARE,Action.SAVE_MP3) }
-        AlertDialog.Builder(context)
-            .setTitle(title)
-            .setItems(actions.map { it.title }.toTypedArray()) { _, index ->
-                chosen(actions[index])
+        // UI refactor step C: bottom sheet instead of centred AlertDialog.
+        if (context is android.app.Activity)
+            BottomSheet.show(context, title = title, items = actions.map { it.title }) { index ->
+                if (index >= 0) chosen(actions[index])
             }
-            .show()
+        else
+            AlertDialog.Builder(context)
+                .setTitle(title)
+                .setItems(actions.map { it.title }.toTypedArray()) { _, index ->
+                    chosen(actions[index])
+                }
+                .show()
     }
 }

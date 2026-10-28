@@ -136,4 +136,8 @@
         <item name="android:backgroundTint">#1B2942</item>
         <item name="android:minHeight">48dp</item>
     </style>
+    <style name="BottomSheetAnimation">
+        <item name="android:windowEnterAnimation">@anim/slide_in_bottom</item>
+        <item name="android:windowExitAnimation">@anim/slide_out_bottom</item>
+    </style>
 </resources>
