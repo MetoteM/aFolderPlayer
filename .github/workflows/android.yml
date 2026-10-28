@@ -54,7 +54,10 @@ jobs:
       - name: Redirect policy checks
         run: |
           mkdir -p /tmp/http-test
-          kotlinc app/src/main/java/dev/alex/folderplayer/ExtensionHttp.kt tools/http-test/dev/alex/folderplayer/ExtensionHttpCheck.java -d /tmp/http-test 2>&1 | grep -v "warning:" || true
+          # kotlinc parses Java sources for resolution but does not emit Java
+          # class files, so the check class is compiled separately with javac.
+          kotlinc app/src/main/java/dev/alex/folderplayer/ExtensionHttp.kt -d /tmp/http-test 2>&1 | grep -v "warning:" || true
+          javac -cp /tmp/http-test:/tmp/kotlinc/lib/kotlin-stdlib.jar -d /tmp/http-test tools/http-test/dev/alex/folderplayer/ExtensionHttpCheck.java
           java -cp /tmp/http-test:/tmp/kotlinc/lib/kotlin-stdlib.jar dev.alex.folderplayer.ExtensionHttpCheck
       - name: Release checkpoint tests
         run: python3 tools/test_release_checkpoint.py
@@ -75,7 +78,8 @@ jobs:
           echo 'c46608681692b3693914defb42fa3119ad7cb6146870581ece247e0ed5793fe8  /tmp/ort.jar' | sha256sum -c -
           echo '3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed  /tmp/json.jar' | sha256sum -c -
           unzip -q /tmp/models/chinese.zip -d /tmp/chinese-model
-          kotlinc -cp /tmp/ort.jar:/tmp/json.jar translator/src/main/java/dev/alex/folderplayer/OfflineTranslator.kt tools/inference-test/dev/alex/folderplayer/ChineseCheck.java -d /tmp/inference-test 2>&1 | grep -v "warning:" || true
+          kotlinc -cp /tmp/ort.jar:/tmp/json.jar translator/src/main/java/dev/alex/folderplayer/OfflineTranslator.kt -d /tmp/inference-test 2>&1 | grep -v "warning:" || true
+          javac -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar:/tmp/kotlinc/lib/kotlin-stdlib.jar -d /tmp/inference-test tools/inference-test/dev/alex/folderplayer/ChineseCheck.java
           java -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar:/tmp/kotlinc/lib/kotlin-stdlib.jar dev.alex.folderplayer.ChineseCheck /tmp/chinese-model
       - name: German package and CPU inference
         if: steps.model_changes.outputs.changed == 'true'
@@ -84,8 +88,10 @@ jobs:
           python3 tools/download-german-inputs.py /tmp/german
           python3 tools/build-german-package.py /tmp/german /tmp/models/english.zip /tmp/models/german.zip
           unzip -q /tmp/models/german.zip -d /tmp/german-model
-          kotlinc -cp /tmp/ort.jar:/tmp/json.jar translator/src/main/java/dev/alex/folderplayer/OfflineTranslator.kt tools/inference-test/dev/alex/folderplayer/GermanCheck.java -d /tmp/inference-test 2>&1 | grep -v "warning:" || true
-          java -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar:/tmp/kotlinc/lib/kotlin-stdlib.jar dev.alex.folderplayer.GermanCheck /tmp/german-model
+          mkdir -p /tmp/german-test
+          kotlinc -cp /tmp/ort.jar:/tmp/json.jar translator/src/main/java/dev/alex/folderplayer/OfflineTranslator.kt -d /tmp/german-test 2>&1 | grep -v "warning:" || true
+          javac -cp /tmp/german-test:/tmp/ort.jar:/tmp/json.jar:/tmp/kotlinc/lib/kotlin-stdlib.jar -d /tmp/german-test tools/inference-test/dev/alex/folderplayer/GermanCheck.java
+          java -cp /tmp/german-test:/tmp/ort.jar:/tmp/json.jar:/tmp/kotlinc/lib/kotlin-stdlib.jar dev.alex.folderplayer.GermanCheck /tmp/german-model
       - name: French direct package and CPU inference
         if: steps.model_changes.outputs.changed == 'true'
         run: |
@@ -93,7 +99,8 @@ jobs:
           python3 tools/download-french-inputs.py /tmp/french
           python3 tools/build-french-package.py /tmp/french /tmp/models/french.zip
           unzip -q /tmp/models/french.zip -d /tmp/french-model
-          kotlinc -cp /tmp/ort.jar:/tmp/json.jar translator/src/main/java/dev/alex/folderplayer/OfflineTranslator.kt tools/inference-test/dev/alex/folderplayer/FrenchCheck.java -d /tmp/inference-test 2>&1 | grep -v "warning:" || true
+          kotlinc -cp /tmp/ort.jar:/tmp/json.jar translator/src/main/java/dev/alex/folderplayer/OfflineTranslator.kt -d /tmp/inference-test 2>&1 | grep -v "warning:" || true
+          javac -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar:/tmp/kotlinc/lib/kotlin-stdlib.jar -d /tmp/inference-test tools/inference-test/dev/alex/folderplayer/FrenchCheck.java
           /usr/bin/time -v java -Xmx768m -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar:/tmp/kotlinc/lib/kotlin-stdlib.jar dev.alex.folderplayer.FrenchCheck /tmp/french-model
       - name: Spanish direct package and CPU inference
         if: steps.model_changes.outputs.changed == 'true'
@@ -102,7 +109,8 @@ jobs:
           python3 tools/download-spanish-inputs.py /tmp/spanish
           python3 tools/build-spanish-package.py /tmp/spanish /tmp/models/spanish.zip
           unzip -q /tmp/models/spanish.zip -d /tmp/spanish-model
-          kotlinc -cp /tmp/ort.jar:/tmp/json.jar translator/src/main/java/dev/alex/folderplayer/OfflineTranslator.kt tools/inference-test/dev/alex/folderplayer/SpanishCheck.java -d /tmp/inference-test 2>&1 | grep -v "warning:" || true
+          kotlinc -cp /tmp/ort.jar:/tmp/json.jar translator/src/main/java/dev/alex/folderplayer/OfflineTranslator.kt -d /tmp/inference-test 2>&1 | grep -v "warning:" || true
+          javac -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar:/tmp/kotlinc/lib/kotlin-stdlib.jar -d /tmp/inference-test tools/inference-test/dev/alex/folderplayer/SpanishCheck.java
           /usr/bin/time -v java -Xmx768m -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar:/tmp/kotlinc/lib/kotlin-stdlib.jar dev.alex.folderplayer.SpanishCheck /tmp/spanish-model
       - name: Build and test
         # Direct French package uses the same production Java decoder, one stage.

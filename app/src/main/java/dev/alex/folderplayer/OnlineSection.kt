@@ -119,8 +119,16 @@ internal class OnlineSection(
         fun button(label:String,action:()->Unit)=Button(host).apply { text=label;setOnClickListener { if(!busy)action() };buttons+=this;minimumHeight=0 }
         fun pair(a:View,b:View) { root.addView(LinearLayout(host).apply { addView(a,LinearLayout.LayoutParams(0,-2,1f));addView(b,LinearLayout.LayoutParams(0,-2,1f)) }) }
         fun rowOf(vararg views:View) { root.addView(LinearLayout(host).apply { views.forEach { addView(it,LinearLayout.LayoutParams(0,btnH(),1f).apply { setMargins(dp(2),0,dp(2),0) }) } },LinearLayout.LayoutParams(-1,btnH())) }
-        pair(Button(host).apply { text="← Назад";minimumHeight=0;setOnClickListener { if(busy)cancelWork() else if(operation=="playlistPage")choose("playlists","","Плейлисты") else screen.dismiss() } },
-            Button(host).apply { text="Вход / аккаунт";minimumHeight=0;setOnClickListener { if(!busy)openLogin() } })
+        // Landscape compaction: fixed chrome rows eat the short side of the
+        // screen, so back/login/search share one row and the action buttons live
+        // in the scrollable tab strip, leaving the track list the bulk of height.
+        search=EditText(host).apply { hint="Фильтр / поиск";isSingleLine=true;setTextColor(AppAppearance.textColor);setHintTextColor(PlayerScreens.muted) }
+        val searchGo=button("В Яндексе") { val q=query.trim();if(q.isNotEmpty())choose("search",q,"Поиск: $q") }
+        val back=Button(host).apply { text="← Назад";minimumHeight=0;setOnClickListener { if(busy)cancelWork() else if(operation=="playlistPage")choose("playlists","","Плейлисты") else screen.dismiss() } }
+        val login=Button(host).apply { text="Вход / аккаунт";minimumHeight=0;setOnClickListener { if(!busy)openLogin() } }
+        val topRow=if(landscape) LinearLayout(host).apply { root.addView(this,LinearLayout.LayoutParams(-1,btnH())) } else null
+        if(landscape) { listOf<View>(back,login,search).forEach { topRow!!.addView(it,LinearLayout.LayoutParams(0,btnH(),if(it===search)2f else 1f).apply { setMargins(dp(2),0,dp(2),0) }) } }
+        else pair(back,login)
         title=TextView(host).apply { textSize=if(landscape)15f else 22f;setTextColor(AppAppearance.textColor);setPadding(0,dp(if(landscape)2 else 6),0,dp(if(landscape)1 else 4)) };root.addView(title)
         status=TextView(host).apply { textSize=if(landscape)11f else 13f;setTextColor(PlayerScreens.muted) };root.addView(status)
         val tabs=LinearLayout(host)
@@ -141,24 +149,24 @@ internal class OnlineSection(
         tool(IconButton.Kind.SELECT,"Выбрать треки") { selecting=!selecting;selected.clear();render() }
         tool(IconButton.Kind.MENU,"⋮") { sourceMenu() }
         if(landscape) { tabsHost!!.addView(tabs);root.addView(tabsHost,LinearLayout.LayoutParams(-1,dp(46))) } else root.addView(tabs)
-        search=EditText(host).apply { hint="Фильтр списка / поиск";isSingleLine=true;setTextColor(AppAppearance.textColor);setHintTextColor(PlayerScreens.muted) }
         search.addTextChangedListener(object:TextWatcher {
             override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
             override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { query=s?.toString().orEmpty();selected.clear();selecting=false;render() }
             override fun afterTextChanged(s:Editable?){}
         })
-        val searchRow=LinearLayout(host);searchRow.addView(search,LinearLayout.LayoutParams(0,-2,1f))
-        searchRow.addView(button("В Яндексе") { val q=query.trim();if(q.isNotEmpty())choose("search",q,"Поиск: $q") });root.addView(searchRow)
+        if(landscape) { topRow!!.addView(searchGo,LinearLayout.LayoutParams(0,btnH(),1f).apply { setMargins(dp(2),0,dp(2),0) }) }
+        else { val searchRow=LinearLayout(host);searchRow.addView(search,LinearLayout.LayoutParams(0,-2,1f));searchRow.addView(searchGo);root.addView(searchRow) }
         sortView=Spinner(host).apply { adapter=ArrayAdapter(host,android.R.layout.simple_spinner_dropdown_item,arrayOf("Исходный порядок","По названию","По исполнителю","По длительности")) }
         sortView.onItemSelectedListener=object:AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent:AdapterView<*>?){}
             override fun onItemSelected(parent:AdapterView<*>?,view:View?,position:Int,id:Long) { sort=position;render() }
         }
         sortView.visibility=View.GONE;root.addView(sortView)
-        // Secondary actions share rows in landscape instead of stacking.
+        // Secondary actions share rows in landscape instead of stacking; in
+        // landscape they join the scrollable tab strip to spare vertical space.
         val actionsButton=button("Действия") { actionsMenu() }
-        playAll=button("▶ Играть список целиком") { prepare("play",null) }
-        if(landscape) rowOf(actionsButton,playAll)
+        playAll=button("▶ Играть всё") { prepare("play",null) }
+        if(landscape) { tabsHost!!.addView(actionsButton,LinearLayout.LayoutParams(dp(118),dp(44)).apply { setMargins(dp(2),dp(1),dp(2),dp(1)) });tabsHost.addView(playAll,LinearLayout.LayoutParams(dp(140),dp(44)).apply { setMargins(dp(2),dp(1),dp(2),dp(1)) }) }
         else { root.addView(actionsButton);root.addView(playAll) }
         selection=TextView(host).apply { setTextColor(Color.CYAN);setTextSize(if(landscape)11f else 14f);setOnClickListener { if(!busy) { selected.clear();selecting=false;render() } } };root.addView(selection)
         list=ListView(host).apply { adapter=this@OnlineSection.adapter;descendantFocusability=ViewGroup.FOCUS_BLOCK_DESCENDANTS }
@@ -242,7 +250,7 @@ internal class OnlineSection(
             data.optString("warning").takeIf { it.isNotBlank() }?.let { " · Добавленные плейлисты не загружены: $it" }.orEmpty()
         update()
     }
-    private fun updateSelection() { playAll.text=if(selected.isNotEmpty())"▶ Играть выбранные · ${selected.size}" else "▶ Играть список целиком";selection.text=if(selecting)"Выбрано: ${selected.size} · нажми здесь, чтобы снять выбор" else "Долгое нажатие или флажок — выбрать песни" }
+    private fun updateSelection() { playAll.text=if(selected.isNotEmpty())"▶ Играть выбранные · ${selected.size}" else "▶ Играть всё";selection.text=if(selecting)"Выбрано: ${selected.size} · нажми здесь, чтобы снять выбор" else "Долгое нажатие или флажок — выбрать песни";selection.visibility=if(selecting)View.VISIBLE else View.GONE }
     private fun update() {
         if(!::more.isInitialized)return
         if(renderedBusy!=busy) { renderedBusy=busy;adapter.notifyDataSetChanged() }
