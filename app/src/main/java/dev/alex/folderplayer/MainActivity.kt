@@ -192,7 +192,13 @@ class MainActivity : ThemedActivity() {
         soundReturn = state?.getString("soundReturn") ?: "player"
         lyricTarget = state?.getString("lyricTarget")
         library = Library(this)
-        tracks = library.tracks()
+        // Room read (and on first launch the JSON→DB migration) runs off the
+        // main thread; the library page re-renders once the list arrives.
+        //tracks list stays empty until then; currentTrack() has a metadata fallback.
+        runAsync({ library.tracks() }) { result ->
+            result.onSuccess { loaded -> tracks = loaded; render() }
+                .onFailure { CrashNotes.record(this, it) }
+        }
         query = state?.getString("libraryQuery").orEmpty()
         selectedPlaylist = state?.getString("selectedPlaylist")
         selecting = state?.getBoolean("selecting") ?: false
@@ -372,7 +378,10 @@ class MainActivity : ThemedActivity() {
         networkTask?.cancel(true)
         networkExecutor.shutdownNow()
         handler.removeCallbacksAndMessages(null)
-        executor.shutdown()
+        // shutdownNow (not shutdown): interrupts a running task instead of
+        // letting it finish while holding this (destroyed) Activity in its
+        // closure; queued-but-unstarted tasks are dropped outright.
+        executor.shutdownNow()
         future?.let { MediaController.releaseFuture(it) }
         super.onDestroy()
     }

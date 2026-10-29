@@ -30,6 +30,9 @@ class LibraryPagingTest {
         try {
             val a=screen.get()
             fun field(name:String)=MainActivity::class.java.getDeclaredField(name).apply { isAccessible=true }.get(a)
+            // Library now loads off the main thread; wait for the delivery post.
+            val end=System.currentTimeMillis()+10000
+            while((field("visible") as List<*>).isEmpty() && System.currentTimeMillis()<end) { shadowOf(Looper.getMainLooper()).idle();Thread.sleep(10) }
             assertTrue((field("list") as LinearLayout).childCount<=203)
             assertEquals(1200,(field("visible") as List<*>).size)
             (field("search") as EditText).setText("1200")

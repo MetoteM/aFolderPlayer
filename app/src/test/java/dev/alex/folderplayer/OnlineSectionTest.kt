@@ -242,4 +242,73 @@ class OnlineSectionTest {
         } finally { ui.close();service.destroy();host.pause().stop().destroy() }
     }
 
+    /**
+     * Regression (0.9.10 audit, P1): in landscape the tool buttons and the
+     * "Действия"/"Играть всё" buttons were added directly to the
+     * HorizontalScrollView, which already held the tab strip — multiple direct
+     * children on a scroll host. In landscape the HorizontalScrollView must
+     * contain exactly one child: the strip LinearLayout with all buttons.
+     */
+    @Test
+    @Config(sdk=[28], qualifiers="w1280dp-h720dp-land-xxhdpi")
+    fun landscapeTabStripHostsExactlyOneScrollViewChild() {
+        val host=Robolectric.buildActivity(Activity::class.java).setup()
+        val api=object:OnlineCatalogue {
+            override fun installed()=true
+            override fun request(operation:String,argument:String)=when(operation) {
+                "status"->JSONObject().put("connected",true).put("sessionKey","land")
+                "collectionPage"->JSONObject().put("tracks",JSONArray((1..3).map { JSONObject().put("id",it).put("title","Song $it") })).put("total",3)
+                else->error(operation)
+            }
+        }
+        val ui=OnlineSection(host.get(),{ _,_,_,_-> },api,Direct())
+        try {
+            ui.show();idle()
+            val root=ShadowDialog.getLatestDialog().window!!.decorView
+            val scroll=all(root).filterIsInstance<HorizontalScrollView>().single()
+            assertEquals("HorizontalScrollView must have exactly one direct child",1,scroll.childCount)
+            val strip=scroll.getChildAt(0) as ViewGroup
+            assertEquals("5 tool buttons + Действия + Играть всё live in the strip",7,strip.childCount)
+        } finally { ui.close();host.pause().stop().destroy() }
+    }
+
+    /**
+     * Regression (0.9.10 audit, P2): the rotation rebuild used to reset the
+     * search query, sort order, selection and the loaded rows. After a
+     * portrait→landscape rebuild the filter text and the loaded track rows
+     * must survive.
+     */
+    @Test
+    fun rotationRebuildPreservesQuerySortSelectionAndRows() {
+        val host=Robolectric.buildActivity(Activity::class.java).setup()
+        val api=object:OnlineCatalogue {
+            override fun installed()=true
+            override fun request(operation:String,argument:String)=when(operation) {
+                "status"->JSONObject().put("connected",true).put("sessionKey","rot")
+                "collectionPage"->JSONObject().put("tracks",JSONArray((1..20).map { JSONObject().put("id",it).put("title","Song $it") })).put("total",20)
+                else->error(operation)
+            }
+        }
+        val ui=OnlineSection(host.get(),{ _,_,_,_-> },api,Direct())
+        try {
+            ui.show();idle()
+            val dialog=ShadowDialog.getLatestDialog();val root=dialog.window!!.decorView
+            val list=all(root).filterIsInstance<ListView>().single();assertEquals(20,list.count)
+            val search=all(root).filterIsInstance<EditText>().single { it.hint=="Фильтр / поиск" }
+            search.setText("Song 1");idle()
+            assertEquals("filter narrows the visible rows",11,list.count)
+            // Simulate what MainActivity.onConfigurationChanged does on rotation:
+            // the orientation detector reads host pixels, so the flip is emulated
+            // by marking the dialog as built for the opposite orientation.
+            OnlineSection::class.java.getDeclaredField("builtOrientation").apply { isAccessible=true }.setInt(ui,1)
+            ui.onConfigurationChanged();idle()
+            val rebuilt=ShadowDialog.getLatestDialog()
+            assertTrue("dialog must be rebuilt, not reused",rebuilt!==dialog)
+            val newRoot=rebuilt.window!!.decorView
+            val newList=all(newRoot).filterIsInstance<ListView>().single()
+            assertEquals("loaded+filtered rows survive the rebuild",11,newList.count)
+            val newSearch=all(newRoot).filterIsInstance<EditText>().single { it.hint=="Фильтр / поиск" }
+            assertEquals("search query survives the rebuild","Song 1",newSearch.text.toString())
+        } finally { ui.close();host.pause().stop().destroy() }
+    }
 }

@@ -39,6 +39,8 @@ internal class OnlineSection(
     @Volatile private var suspended=false
     private var returning=false
     private var builtOrientation=0
+    @Volatile private var rebuilding=false
+    @Volatile private var suppressSearch=false
     private var busy=false
     private var pending:java.util.concurrent.Future<*>?=null
     private var handingOff=false
@@ -104,12 +106,17 @@ internal class OnlineSection(
             return row
         }
     }
-    fun show() {
+    fun show(keepState:Boolean=false) {
         if(closed)return
         dialog?.let { if(suspended) { suspended=false;it.show();adapter.notifyDataSetChanged() };return }
         if(!extension.installed()) { AlertDialog.Builder(host).setTitle(host.afp(R.string.yandex_music)).setMessage("Установи AFP Online из того же тестового комплекта.").setPositiveButton(host.afp(R.string.close),null).show();return }
         val screen=Dialog(host,android.R.style.Theme_Material_NoActionBar)
-        dialog=screen;generation++;busy=false;buttons.clear();selected.clear();selecting=false;query="";sort=0;rows=JSONArray();shown=emptyList()
+        dialog=screen
+        // keepState (rotation rebuild): keep operation/data/rows/query/sort/
+        // selection and the current generation so an in-flight fetch still
+        // delivers into the rebuilt dialog; only the view registry resets.
+        if(keepState) buttons.clear()
+        else { generation++;busy=false;buttons.clear();selected.clear();selecting=false;query="";sort=0;rows=JSONArray();shown=emptyList() }
         // Landscape follows the content-first rule of the main chrome (see
         // buildChrome). Detected from real window pixels: a screenHeightDp
         // threshold misfires on devices where the reported dp height in
@@ -138,8 +145,10 @@ internal class OnlineSection(
         val tabsHost=if(landscape) HorizontalScrollView(host).apply { isHorizontalScrollBarEnabled=false } else null
         fun tool(kind:IconButton.Kind,label:String,action:()->Unit) {
             val view=IconButton(host,kind,label) { if(!busy)action() };buttons+=view
-            if(landscape) tabsHost!!.addView(view,LinearLayout.LayoutParams(dp(118),dp(44)).apply { setMargins(dp(2),dp(1),dp(2),dp(1)) })
-            else tabs.addView(view,LinearLayout.LayoutParams(0,dp(48),1f))
+            // Landscape too: buttons go into the single-content LinearLayout
+            // (tabs); tabsHost wraps it exactly once below. Adding directly to
+            // the HorizontalScrollView stacked multiple direct children on it.
+            tabs.addView(view,LinearLayout.LayoutParams(if(landscape) dp(118) else 0,if(landscape) dp(44) else dp(48),if(landscape) 0f else 1f).apply { setMargins(dp(2),dp(1),dp(2),dp(1)) })
         }
         tool(IconButton.Kind.LIBRARY,"Коллекция") { choose("collectionPage","","Мне нравится в Яндексе") }
         tool(IconButton.Kind.PLAYLIST,"Плейлисты") { choose("playlists","","Плейлисты") }
@@ -152,9 +161,11 @@ internal class OnlineSection(
         tool(IconButton.Kind.SELECT,"Выбрать треки") { selecting=!selecting;selected.clear();render() }
         tool(IconButton.Kind.MENU,"⋮") { sourceMenu() }
         if(landscape) { tabsHost!!.addView(tabs);root.addView(tabsHost,LinearLayout.LayoutParams(-1,dp(46))) } else root.addView(tabs)
+        // (tabs is the sole direct child of tabsHost in landscape; all tool
+        // buttons above were appended into tabs, never into tabsHost itself.)
         search.addTextChangedListener(object:TextWatcher {
             override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
-            override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { query=s?.toString().orEmpty();selected.clear();selecting=false;render() }
+            override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { if(suppressSearch)return;query=s?.toString().orEmpty();selected.clear();selecting=false;render() }
             override fun afterTextChanged(s:Editable?){}
         })
         if(landscape) { topRow!!.addView(searchGo,LinearLayout.LayoutParams(0,btnH(),1f).apply { setMargins(dp(2),0,dp(2),0) }) }
@@ -169,7 +180,7 @@ internal class OnlineSection(
         // landscape they join the scrollable tab strip to spare vertical space.
         val actionsButton=button("Действия") { actionsMenu() }
         playAll=button("▶ Играть всё") { prepare("play",null) }
-        if(landscape) { tabsHost!!.addView(actionsButton,LinearLayout.LayoutParams(dp(118),dp(44)).apply { setMargins(dp(2),dp(1),dp(2),dp(1)) });tabsHost.addView(playAll,LinearLayout.LayoutParams(dp(140),dp(44)).apply { setMargins(dp(2),dp(1),dp(2),dp(1)) }) }
+        if(landscape) { tabs.addView(actionsButton,LinearLayout.LayoutParams(dp(118),dp(44)).apply { setMargins(dp(2),dp(1),dp(2),dp(1)) });tabs.addView(playAll,LinearLayout.LayoutParams(dp(140),dp(44)).apply { setMargins(dp(2),dp(1),dp(2),dp(1)) }) }
         else { root.addView(actionsButton);root.addView(playAll) }
         selection=TextView(host).apply { setTextColor(Color.CYAN);setTextSize(if(landscape)11f else 14f);setOnClickListener { if(!busy) { selected.clear();selecting=false;render() } } };root.addView(selection)
         list=ListView(host).apply { adapter=this@OnlineSection.adapter;descendantFocusability=ViewGroup.FOCUS_BLOCK_DESCENDANTS }
@@ -183,9 +194,13 @@ internal class OnlineSection(
         now=NowPlayingStrip(host) { if(!busy) { suspended=true;screen.hide();openPlayer() } }.also { root.addView(it,LinearLayout.LayoutParams(-1,-2)) }
         SystemBarInsets.apply(root);screen.setContentView(root)
         builtOrientation=currentOrientation()
-        screen.setOnDismissListener { generation++;pending?.cancel(true);pending=null;dialog=null;suspended=false;busy=false;handingOff=false }
         screen.show();screen.window?.setLayout(-1,-1)
-        update();checkStatus()
+        if(keepState) {
+            // Restore the filter text (without re-triggering the watcher) and
+            // re-render the preserved rows; do NOT restart checkStatus().
+            suppressSearch=true;search.setText(query);suppressSearch=false
+            render();update()
+        } else { update();checkStatus() }
     }
     private fun dp(value:Int)=(value*host.resources.displayMetrics.density).toInt()
     private fun next():Int?=if(data.has("next") && !data.isNull("next"))data.optInt("next").takeIf { it>=0 } else null
@@ -374,11 +389,17 @@ internal class OnlineSection(
     fun resume() { if(returning && !closed) { returning=false;show() } }
     private fun currentOrientation()=if(host.resources.displayMetrics.widthPixels>host.resources.displayMetrics.heightPixels)1 else 2
     // The activity handles configChanges itself, so this dialog never recreates
-    // on rotation; rebuild it here, otherwise a portrait-built dialog keeps its
-    // zero-height list in landscape (user-reported via screenshots).
+    // on rotation; rebuild it here with the viewing state preserved (filter,
+    // sort, selection, loaded rows, in-flight fetch). A portrait-built dialog
+    // keeps its zero-height list in landscape otherwise.
     fun onConfigurationChanged() {
         if(closed || dialog?.isShowing!=true)return
-        if(currentOrientation()!=builtOrientation) { dialog?.dismiss();show() }
+        if(currentOrientation()==builtOrientation)return
+        rebuilding=true;dialog?.dismiss();rebuilding=false
+        // The guarded dismiss listener keeps the old reference; clear it so
+        // show() actually rebuilds instead of returning early.
+        dialog=null
+        show(keepState=true)
     }
     fun close() { closed=true;generation++;dialog?.dismiss();worker.shutdownNow();covers.shutdownNow();main.removeCallbacksAndMessages(null) }
     companion object {

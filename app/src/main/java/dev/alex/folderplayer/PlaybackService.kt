@@ -288,8 +288,11 @@ class PlaybackService : MediaSessionService() {
         // Heavy restore (full library scan, queue JSON, online catalogue, books) runs
         // off the main thread; only the resulting player mutations are posted back.
         // This keeps service startup constant regardless of library size.
+        // The generation is captured HERE, at submit time on the main thread —
+        // not inside the task: a queue-replacing command issued before the task
+        // starts must still invalidate it.
+        val submittedGeneration = queueGeneration.get()
         (restoreExecutorOverride ?: restoreExecutor).execute {
-            val generationAtStart = queueGeneration.get()
             val tracks = Library(this).playableTracks().associateBy { it.uri }
             var savedIndex = prefs.getInt("index", 0)
             var savedPosition = prefs.getLong("position", 0)
@@ -319,9 +322,14 @@ class PlaybackService : MediaSessionService() {
             } else prefs.edit().remove("activeBook").apply()
             val startSpeed = restoredBook?.let { books.speed(it.id) }
             handler.post {
-                if (::player.isInitialized && queueGeneration.get() == generationAtStart) {
+                if (::player.isInitialized && queueGeneration.get() == submittedGeneration) {
                     if (restoredBook != null) player.setPlaybackSpeed(startSpeed!!)
-                    player.repeatMode = if (restoredBook != null) Player.REPEAT_MODE_OFF else savedRepeat
+                    // Re-read repeat at apply time: the user may have changed it
+                    // while the restore was scanning (SET_REPEAT no longer
+                    // invalidates the restore — that discarded the whole queue).
+                    player.repeatMode =
+                        if (restoredBook != null) Player.REPEAT_MODE_OFF
+                        else prefs.getInt("requestedRepeat", savedRepeat)
                     player.shuffleModeEnabled = restoredBook == null && savedShuffle
                     player.setPauseAtEndOfMediaItems(false)
                     if (saved.isNotEmpty()) {
@@ -345,9 +353,22 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    /** Commands that replace the queue: they must cancel an in-flight restore,
+     * otherwise the restore would overwrite the freshly requested queue. */
+    private val queueReplacingActions =
+        setOf(
+            PlaybackCommands.START_BOOK,
+            PlaybackCommands.START_ONLINE_QUEUE,
+            PlaybackCommands.START_QUEUE,
+            PlaybackCommands.REORDER_QUEUE,
+        )
+
     internal fun applyPlaybackCommand(action: String, args: Bundle): Int {
-        // Any explicit controller command invalidates an in-flight restore.
-        queueGeneration.incrementAndGet()
+        // Only queue-replacing commands invalidate an in-flight restore.
+        // Playback settings (repeat, speed, …) must NOT: incrementing the
+        // generation for them discarded the restored queue without any
+        // replacement, leaving playback dead after the first track change.
+        if (action in queueReplacingActions) queueGeneration.incrementAndGet()
         return when (action) {
             PlaybackCommands.START_BOOK -> commandStartBook(args)
             PlaybackCommands.BOOK_SPEED -> commandBookSpeed(args)

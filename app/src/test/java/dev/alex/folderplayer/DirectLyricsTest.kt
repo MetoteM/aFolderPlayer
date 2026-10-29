@@ -33,6 +33,12 @@ class DirectLyricsTest {
   app.getSharedPreferences("library",Context.MODE_PRIVATE).edit().clear().putString("tracks",org.json.JSONArray(listOf(t.json())).toString()).commit()
   shadowOf(app).setComponentNameAndServiceForBindService(android.content.ComponentName(app,PlaybackService::class.java),android.os.Binder());shadowOf(app).setUnbindServiceCallsOnServiceDisconnected(false)
   val host=Robolectric.buildActivity(MainActivity::class.java).create().start().resume();val a=host.get()
+  // Library now loads off the main thread; wait for the delivery post so the
+  // shared single-thread executor is free for the lyrics flow below.
+  await {
+   val v=MainActivity::class.java.getDeclaredField("tracks").apply{isAccessible=true}.get(a) as List<*>
+   v.isNotEmpty()
+  }
   val player=ExoPlayer.Builder(a).build().apply { setMediaItem(t.item()) };val session=MediaSession.Builder(a,player).build()
   val future=MediaController.Builder(a,session.token).buildAsync();await { future.isDone };val controller=future.get();field(a,"controller",controller)
   var calls=0
