@@ -61,6 +61,12 @@ class AlbumYearUiTest {
   val t=setup();val app=RuntimeEnvironment.getApplication();shadowOf(app).setComponentNameAndServiceForBindService(ComponentName(app,PlaybackService::class.java),Binder());shadowOf(app).setUnbindServiceCallsOnServiceDisconnected(false)
   Library(app).savePlaylist("P",listOf(t.uri));app.getSharedPreferences("playback",Context.MODE_PRIVATE).edit().clear().commit()
   val screen=Robolectric.buildActivity(MainActivity::class.java).create().start().resume();val a=screen.get()
+  // Library loads off the main thread now; wait for the delivery post before
+  // driving the sort dialog (flaky on CI otherwise).
+  run {
+   val deadline=System.currentTimeMillis()+10000
+   while(MainActivity::class.java.getDeclaredField("tracks").apply{isAccessible=true}.get(a.let{it}).let{(it as List<*>).isEmpty()} && System.currentTimeMillis()<deadline) { Thread.sleep(10);shadowOf(Looper.getMainLooper()).idle() }
+  }
   try {
    views(a.window.decorView).filterIsInstance<Button>().first { it.contentDescription=="Плейлисты" }.performClick();shadowOf(dialog()).clickOnItem(1)
    views(a.window.decorView).filterIsInstance<Button>().first { it.contentDescription=="Сортировка" }.performClick();shadowOf(dialog()).clickOnItem(3)
