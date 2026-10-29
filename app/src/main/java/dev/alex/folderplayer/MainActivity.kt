@@ -297,6 +297,7 @@ class MainActivity : ThemedActivity() {
             buildChrome()
             render()
         }
+        if (alive) onlineSection.onConfigurationChanged()
     }
 
     override fun onNewIntent(intent: Intent) {

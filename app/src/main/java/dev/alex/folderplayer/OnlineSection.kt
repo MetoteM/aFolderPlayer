@@ -38,6 +38,7 @@ internal class OnlineSection(
     @Volatile private var closed=false
     @Volatile private var suspended=false
     private var returning=false
+    private var builtOrientation=0
     private var busy=false
     private var pending:java.util.concurrent.Future<*>?=null
     private var handingOff=false
@@ -110,10 +111,12 @@ internal class OnlineSection(
         val screen=Dialog(host,android.R.style.Theme_Material_NoActionBar)
         dialog=screen;generation++;busy=false;buttons.clear();selected.clear();selecting=false;query="";sort=0;rows=JSONArray();shown=emptyList()
         // Landscape follows the content-first rule of the main chrome (see
-        // buildChrome): the scarce dimension is the short side, so every control
-        // row is compacted and the track list keeps ~60% of the height.
-        val landscape=host.resources.configuration.orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE &&
-            host.resources.configuration.screenHeightDp<600
+        // buildChrome). Detected from real window pixels: a screenHeightDp
+        // threshold misfires on devices where the reported dp height in
+        // landscape stays >= 600 (Huawei display-size scaling, large screens)
+        // and the compact mode never engages, leaving the list zero height.
+        val landscape=host.resources.configuration.orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE ||
+            host.resources.displayMetrics.widthPixels>host.resources.displayMetrics.heightPixels
         fun btnH()=dp(if(landscape)40 else 48)
         val root=LinearLayout(host).apply { orientation=LinearLayout.VERTICAL;setPadding(dp(if(landscape)6 else 8),dp(if(landscape)2 else 4),dp(if(landscape)6 else 8),dp(if(landscape)2 else 4));setBackgroundColor(PlayerScreens.bg) }
         fun button(label:String,action:()->Unit)=Button(host).apply { text=label;setOnClickListener { if(!busy)action() };buttons+=this;minimumHeight=0 }
@@ -179,6 +182,7 @@ internal class OnlineSection(
         else { root.addView(more);root.addView(retry);root.addView(cancel) }
         now=NowPlayingStrip(host) { if(!busy) { suspended=true;screen.hide();openPlayer() } }.also { root.addView(it,LinearLayout.LayoutParams(-1,-2)) }
         SystemBarInsets.apply(root);screen.setContentView(root)
+        builtOrientation=currentOrientation()
         screen.setOnDismissListener { generation++;pending?.cancel(true);pending=null;dialog=null;suspended=false;busy=false;handingOff=false }
         screen.show();screen.window?.setLayout(-1,-1)
         update();checkStatus()
@@ -368,6 +372,14 @@ internal class OnlineSection(
             .onFailure { returning=false;Toast.makeText(host,"Не удалось открыть вход",Toast.LENGTH_LONG).show() }
     }
     fun resume() { if(returning && !closed) { returning=false;show() } }
+    private fun currentOrientation()=if(host.resources.displayMetrics.widthPixels>host.resources.displayMetrics.heightPixels)1 else 2
+    // The activity handles configChanges itself, so this dialog never recreates
+    // on rotation; rebuild it here, otherwise a portrait-built dialog keeps its
+    // zero-height list in landscape (user-reported via screenshots).
+    fun onConfigurationChanged() {
+        if(closed || dialog?.isShowing!=true)return
+        if(currentOrientation()!=builtOrientation) { dialog?.dismiss();show() }
+    }
     fun close() { closed=true;generation++;dialog?.dismiss();worker.shutdownNow();covers.shutdownNow();main.removeCallbacksAndMessages(null) }
     companion object {
         private fun formatDuration(ms:Long):String=if(ms<=0)"—" else "${ms/60000}:${(ms/1000%60).toString().padStart(2,'0')}"

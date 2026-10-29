@@ -37,12 +37,12 @@ internal fun MainActivity.buildUi(state: Bundle?) {
  */
 internal fun MainActivity.buildChrome() {
     layout.removeAllViews()
-    // NOTE: in landscape screenWidthDp is the LONG side (~800dp on a phone),
-    // so a `screenWidthDp < 600` check never fires. The scarce dimension in
-    // landscape is the short side, so measure screenHeightDp instead.
+    // Detected from real window pixels: a screenHeightDp threshold misfires on
+    // devices where the reported dp height in landscape stays >= 600 (Huawei
+    // display-size scaling, large screens) and compact mode never engages.
     val landscape =
-        resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE &&
-            (resources.configuration.screenHeightDp < 600)
+        resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE ||
+            (resources.displayMetrics.widthPixels > resources.displayMetrics.heightPixels)
     val left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
     val right = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
     fun target(): LinearLayout = if (landscape) left else layout
