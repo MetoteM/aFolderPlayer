@@ -113,6 +113,7 @@ jobs:
           javac -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar:/tmp/kotlinc/lib/kotlin-stdlib.jar -d /tmp/inference-test tools/inference-test/dev/alex/folderplayer/SpanishCheck.java
           /usr/bin/time -v java -Xmx768m -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar:/tmp/kotlinc/lib/kotlin-stdlib.jar dev.alex.folderplayer.SpanishCheck /tmp/spanish-model
       - name: Build and test
+        timeout-minutes: 8
         # Direct French package uses the same production Java decoder, one stage.
         env:
           AFP_MODEL_V2_PACKAGE: ${{ steps.model_changes.outputs.changed == 'true' && '/tmp/models/english.zip' || '' }}
@@ -122,6 +123,15 @@ jobs:
           AFP_SPANISH_PACKAGE: ${{ steps.model_changes.outputs.changed == 'true' && '/tmp/models/spanish.zip' || '' }}
         run: |
           chmod +x gradlew
+          (
+            sleep 240
+            jcmd -l
+            for pid in $(jcmd -l | awk '/GradleWorkerMain/ {print $1}'); do
+              jcmd "$pid" Thread.print
+            done
+          ) &
+          diagnostic_pid=$!
+          trap 'kill "$diagnostic_pid" 2>/dev/null || :' EXIT
           ./gradlew --no-daemon --info :app:assembleRelease :translator:assembleRelease :online:assembleRelease :app:testReleaseUnitTest :translator:testReleaseUnitTest :online:testReleaseUnitTest :app:lintRelease :translator:lintRelease :online:lintRelease --max-workers=2
       - name: Unsigned APKs for local signing
         if: always()
