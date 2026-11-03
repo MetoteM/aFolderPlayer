@@ -80,11 +80,10 @@ class ServiceRestoreRaceTest {
     }
 
     @Test
-    fun queueReplacingCommandDuringRestorePreventsStaleRestore() {
+    fun rejectedQueueCommandDoesNotDiscardRestore() {
         val controller = serviceWithPendingRestore()
         val service = controller.get()
-        // A queue-replacing command invalidates the restore even when it fails
-        // to find the requested track (generation is bumped before dispatch).
+        // Validation failure creates no replacement queue; saved state must survive.
         val result =
             service.applyPlaybackCommand(
                 PlaybackCommands.START_QUEUE,
@@ -96,8 +95,8 @@ class ServiceRestoreRaceTest {
         runTask!!.run()
         Shadows.shadowOf(Looper.getMainLooper()).idle()
         assertEquals(
-            "restore must not apply after a queue-replacing command",
-            false,
+            "restore still applies after a rejected command",
+            true,
             service.player.shuffleModeEnabled,
         )
         controller.destroy()
@@ -115,4 +114,30 @@ class ServiceRestoreRaceTest {
         )
         controller.destroy()
     }
+    @Test fun acceptedQueueSurvivesAlreadyReadRestoreResult() {
+        val app=RuntimeEnvironment.getApplication()
+        LibraryDatabase.resetForTests(app)
+        val tracks=listOf(Track("file:///old.mp3","Old","Artist",40000,"Music"),Track("file:///new.mp3","New","Artist",40000,"Music"))
+        app.getSharedPreferences("library",0).edit().clear().putString("tracks",org.json.JSONArray(tracks.map { it.json() }).toString()).commit()
+        app.getSharedPreferences("playback",0).edit().clear().putString("queue","[\"file:///old.mp3\"]").commit()
+        val host=serviceWithPendingRestore()
+        try {
+            // Read the old snapshot on a worker, but do not deliver its main-thread post yet.
+            val reader=Thread { runTask!!.run() };reader.start();reader.join(5000)
+            org.junit.Assert.assertFalse(reader.isAlive)
+            assertEquals(SessionResult.RESULT_SUCCESS,host.get().applyPlaybackCommand(PlaybackCommands.START_QUEUE,
+                Bundle().apply { putString("source","");putString("uri","file:///new.mp3") }))
+            Shadows.shadowOf(Looper.getMainLooper()).idle()
+            assertEquals("file:///new.mp3",host.get().player.currentMediaItem!!.mediaId)
+        } finally { host.destroy();LibraryDatabase.resetForTests(app) }
+    }
+
+    @Test fun destroyingBeforeRestoreDoesNotEraseSavedQueue() {
+        val app=RuntimeEnvironment.getApplication()
+        app.getSharedPreferences("playback",0).edit().clear().putString("queue","[\"saved\"]").commit()
+        val host=serviceWithPendingRestore()
+        host.destroy()
+        assertEquals("[\"saved\"]",app.getSharedPreferences("playback",0).getString("queue",null))
+    }
+
 }

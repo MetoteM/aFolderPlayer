@@ -171,6 +171,7 @@ internal class OnlineSection(
         if(landscape) { topRow!!.addView(searchGo,LinearLayout.LayoutParams(0,btnH(),1f).apply { setMargins(dp(2),0,dp(2),0) }) }
         else { val searchRow=LinearLayout(host);searchRow.addView(search,LinearLayout.LayoutParams(0,-2,1f));searchRow.addView(searchGo);root.addView(searchRow) }
         sortView=Spinner(host).apply { adapter=ArrayAdapter(host,android.R.layout.simple_spinner_dropdown_item,arrayOf("Исходный порядок","По названию","По исполнителю","По длительности")) }
+        sortView.setSelection(sort, false)
         sortView.onItemSelectedListener=object:AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent:AdapterView<*>?){}
             override fun onItemSelected(parent:AdapterView<*>?,view:View?,position:Int,id:Long) { sort=position;render() }
@@ -194,6 +195,12 @@ internal class OnlineSection(
         now=NowPlayingStrip(host) { if(!busy) { suspended=true;screen.hide();openPlayer() } }.also { root.addView(it,LinearLayout.LayoutParams(-1,-2)) }
         SystemBarInsets.apply(root);screen.setContentView(root)
         builtOrientation=currentOrientation()
+        screen.setOnDismissListener {
+            if (!rebuilding && dialog === screen) {
+                generation++;pending?.cancel(true);pending=null
+                dialog=null;suspended=false;busy=false;handingOff=false
+            }
+        }
         screen.show();screen.window?.setLayout(-1,-1)
         if(keepState) {
             // Restore the filter text (without re-triggering the watcher) and

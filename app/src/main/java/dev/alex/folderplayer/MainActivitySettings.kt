@@ -131,7 +131,7 @@ internal fun MainActivity.scan() {
         if (scanning) return
         scanning = true
         render()
-        runAsync({ library.scan() }) { result ->
+        runAsync({ context -> Library(context).scan() }) { result ->
             scanning = false
             result
                 .onSuccess { (items, errors, retainedRoots) ->

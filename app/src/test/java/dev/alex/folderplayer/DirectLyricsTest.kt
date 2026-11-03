@@ -45,7 +45,7 @@ class DirectLyricsTest {
   val body="""[{"id":1,"trackName":"Cure","artistName":"Metallica","albumName":"Load","duration":294,"plainLyrics":"Наш тестовый текст"}]"""
   val client=LyricsSearch { url -> calls++;object:HttpURLConnection(url) {
    override fun connect() {};override fun usingProxy()=false;override fun disconnect() {}
-   override fun getResponseCode()=status;override fun getInputStream()=body.byteInputStream()
+   override fun getResponseCode()=status;override fun getInputStream()=(if(url.path=="/api/get") org.json.JSONArray(body).getJSONObject(0).toString() else body).byteInputStream()
   } }
   field(a,"lyricsSearch\$delegate",lazy { client })
   if(cached)LyricsStore(a).save(t.uri,"Локальный текст")
@@ -66,6 +66,29 @@ class DirectLyricsTest {
  @Test fun restoringMissingLyricsScreenDoesNotRequestInternet() = run { a,t,calls ->
   a.showPage("lyrics", false)
   Thread.sleep(150);shadowOf(Looper.getMainLooper()).idle();assertEquals(0,calls());assertNull(LyricsStore(a).read(t.uri))
+ }
+
+ @Test fun lyricsClickDuringLibraryLoadIsDeliveredAfterTracksArrive() = run { a,t,calls ->
+  a.tracks=emptyList();a.libraryLoading=true
+  a.openLyrics()
+  assertEquals(t.uri,a.pendingLyricsOpen)
+  a.reloadLibrary()
+  await { LyricsStore(a).read(t.uri)!=null }
+  assertEquals("Наш тестовый текст",LyricsStore(a).read(t.uri));assertEquals(1,calls())
+ }
+ @Test fun pausedLyricsScreenRefreshesAfterColdLibraryReadWithoutNetwork() = run(cached=true) { a,t,calls ->
+  a.tracks=emptyList();a.libraryLoading=true;a.mediaLoadedId=null
+  a.showPage("lyrics",false)
+  a.reloadLibrary()
+  await { a.mediaLoadedId==t.uri }
+  assertEquals(0,calls());assertEquals("Локальный текст",LyricsStore(a).read(t.uri))
+ }
+
+ @Test fun seekActionDelegatesToActivityWithoutRecursiveCallback() {
+  // No connected player is needed to detect callback recursion. A real seek
+  // would exercise Media3's asynchronous player machinery instead.
+  val activity=Robolectric.buildActivity(MainActivity::class.java).get()
+  activity.buildActions().skip(1)
  }
 
 }

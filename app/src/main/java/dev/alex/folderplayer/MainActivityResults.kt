@@ -20,9 +20,9 @@ internal fun MainActivity.handleActivityResult(requestCode: Int, resultCode: Int
                 cancelTranslation()
                 val track = currentTrack()
                 screens.setTranslation(track?.uri, "", "Устанавливаем и проверяем языковой пакет…")
-                runAsync({
-                    contentResolver.openFileDescriptor(uri, "r")?.use {
-                        translationClient.install(it)
+                runAsync({ context ->
+                    context.contentResolver.openFileDescriptor(uri, "r")?.use {
+                        TranslationClient(context).install(it)
                     } ?: error("Не удалось открыть пакет")
                 }) { result ->
                     result
@@ -46,10 +46,10 @@ internal fun MainActivity.handleActivityResult(requestCode: Int, resultCode: Int
 /** Lyric-text import from a SAF document (launcher lyricsImporter, ex-requestCode 101). */
 internal fun MainActivity.importLyricsFrom(uri: android.net.Uri) {
         val target = lyricTarget ?: return
-        runAsync({
-            lyricStore.importText(uri).also {
-                lyricStore.save(target, it)
-                prefs.edit().remove("lyricsSource:$target").apply()
+        runAsync({ context ->
+            LyricsStore(context).importText(uri).also {
+                LyricsStore(context).save(target, it)
+                context.getSharedPreferences("playback", 0).edit().remove("lyricsSource:$target").apply()
             }
         }) { result ->
             result
@@ -63,9 +63,9 @@ internal fun MainActivity.importLyricsFrom(uri: android.net.Uri) {
 /** Lyric-text export to a SAF document (launcher lyricsExporter, ex-requestCode 102). */
 internal fun MainActivity.exportLyricsTo(uri: android.net.Uri) {
         val target = lyricTarget ?: return
-        runAsync({
-            val text = lyricStore.read(target) ?: error("Нет сохранённого текста")
-            contentResolver.openOutputStream(uri, "wt")?.use {
+        runAsync({ context ->
+            val text = LyricsStore(context).read(target) ?: error("Нет сохранённого текста")
+            context.contentResolver.openOutputStream(uri, "wt")?.use {
                 it.write(text.toByteArray(Charsets.UTF_8))
             } ?: error("Не удалось открыть файл")
         }) { result ->

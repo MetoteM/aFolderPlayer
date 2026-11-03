@@ -46,6 +46,8 @@ class PlaybackService : MediaSessionService() {
      * the restore is still scanning the library can no longer be overwritten
      * by the stale saved queue (race found by ServiceRestoreRaceTest).
      */
+    @Volatile private var destroyed = false
+    private var restoring = true
     private val queueGeneration = java.util.concurrent.atomic.AtomicInteger(0)
 
     companion object {
@@ -319,17 +321,19 @@ class PlaybackService : MediaSessionService() {
                 val mark = books.position(restoredBook)
                 val found = saved.indexOfFirst { it.mediaId == mark.uri }
                 if (found >= 0) { savedIndex = found; savedPosition = mark.position }
-            } else prefs.edit().remove("activeBook").apply()
+            }
             val startSpeed = restoredBook?.let { books.speed(it.id) }
             handler.post {
-                if (::player.isInitialized && queueGeneration.get() == submittedGeneration) {
+                if (!destroyed && ::player.isInitialized && queueGeneration.get() == submittedGeneration) {
+                    restoring = false
+                    if (restoredBook == null) prefs.edit().remove("activeBook").apply()
                     if (restoredBook != null) player.setPlaybackSpeed(startSpeed!!)
                     // Re-read repeat at apply time: the user may have changed it
                     // while the restore was scanning (SET_REPEAT no longer
                     // invalidates the restore — that discarded the whole queue).
                     player.repeatMode =
                         if (restoredBook != null) Player.REPEAT_MODE_OFF
-                        else prefs.getInt("requestedRepeat", savedRepeat)
+                        else prefs.getInt("requestedRepeat", savedRepeat).coerceIn(0, 2)
                     player.shuffleModeEnabled = restoredBook == null && savedShuffle
                     player.setPauseAtEndOfMediaItems(false)
                     if (saved.isNotEmpty()) {
@@ -353,22 +357,13 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
-    /** Commands that replace the queue: they must cancel an in-flight restore,
-     * otherwise the restore would overwrite the freshly requested queue. */
-    private val queueReplacingActions =
-        setOf(
-            PlaybackCommands.START_BOOK,
-            PlaybackCommands.START_ONLINE_QUEUE,
-            PlaybackCommands.START_QUEUE,
-            PlaybackCommands.REORDER_QUEUE,
-        )
+    /** Called only after validation, immediately before a real queue mutation. */
+    internal fun queueChangedByCommand() {
+        queueGeneration.incrementAndGet()
+        restoring = false
+    }
 
     internal fun applyPlaybackCommand(action: String, args: Bundle): Int {
-        // Only queue-replacing commands invalidate an in-flight restore.
-        // Playback settings (repeat, speed, …) must NOT: incrementing the
-        // generation for them discarded the restored queue without any
-        // replacement, leaving playback dead after the first track change.
-        if (action in queueReplacingActions) queueGeneration.incrementAndGet()
         return when (action) {
             PlaybackCommands.START_BOOK -> commandStartBook(args)
             PlaybackCommands.BOOK_SPEED -> commandBookSpeed(args)
@@ -428,7 +423,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     internal fun saveState(queueChanged: Boolean = true) {
-        if (!::player.isInitialized) return
+        if (!::player.isInitialized || restoring) return
         val edit = prefs.edit()
         var changed = false
         if (queueChanged || savedQueue == null) {
@@ -464,6 +459,7 @@ class PlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
     override fun onDestroy() {
+        destroyed = true
         onlinePreferences.unregisterOnSharedPreferenceChangeListener(hiddenListener)
         prefs.unregisterOnSharedPreferenceChangeListener(changeListener)
         restoreExecutor.shutdownNow()

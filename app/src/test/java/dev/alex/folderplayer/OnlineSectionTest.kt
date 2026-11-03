@@ -311,4 +311,26 @@ class OnlineSectionTest {
             assertEquals("search query survives the rebuild","Song 1",newSearch.text.toString())
         } finally { ui.close();host.pause().stop().destroy() }
     }
+    @Test fun dismissedOnlineScreenCanBeOpenedAgain() {
+        val host=Robolectric.buildActivity(Activity::class.java).setup()
+        val api=object:OnlineCatalogue {
+            override fun installed()=true
+            override fun request(operation:String,argument:String)=when(operation) {
+                "status"->JSONObject().put("connected",true).put("sessionKey","reopen")
+                "collectionPage"->JSONObject().put("tracks",JSONArray()).put("total",0)
+                else->error(operation)
+            }
+        }
+        val ui=OnlineSection(host.get(),{ _,_,_,_-> },api,Direct())
+        try {
+            ui.show();idle()
+            val first=ShadowDialog.getLatestDialog()
+            first.dismiss();idle()
+            ui.show();idle()
+            val second=ShadowDialog.getLatestDialog()
+            assertTrue(second !== first)
+            assertTrue(second.isShowing)
+        } finally { ui.close();host.pause().stop().destroy() }
+    }
+
 }

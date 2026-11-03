@@ -23,6 +23,7 @@ internal fun PlaybackService.commandStartBook(args: Bundle): Int {
     val uri = requested ?: if (restart) book.chapters.first().uri else mark.uri
     val index = book.chapters.indexOfFirst { it.uri == uri }
     if (index < 0) return SessionError.ERROR_BAD_VALUE
+    queueChangedByCommand()
     savePosition()
     val chapter = book.chapters[index]
     val pos = (if (requested != null) args.getLong("position", 0) else if (restart) 0 else mark.position)
@@ -60,12 +61,14 @@ internal fun PlaybackService.commandStartOnlineQueue(args: Bundle): Int {
     if (mode != "remove" && (combined.size > 20000 || OnlineQueueMetadata.rows(combined).toString().length > 8_000_000)) return SessionError.ERROR_BAD_VALUE
     when (mode) {
         "play" -> {
+            queueChangedByCommand()
             leaveBook()
             prefs.edit().putString("queueSource", afp(R.string.yandex_music) + store.queueSource(queueId).takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()).remove("onlineQueueId").remove("onlineQueue").apply()
             player.setMediaItems(items, index, 0); player.setPauseAtEndOfMediaItems(false); player.prepare(); player.play()
         }
         "next", "append" -> {
             if (player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId") != null) return SessionError.ERROR_BAD_VALUE
+            queueChangedByCommand()
             if (old.any { !it.mediaId.startsWith("afp-yandex://") }) prefs.edit().putString("queueSource", "Смешанная очередь").apply()
             else prefs.edit().putString("queueSource", afp(R.string.yandex_music)).apply()
             val at = if (mode == "next" && old.isNotEmpty()) (player.currentMediaItemIndex + 1).coerceAtMost(old.size) else old.size
@@ -74,6 +77,7 @@ internal fun PlaybackService.commandStartOnlineQueue(args: Bundle): Int {
         }
         "remove" -> {
             val ids = parsed.map { it.mediaId }.toSet()
+            if (old.any { it.mediaId in ids }) queueChangedByCommand()
             for (i in player.mediaItemCount - 1 downTo 0) if (player.getMediaItemAt(i).mediaId in ids) player.removeMediaItem(i)
         }
     }
@@ -89,6 +93,7 @@ internal fun PlaybackService.commandStartQueue(args: Bundle): Int {
         library.ordered(library.playableTracks(), source, prefs.getInt("librarySort", 0))
     val index = queue.indexOfFirst { it.uri == args.getString("uri") }
     if (index < 0) return SessionError.ERROR_BAD_VALUE
+    queueChangedByCommand()
     leaveBook()
     prefs.edit().putString("queueSource", source).apply()
     // Queue, starting item and repeat mode are applied together on the service
@@ -135,6 +140,7 @@ internal fun PlaybackService.commandReorderQueue(args: Bundle): Int {
             .filter { ordered[it].mediaId == current }
             .getOrNull(occurrence) ?: -1
     if (index >= 0 && player.playbackState != Player.STATE_ENDED) {
+        queueChangedByCommand()
         val position = player.currentPosition
         val state = player.playbackState
         player.setMediaItems(ordered, index, position)

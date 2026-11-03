@@ -58,6 +58,11 @@ class MainActivity : ThemedActivity() {
     internal var controller: MediaController? = null
     internal var future: ListenableFuture<MediaController>? = null
     internal var tracks = emptyList<Track>()
+    internal var libraryLoading = true
+    internal var libraryLoadError: String? = null
+    internal var restoredBrowseState = false
+    internal var scrollRestoreArmed = false
+    internal var pendingLyricsOpen: String? = null
     internal var visible = emptyList<Track>()
     internal var selectedPlaylist: String? = null
     internal var query = ""
@@ -73,9 +78,7 @@ class MainActivity : ThemedActivity() {
     internal val translationClient by lazy { TranslationClient(this) }
     internal lateinit var translationWork: RetainedOperation<SongTranslationResult>
     internal var translationId: String? = null
-    internal val networkExecutor = Executors.newSingleThreadExecutor()
     internal var networkCancel: LyricsSearch.Cancel? = null
-    internal var networkTask: java.util.concurrent.Future<*>? = null
     internal val onlineSection: OnlineSection by lazy { OnlineSection(this, { raw,index,mode,done ->
         val c=controller
         if(c==null)done(if(mode=="remove")null else "Плеер ещё подключается. Повтори запуск")
@@ -125,7 +128,8 @@ class MainActivity : ThemedActivity() {
     internal var alive = true
     internal val trackLabels = linkedMapOf<String, TextView>()
     internal var highlightedId: String? = null
-    internal val executor = Executors.newSingleThreadExecutor()
+    internal val background by lazy { ActivityWork(applicationContext) }
+    internal val networkWork by lazy { ActivityWork(applicationContext) }
     internal val handler = Handler(Looper.getMainLooper())
 
     /** SAF-выбор корневой папки библиотеки (замена requestCode 100). */
@@ -156,11 +160,8 @@ class MainActivity : ThemedActivity() {
         handler.post { if (alive) ui() }
     }
 
-    internal fun <T> runAsync(task: () -> T, consume: (Result<T>) -> Unit) {
-        executor.execute {
-            val result = runCatching(task)
-            postUi { consume(result) }
-        }
+    internal fun <T> runAsync(task: (android.content.Context) -> T, consume: (Result<T>) -> Unit) {
+        background.submit(task, consume)
     }
     internal val prefs by lazy { getSharedPreferences("playback", MODE_PRIVATE) }
     internal var screenStarted = false
@@ -192,17 +193,13 @@ class MainActivity : ThemedActivity() {
         soundReturn = state?.getString("soundReturn") ?: "player"
         lyricTarget = state?.getString("lyricTarget")
         library = Library(this)
-        // Room read (and on first launch the JSON→DB migration) runs off the
-        // main thread; the library page re-renders once the list arrives.
-        //tracks list stays empty until then; currentTrack() has a metadata fallback.
-        runAsync({ library.tracks() }) { result ->
-            result.onSuccess { loaded -> tracks = loaded; render() }
-                .onFailure { CrashNotes.record(this, it) }
-        }
+        restoredBrowseState = state != null
+        reloadLibrary()
         query = state?.getString("libraryQuery").orEmpty()
         selectedPlaylist = state?.getString("selectedPlaylist")
         selecting = state?.getBoolean("selecting") ?: false
         selection.addAll(state?.getStringArrayList("selection").orEmpty())
+        lastBrowserSource = selectedPlaylist
         libraryPage = state?.getInt("libraryPage", 0) ?: 0
         state?.getInt("libraryScrollY", -1)?.takeIf { it >= 0 }?.let { pendingScrollY = it }
         layout =
@@ -273,7 +270,7 @@ class MainActivity : ThemedActivity() {
         out.putInt("libraryPage", libraryPage)
         out.putInt(
             "libraryScrollY",
-            (if (::list.isInitialized) list.parent as? ScrollView else null)?.scrollY ?: 0,
+            pendingScrollY ?: (if (::list.isInitialized) list.parent as? ScrollView else null)?.scrollY ?: 0,
         )
         super.onSaveInstanceState(out)
     }
@@ -375,13 +372,12 @@ class MainActivity : ThemedActivity() {
         albumYears.close()
         alive = false
         networkCancel?.cancel()
-        networkTask?.cancel(true)
-        networkExecutor.shutdownNow()
         handler.removeCallbacksAndMessages(null)
         // shutdownNow (not shutdown): interrupts a running task instead of
         // letting it finish while holding this (destroyed) Activity in its
         // closure; queued-but-unstarted tasks are dropped outright.
-        executor.shutdownNow()
+        background.close()
+        networkWork.close()
         future?.let { MediaController.releaseFuture(it) }
         super.onDestroy()
     }
@@ -394,4 +390,24 @@ private class MainOperations(
 
     )
 
+}
+
+/** Cold reads never run on the screen thread; delivery refreshes paused player/lyrics too. */
+internal fun MainActivity.reloadLibrary() {
+    libraryLoading = true
+    libraryLoadError = null
+    runAsync({ context -> Library(context).tracks() }) { result ->
+        libraryLoading = false
+        result.onSuccess { tracks = it }.onFailure {
+            libraryLoadError = "Не удалось загрузить библиотеку. Повтори попытку."
+            CrashNotes.record(this, it)
+        }
+        render()
+        updatePlayer()
+        val requested = pendingLyricsOpen
+        if (requested != null && result.isSuccess) {
+            pendingLyricsOpen = null
+            if (page == "lyrics" && controller?.currentMediaItem?.mediaId == requested) openLyrics()
+        }
+    }
 }

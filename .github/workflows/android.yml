@@ -48,7 +48,7 @@ jobs:
         # checks below compile ExtensionHttp.kt / OfflineTranslator.kt directly.
         run: |
           curl --fail --location --retry 3 -o /tmp/kotlinc.zip https://github.com/JetBrains/kotlin/releases/download/v2.1.20/kotlin-compiler-2.1.20.zip
-          echo '84bd8b98e1ffca3fc68c85a25ad462c9b93b0a1b0f4a9b504b0b8ba5b54d0e29  /tmp/kotlinc.zip' | sha256sum -c - || echo 'checksum skipped (release asset may be re-cut)'
+          echo 'a118197b0de55ffab2bc8d5cd03a5e39033cfb53383d6931bc761dec0784891a  /tmp/kotlinc.zip' | sha256sum -c -
           unzip -q /tmp/kotlinc.zip -d /tmp
           echo "/tmp/kotlinc/bin" >> "$GITHUB_PATH"
       - name: Redirect policy checks
@@ -56,7 +56,7 @@ jobs:
           mkdir -p /tmp/http-test
           # kotlinc parses Java sources for resolution but does not emit Java
           # class files, so the check class is compiled separately with javac.
-          kotlinc app/src/main/java/dev/alex/folderplayer/ExtensionHttp.kt -d /tmp/http-test 2>&1 | grep -v "warning:" || true
+          kotlinc app/src/main/java/dev/alex/folderplayer/ExtensionHttp.kt -d /tmp/http-test
           javac -cp /tmp/http-test:/tmp/kotlinc/lib/kotlin-stdlib.jar -d /tmp/http-test tools/http-test/dev/alex/folderplayer/ExtensionHttpCheck.java
           java -cp /tmp/http-test:/tmp/kotlinc/lib/kotlin-stdlib.jar dev.alex.folderplayer.ExtensionHttpCheck
       - name: Release checkpoint tests
@@ -113,6 +113,7 @@ jobs:
           javac -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar:/tmp/kotlinc/lib/kotlin-stdlib.jar -d /tmp/inference-test tools/inference-test/dev/alex/folderplayer/SpanishCheck.java
           /usr/bin/time -v java -Xmx768m -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar:/tmp/kotlinc/lib/kotlin-stdlib.jar dev.alex.folderplayer.SpanishCheck /tmp/spanish-model
       - name: Build and test
+        timeout-minutes: 8
         # Direct French package uses the same production Java decoder, one stage.
         env:
           AFP_MODEL_V2_PACKAGE: ${{ steps.model_changes.outputs.changed == 'true' && '/tmp/models/english.zip' || '' }}
@@ -122,7 +123,19 @@ jobs:
           AFP_SPANISH_PACKAGE: ${{ steps.model_changes.outputs.changed == 'true' && '/tmp/models/spanish.zip' || '' }}
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon :app:assembleRelease :translator:assembleRelease :online:assembleRelease :app:testReleaseUnitTest :translator:testReleaseUnitTest :online:testReleaseUnitTest :app:lintRelease :translator:lintRelease :online:lintRelease --max-workers=2
+          (
+            sleep 180
+            for sample in 1 2 3 4; do
+              sleep 60
+              jcmd -l
+              for pid in $(jcmd -l | awk '/GradleWorkerMain/ {print $1}'); do
+                jcmd "$pid" Thread.print
+              done
+            done
+          ) &
+          diagnostic_pid=$!
+          trap 'kill "$diagnostic_pid" 2>/dev/null || :' EXIT
+          ./gradlew --no-daemon --info :app:assembleRelease :translator:assembleRelease :online:assembleRelease :app:testReleaseUnitTest :translator:testReleaseUnitTest :online:testReleaseUnitTest :app:lintRelease :translator:lintRelease :online:lintRelease --max-workers=2
       - name: Unsigned APKs for local signing
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

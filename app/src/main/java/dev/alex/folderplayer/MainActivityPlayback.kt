@@ -112,6 +112,7 @@ internal fun MainActivity.repeatDialog() {
     }
 
 internal fun MainActivity.restorePlayingSource() {
+        if (restoredBrowseState) return
         if (prefs.getString("queue", "[]") == "[]" && (controller?.mediaItemCount ?: 0) == 0) return
         // Browsing another list does not change the source of the playing queue.
         val source = prefs.getString("queueSource", "").orEmpty()
@@ -303,7 +304,7 @@ internal fun MainActivity.currentSongMenu(track: Track) {
                     renewTranslation(track)
                 }
                 else ->
-                    runAsync({ loadLyrics(track).orEmpty() }) { result ->
+                    runAsync({ context -> SongContent(context).load(track).orEmpty() }) { result ->
                         val raw = result.getOrNull().orEmpty()
                         when (action) {
                             SongMenu.Action.EDIT -> editLyrics(track, raw)
@@ -330,7 +331,17 @@ internal fun MainActivity.currentSongMenu(track: Track) {
 
 
 internal fun MainActivity.openLyrics() {
-        val track = currentTrack() ?: return toast(afp(R.string.pick_song_first))
+        val track = currentTrack()
+        if (track == null) {
+            val id = controller?.currentMediaItem?.mediaId
+            if (libraryLoading && id != null) {
+                pendingLyricsOpen = id
+                showPage("lyrics")
+                screens.lyricsSearching(id, true, "Загружаем библиотеку…")
+            } else toast(afp(R.string.pick_song_first))
+            return
+        }
+        pendingLyricsOpen = null
         lyricsRequestedId = track.uri
         mediaLoadedId = null
         showPage("lyrics")
@@ -344,13 +355,15 @@ internal fun MainActivity.loadScreenMedia(track: Track) {
         screens.lyricsSearching(track.uri, false, "Читаем локальный текст…")
         // Capture artwork from this queue item, never the aggregated (possibly previous) metadata.
         val cover=controller?.currentMediaItem?.mediaMetadata?.artworkUri?.toString().orEmpty()
-        executor.execute {
+        runAsync({ context ->
             val bitmap = runCatching {
-                if(track.uri.startsWith("afp-yandex://")) OnlineArtwork(applicationContext).load(cover)
-                else LocalArtwork.read(this, track.sourceUri, track.artworkUri)
+                if(track.uri.startsWith("afp-yandex://")) OnlineArtwork(context).load(cover)
+                else LocalArtwork.read(context, track.sourceUri, track.artworkUri)
             }.getOrNull()
-            val lyrics = runCatching { loadLyrics(track)?.let { LyricsDocument(it) } }
-            postUi {
+            val lyrics = runCatching { SongContent(context).load(track)?.let { LyricsDocument(it) } }
+            bitmap to lyrics
+        }) { loaded ->
+            val (bitmap, lyrics) = loaded.getOrElse { null to Result.failure<LyricsDocument?>(it) }
                 if (
                     generation == mediaGeneration &&
                         controller?.currentMediaItem?.mediaId == track.uri
@@ -367,10 +380,9 @@ internal fun MainActivity.loadScreenMedia(track: Track) {
                         lyricsWork.attach { showLyricsSearch(it) }
                     if (page == "lyrics" && lyricsRequestedId == track.uri) {
                         lyricsRequestedId = null
-                        if (lyrics.getOrNull() == null) directLyrics(track, false)
+                        if (lyrics.getOrNull() == null) directLyrics(track, true)
                     }
                 }
-            }
         }
     }
 
