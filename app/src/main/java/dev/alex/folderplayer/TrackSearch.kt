@@ -173,7 +173,7 @@ internal class RecordingSearch(private val connections: LyricsSearch.Connections
     }
 }
 
-/** At most three lyric requests and one metadata request, all user initiated. */
+/** One exact lookup, at most three searches and one metadata request, all user initiated. */
 internal class TrackSearch(
     private val lyrics: LyricsSearch,
     private val metadata: (SongQuery, LyricsSearch.Cancel) -> List<RecordingSearch.Match>,
@@ -190,7 +190,11 @@ internal class TrackSearch(
     ): List<LyricsSearch.Result> {
         val queries = SongNames.queries(track, saved)
         if (queries.isEmpty()) return emptyList()
+        val exact = lyrics.lookup(queries.first().title, queries.first().artist, track.album, track.duration, cancel)
+        if (LyricsMatch.automatic(exact, queries.first().title, queries.first().artist, track.album, track.duration) != null)
+            return exact.filter { it.text.isNotBlank() }
         val found = linkedMapOf<Long, LyricsSearch.Result>()
+        exact.filter { it.text.isNotBlank() }.forEach { found[it.id] = it }
         var calls = 0
         fun request(q: SongQuery) {
             cancel.check()

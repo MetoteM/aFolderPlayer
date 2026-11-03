@@ -31,7 +31,7 @@ internal fun MainActivity.buildActions(): PlayerScreens.Actions {
                     }
 
                     override fun skip(direction: Int) {
-                        this.skip(direction)
+                        activity.skip(direction)
                     }
 
                     override fun seek(progress: Int) {

@@ -45,7 +45,7 @@ class DirectLyricsTest {
   val body="""[{"id":1,"trackName":"Cure","artistName":"Metallica","albumName":"Load","duration":294,"plainLyrics":"Наш тестовый текст"}]"""
   val client=LyricsSearch { url -> calls++;object:HttpURLConnection(url) {
    override fun connect() {};override fun usingProxy()=false;override fun disconnect() {}
-   override fun getResponseCode()=status;override fun getInputStream()=body.byteInputStream()
+   override fun getResponseCode()=status;override fun getInputStream()=(if(url.path=="/api/get") org.json.JSONArray(body).getJSONObject(0).toString() else body).byteInputStream()
   } }
   field(a,"lyricsSearch\$delegate",lazy { client })
   if(cached)LyricsStore(a).save(t.uri,"Локальный текст")
@@ -82,6 +82,11 @@ class DirectLyricsTest {
   a.reloadLibrary()
   await { a.mediaLoadedId==t.uri }
   assertEquals(0,calls());assertEquals("Локальный текст",LyricsStore(a).read(t.uri))
+ }
+
+ @Test fun seekActionDelegatesToActivityWithoutRecursiveCallback() = run { a,_,_ ->
+  a.buildActions().skip(1)
+  shadowOf(Looper.getMainLooper()).idle()
  }
 
 }

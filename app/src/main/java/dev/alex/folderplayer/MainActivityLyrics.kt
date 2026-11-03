@@ -586,7 +586,7 @@ internal fun MainActivity.dialogSearch(track: Track) {
                 networkCancel = cancel
                 val searchClient = lyricsSearch
                 networkWork.submit({ context ->
-                    try { searchClient.searchExpanded(name, performer, track.duration, cancel) }
+                    try { TrackSearch(context, searchClient).search(track.copy(title = name, artist = performer), SongQuery(name, performer), cancel) }
                     finally { context.getSharedPreferences("playback", 0).edit()
                         .putLong("lyricsRetryUntil", searchClient.cooldown()).apply() }
                 }) { result ->

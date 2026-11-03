@@ -132,8 +132,20 @@ class LyricsSearch(
         return request(url(title, artist), durationMs, cancel)
     }
 
+    /** Exact metadata lookup is independent of LRCLIB's full-text search index. */
     @Throws(Exception::class)
-    private fun request(url: java.net.URL, durationMs: Long, cancel: Cancel): List<Result> {
+    fun lookup(title: String, artist: String, album: String, durationMs: Long, cancel: Cancel): List<Result> {
+        url(title, artist) // Apply the same input limits as search.
+        if (artist.isBlank() || durationMs <= 0) return emptyList()
+        fun encode(value: String) = URLEncoder.encode(value, "UTF-8")
+        val address = java.net.URL("https://lrclib.net/api/get?track_name=" + encode(title.trim()) +
+            "&artist_name=" + encode(artist.trim()) + "&album_name=" + encode(album.take(200).trim()) +
+            "&duration=" + durationMs / 1000)
+        return request(address, durationMs, cancel, single = true)
+    }
+
+    @Throws(Exception::class)
+    private fun request(url: java.net.URL, durationMs: Long, cancel: Cancel, single: Boolean = false): List<Result> {
         beforeRequest()
         cancel.check()
         val c = connections.open(url)
@@ -146,6 +158,7 @@ class LyricsSearch(
             c.setRequestProperty("Accept", "application/json")
             val status = c.responseCode
             cancel.check()
+            if (single && status == 404) return emptyList()
             if (status == 429 || status == 503) {
                 val wait = retryMillis(c.getHeaderField("Retry-After"), System.currentTimeMillis())
                 synchronized(this) {
@@ -176,7 +189,8 @@ class LyricsSearch(
                         throw IOException("Ответ слишком большой. Уточни название и исполнителя")
                     body.write(bytes, 0, n)
                 }
-                return parse(String(body.toByteArray(), StandardCharsets.UTF_8), durationMs)
+                val value = String(body.toByteArray(), StandardCharsets.UTF_8)
+                return parse(if (single) JSONArray().put(JSONObject(value)).toString() else value, durationMs)
             }
         } finally {
             c.disconnect()

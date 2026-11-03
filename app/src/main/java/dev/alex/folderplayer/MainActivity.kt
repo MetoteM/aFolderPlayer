@@ -270,7 +270,7 @@ class MainActivity : ThemedActivity() {
         out.putInt("libraryPage", libraryPage)
         out.putInt(
             "libraryScrollY",
-            (if (::list.isInitialized) list.parent as? ScrollView else null)?.scrollY ?: 0,
+            pendingScrollY ?: (if (::list.isInitialized) list.parent as? ScrollView else null)?.scrollY ?: 0,
         )
         super.onSaveInstanceState(out)
     }
