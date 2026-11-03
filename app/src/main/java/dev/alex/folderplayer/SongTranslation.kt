@@ -15,6 +15,8 @@ internal object SongLanguage {
                     "ich du nicht und mein meine dein deine mich dich wir der die das ist ein eine mit auf für hast bist habe wenn liebe liebt liebst sonne mutter herz augen träume mädchen schwarz feuer himmel alle zwei drei vier fünf",
                 "opus-fr-ru-v1" to
                     "le la du est je suis avec nous vous pas dans une cette pour mon mes ton tes les des amour toujours jamais veux sous sans quand aussi être aime cœur coeur bonjour nuit moi toi ne elle tout rien",
+                "opus-it-ru-v1" to
+                    "io tu lui lei noi voi loro sono sei siamo siete grazie buongiorno buonanotte perché voglio vuoi posso possiamo cuore occhi madre padre mia mie mio miei tuo tuoi tua tue ti della delle degli nel nella non questo questa amore sempre mai dove quando anche ancora adesso domani ieri insieme senza notte vita porta lettera",
                 "opus-es-ru-v1" to
                     "yo tú usted ustedes nosotros vosotros ellos ellas soy eres somos estoy estás están quiero quieres podemos puedo contigo siempre nunca porque cuando pero también ahora mañana aquí corazón gracias hola dónde mi mis tu tus el los las del que no sin amo amor vida nada todo una te",
             )
@@ -69,7 +71,7 @@ internal object SongLanguage {
         )
             return RUSSIAN
         if (cyrillic > 0 || chinese > 0) return null
-        // Avoid interpreting clear Portuguese/Italian hints as Spanish by shared words.
+        // Portuguese is unsupported; Italian has its own conservative score.
         if (
             tokens.count {
                 it in
@@ -79,11 +81,6 @@ internal object SongLanguage {
                         "voces",
                         "saudade",
                         "coração",
-                        "sono",
-                        "della",
-                        "perché",
-                        "grazie",
-                        "buongiorno",
                     )
             } >= 2
         )
@@ -106,6 +103,8 @@ internal object SongLanguage {
             scores["opus-de-ru-v1"] = scores.getValue("opus-de-ru-v1") + 2
         if ("te" in tokens && tokens.any { it in setOf("quiero", "amo") })
             scores["opus-es-ru-v1"] = scores.getValue("opus-es-ru-v1") + 2
+        if (tokens.count { it in setOf("sono", "della", "perché", "grazie", "buongiorno", "voglio", "cuore") } >= 2)
+            scores["opus-it-ru-v1"] = scores.getValue("opus-it-ru-v1") + 2
         val ranked = scores.entries.sortedByDescending { it.value }
         val best = ranked[0]
         val second = ranked[1].value

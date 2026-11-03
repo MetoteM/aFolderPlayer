@@ -19,6 +19,7 @@ internal class TranslationClient(private val context: Context) {
             linkedMapOf(
                 MODEL to "Английский → русский · v1",
                 "opus-en-ru-v2" to "Английский → русский · v2",
+                "opus-it-ru-v1" to "Итальянский → русский · через английский",
                 "opus-es-ru-v1" to "Испанский → русский · прямой",
                 "opus-fr-ru-v1" to "Французский → русский · прямой",
                 "opus-de-ru-v1" to "Немецкий → русский",

@@ -1,0 +1,17 @@
+AFP Italian → Russian package v1
+
+Italian → English: Helsinki-NLP/opus-mt-it-en, Apache License 2.0.
+Source: https://huggingface.co/Helsinki-NLP/opus-mt-it-en
+ONNX quantization: Xenova/opus-mt-it-en, revision
+fd0b89b9c052adc1f2f64152f555aa17353728be.
+https://huggingface.co/Xenova/opus-mt-it-en
+
+English → Russian: pinned opus-en-ru-v2 (Helsinki-NLP/opus-mt-en-ru).
+Both stages run locally and are included in this archive.
+AFP modification: source SentencePiece scores remapped to shared vocabulary;
+target-only entries disabled for source segmentation.
+Source source.spm SHA-256:
+1bd307e2756991d470e4b40172147f7889b46a323b1a9a2150e66274825b1f21
+Source vocab.json SHA-256:
+08e5b03ab20b2b9b85d41aed1b36dce2650afcb6e96274a06b7869b2e06884d5
+Italian stage padding/decoder start ID: 80378. EOS: 0. Unknown: 1.

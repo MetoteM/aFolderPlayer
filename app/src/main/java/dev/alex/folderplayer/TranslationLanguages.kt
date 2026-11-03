@@ -6,6 +6,7 @@ internal object TranslationLanguages {
             model.startsWith("opus-en-") -> "Английский"
             model.startsWith("opus-de-") -> "Немецкий"
             model.startsWith("opus-fr-") -> "Французский"
+            model.startsWith("opus-it-") -> "Итальянский"
             model.startsWith("opus-es-") -> "Испанский"
             model.startsWith("opus-zh-") -> "Китайский"
             else -> TranslationClient.MODELS[model] ?: model

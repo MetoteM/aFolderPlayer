@@ -2,6 +2,7 @@ package dev.alex.folderplayer
 
 /** Audited package identities; downloaded archives cannot supply executable settings. */
 internal object ModelPackages {
+    const val ITALIAN = "opus-it-ru-v1"
     const val GERMAN = "opus-de-ru-v1"
     const val SPANISH = "opus-es-ru-v1"
     const val FRENCH = "opus-fr-ru-v1"
@@ -58,6 +59,19 @@ internal object ModelPackages {
                 listOf(Stage("", 62517)),
             ),
             Package("opus-en-ru-v2", english, listOf(Stage("", 62517))),
+            Package(
+                ITALIAN,
+                english.mapKeys { "en-ru/" + it.key } +
+                    mapOf(
+                        "it-en/encoder.onnx" to
+                            "a025d2d85c90da23880116b67175e43e71921d8d2bf446b9f1eacdc86015aa4c",
+                        "it-en/decoder.onnx" to
+                            "203bac7b98e438e65e1ddfcbec254ffb6811e6a8f4f71e93517ca9550323bf6e",
+                        "it-en/tokenizer.json" to
+                            "6c4fa05127b42a4c6c49878d726639f328c66a8daab30de1d4e87ce8f94f0b98",
+                    ),
+                listOf(Stage("it-en", 80378), Stage("en-ru", 62517)),
+            ),
             Package(
                 GERMAN,
                 english.mapKeys { "en-ru/" + it.key } +

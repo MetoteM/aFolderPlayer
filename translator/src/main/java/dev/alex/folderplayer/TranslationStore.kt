@@ -59,9 +59,10 @@ internal class TranslationStore(context: Context) {
                             size += n
                             total += n
                             require(
-                                total <= 240_000_000 &&
+                                total <= 250_000_000 &&
                                     size <=
-                                        if (entry.name.endsWith(".onnx")) 65_000_000
+                                        if (entry.name == "it-en/decoder.onnx") 67_777_150
+                                        else if (entry.name.endsWith(".onnx")) 65_000_000
                                         else if (entry.name.endsWith("tokenizer.json")) 8_000_000
                                         else 65536
                             ) {

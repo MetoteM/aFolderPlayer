@@ -106,4 +106,21 @@ class TranslationStoreTest {
   File(store.model(ModelPackages.GERMAN),"en-ru/decoder.onnx").delete();assertFalse(store.ready(ModelPackages.GERMAN))
   store.removeModel(ModelPackages.GERMAN);assertTrue(store.ready())
  }
+ @Test fun italianPackageInstallsBothStagesAndPreservesPreviousModel() {
+  val path=System.getenv("AFP_ITALIAN_PACKAGE");org.junit.Assume.assumeTrue("Supply the real Italian package",!path.isNullOrBlank())
+  val store=setup();store.model.mkdirs()
+  for(name in listOf("encoder.onnx","decoder.onnx","tokenizer.json","verified"))File(store.model,name).writeText("previous")
+  assertEquals(ModelPackages.ITALIAN,File(path!!).inputStream().use { store.install(it) })
+  assertTrue(store.ready(ModelPackages.ITALIAN));assertTrue(store.ready())
+  assertEquals(67_777_150L,File(store.model(ModelPackages.ITALIAN),"it-en/decoder.onnx").length())
+  for(names in listOf(arrayOf("it-en/encoder.onnx"),arrayOf("it-en/../decoder.onnx"),arrayOf("it-en/tokenizer.json","es-ru/encoder.onnx"))) {
+   try { store.install(ByteArrayInputStream(zip(*names)));fail("Invalid Italian package accepted") }catch(_:IllegalArgumentException){}
+   assertTrue(store.ready(ModelPackages.ITALIAN))
+  }
+  File(store.model(ModelPackages.ITALIAN),"en-ru/decoder.onnx").delete()
+  assertFalse(store.ready(ModelPackages.ITALIAN))
+  store.removeModel(ModelPackages.ITALIAN);assertTrue(store.ready())
+  assertEquals("previous",File(store.model,"tokenizer.json").readText())
+ }
+
 }

@@ -1,0 +1,10 @@
+{
+  "id": "italian-ru-v1",
+  "kind": "model",
+  "title": "Итальянский → русский · через английский",
+  "file": "AFP_Italian_Russian_v1.zip",
+  "size": 153127694,
+  "sha256": "e396a579c779b71398c5205467dce6398e81d84057a5acf99e2d3e22893b2d09",
+  "model": "opus-it-ru-v1",
+  "minimumEngine": 9
+}
