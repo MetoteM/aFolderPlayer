@@ -172,11 +172,11 @@ internal fun MainActivity.showLyricsSearch(state: RetainedOperation.Snapshot<Lis
 
 internal fun MainActivity.saveDirectLyrics(track: Track, item: LyricsSearch.Result) {
         screens.lyricsSearching(track.uri, true, "Сохраняем текст…")
-        runAsync({
+        runAsync({ context ->
             val document = LyricsDocument(item.text)
-            lyricStore.save(track.uri, item.text)
-            SearchIdentity(this).save(track.uri, SongQuery(item.title, item.artist))
-            prefs
+            LyricsStore(context).save(track.uri, item.text)
+            SearchIdentity(context).save(track.uri, SongQuery(item.title, item.artist))
+            context.getSharedPreferences("playback", 0)
                 .edit()
                 .putString(
                     "lyricsSource:${track.uri}",
@@ -274,40 +274,11 @@ internal fun MainActivity.manageMedia(track: Track) {
         }
         dialog.setOnDismissListener { lyricUpdate = null }
         dialog.show()
-        executor.execute {
-            var picture: android.graphics.Bitmap? = null
-            runCatching {
-                val retriever = android.media.MediaMetadataRetriever()
-                try {
-                    retriever.setDataSource(this, Uri.parse(track.sourceUri))
-                    retriever.embeddedPicture?.let { bytes ->
-                        val bounds =
-                            android.graphics.BitmapFactory.Options().apply {
-                                inJustDecodeBounds = true
-                            }
-                        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-                        val opts =
-                            android.graphics.BitmapFactory.Options().apply {
-                                inSampleSize = 1
-                                while (
-                                    bounds.outWidth / inSampleSize > 1024 ||
-                                        bounds.outHeight / inSampleSize > 1024
-                                ) inSampleSize *= 2
-                            }
-                        picture =
-                            android.graphics.BitmapFactory.decodeByteArray(
-                                bytes,
-                                0,
-                                bytes.size,
-                                opts,
-                            )
-                    }
-                } finally {
-                    retriever.release()
-                }
-            }
-            val result = runCatching { loadLyrics(track) }
-            postUi {
+        runAsync({ context ->
+            val picture = runCatching { LocalArtwork.read(context, track.sourceUri, track.artworkUri) }.getOrNull()
+            picture to runCatching { SongContent(context).load(track) }
+        }) { loaded ->
+            val (picture, result) = loaded.getOrElse { null to Result.failure<String?>(it) }
                 if (dialog.isShowing) {
                     picture?.let { bitmap ->
                         panel.addView(
@@ -395,7 +366,6 @@ internal fun MainActivity.manageMedia(track: Track) {
                         lyricUpdate?.invoke()
                     }
                 }
-            }
         }
     }
 
@@ -427,9 +397,9 @@ internal fun MainActivity.editLyrics(track: Track, initial: String) {
                     .onFailure { input.error = it.message }
                     .onSuccess {
                         dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
-                        runAsync({
-                            lyricStore.save(track.uri, value)
-                            prefs.edit().remove("lyricsSource:${track.uri}").apply()
+                        runAsync({ context ->
+                            LyricsStore(context).save(track.uri, value)
+                            context.getSharedPreferences("playback", 0).edit().remove("lyricsSource:${track.uri}").apply()
                         }) { result ->
                             if (result.isSuccess) {
                                 dialog.dismiss()
@@ -535,9 +505,9 @@ internal fun MainActivity.markLyrics(track: Track, raw: String) {
                             LyricsDocument.timestamp(times[it]) + lines[it]
                         }
                     dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
-                    runAsync({
-                        lyricStore.save(track.uri, value)
-                        prefs.edit().remove("lyricsSource:${track.uri}").apply()
+                    runAsync({ context ->
+                        LyricsStore(context).save(track.uri, value)
+                        context.getSharedPreferences("playback", 0).edit().remove("lyricsSource:${track.uri}").apply()
                     }) { result ->
                         if (result.isSuccess) {
                             dialog.dismiss()
@@ -594,9 +564,8 @@ internal fun MainActivity.dialogSearch(track: Track) {
                 .create()
         dialog.setOnDismissListener {
             networkCancel?.cancel()
-            networkTask?.cancel(true)
+            networkWork.cancelAll()
             networkCancel = null
-            networkTask = null
         }
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
@@ -615,13 +584,12 @@ internal fun MainActivity.dialogSearch(track: Track) {
                 status.text = "Ищем текст…"
                 val cancel = LyricsSearch.Cancel()
                 networkCancel = cancel
-                networkTask =
-                    networkExecutor.submit {
-                        val result = runCatching {
-                            lyricsSearch.searchExpanded(name, performer, track.duration, cancel)
-                        }
-                        prefs.edit().putLong("lyricsRetryUntil", lyricsSearch.cooldown()).apply()
-                        handler.post {
+                val searchClient = lyricsSearch
+                networkWork.submit({ context ->
+                    try { searchClient.searchExpanded(name, performer, track.duration, cancel) }
+                    finally { context.getSharedPreferences("playback", 0).edit()
+                        .putLong("lyricsRetryUntil", searchClient.cooldown()).apply() }
+                }) { result ->
                             if (alive && dialog.isShowing) {
                                 busy = false
                                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
@@ -637,7 +605,6 @@ internal fun MainActivity.dialogSearch(track: Track) {
                                         }
                                     }
                             }
-                        }
                     }
             }
         }
@@ -694,9 +661,9 @@ internal fun MainActivity.previewLyrics(track: Track, item: LyricsSearch.Result)
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = item.text.isNotBlank()
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
-                runAsync({
-                    lyricStore.save(track.uri, item.text)
-                    prefs
+                runAsync({ context ->
+                    LyricsStore(context).save(track.uri, item.text)
+                    context.getSharedPreferences("playback", 0)
                         .edit()
                         .putString(
                             "lyricsSource:${track.uri}",

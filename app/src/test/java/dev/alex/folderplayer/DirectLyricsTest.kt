@@ -68,4 +68,20 @@ class DirectLyricsTest {
   Thread.sleep(150);shadowOf(Looper.getMainLooper()).idle();assertEquals(0,calls());assertNull(LyricsStore(a).read(t.uri))
  }
 
+ @Test fun lyricsClickDuringLibraryLoadIsDeliveredAfterTracksArrive() = run { a,t,calls ->
+  a.tracks=emptyList();a.libraryLoading=true
+  a.openLyrics()
+  assertEquals(t.uri,a.pendingLyricsOpen)
+  a.reloadLibrary()
+  await { LyricsStore(a).read(t.uri)!=null }
+  assertEquals("Наш тестовый текст",LyricsStore(a).read(t.uri));assertEquals(1,calls())
+ }
+ @Test fun pausedLyricsScreenRefreshesAfterColdLibraryReadWithoutNetwork() = run(cached=true) { a,t,calls ->
+  a.tracks=emptyList();a.libraryLoading=true;a.mediaLoadedId=null
+  a.showPage("lyrics",false)
+  a.reloadLibrary()
+  await { a.mediaLoadedId==t.uri }
+  assertEquals(0,calls());assertEquals("Локальный текст",LyricsStore(a).read(t.uri))
+ }
+
 }

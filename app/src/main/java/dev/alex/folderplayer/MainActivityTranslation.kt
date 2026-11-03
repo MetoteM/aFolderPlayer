@@ -106,11 +106,11 @@ internal fun MainActivity.chooseSongLanguage(
     }
 
 internal fun MainActivity.editSongLanguage(track: Track) {
-        runAsync({
+        runAsync({ context ->
             val source =
-                loadLyrics(track)?.let { LyricsDocument(it).plain }
+                SongContent(context).load(track)?.let { LyricsDocument(it).plain }
                     ?: error("Сначала добавь текст")
-            source to translationClient.availableModels().toList()
+            source to TranslationClient(context).availableModels().toList()
         }) { result ->
             postUi {
                 if (currentTrack()?.uri == track.uri)

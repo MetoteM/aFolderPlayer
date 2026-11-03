@@ -17,7 +17,8 @@ internal fun MainActivity.updateSelectionTools() {
         bulkButton.alpha = if (bulkButton.isEnabled) 1f else 0.45f
         moreTools.visibility = if (selecting) View.VISIBLE else View.GONE
         identifyButton.visibility = if (selecting) View.GONE else View.VISIBLE
-        val allHidden = selection.isNotEmpty() && selection.all { it in library.hiddenTracks() }
+        val hiddenTracks = if (selection.isEmpty()) emptySet() else library.hiddenTracks()
+        val allHidden = selection.isNotEmpty() && selection.all { it in hiddenTracks }
         hideTracksButton.text = if (allHidden) "👁 Вернуть" else "👁 Скрыть"
         hideTracksButton.contentDescription = if (allHidden) "Вернуть в воспроизведение" else "Не воспроизводить"
         deleteTracksButton.contentDescription = "Удалить выбранные треки из библиотеки"
@@ -31,12 +32,15 @@ internal fun MainActivity.updateSelectionTools() {
 internal fun MainActivity.render() {
         val listRef = runCatching { list }.getOrNull() ?: return  // lateinit not yet initialized
         updateSelectionTools()
+        if (libraryLoading || libraryLoadError != null) {
+            browserCount.text = if (libraryLoading) "Загружаем библиотеку…" else "Ошибка загрузки"
+            list.removeAllViews()
+            list.addView(label(libraryLoadError ?: "Загружаем библиотеку…", 15f))
+            if (!libraryLoading) list.addView(button("Повторить") { reloadLibrary(); render() })
+            return
+        }
         val scrollView = list.parent as? ScrollView
-        val scrollY =
-            pendingScrollY
-                ?.also { pendingScrollY = null }
-                ?: scrollView?.scrollY
-                ?: 0
+        val scrollY = scrollView?.scrollY ?: 0
         thumbnails.begin(scrollView)
         list.removeAllViews()
         list.post { thumbnails.loadVisible() }
@@ -167,6 +171,19 @@ internal fun MainActivity.render() {
             list.addView(navigation)
         }
         highlightTrack(true)
-        scrollView?.post { if (alive) scrollView.scrollTo(0, scrollY) }
+        if (scrollView != null && pendingScrollY != null) {
+            if (!scrollRestoreArmed) {
+                scrollRestoreArmed = true
+                scrollView.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+                    override fun onGlobalLayout() {
+                        if (!alive || libraryLoading || scrollView.height == 0 || list.height == 0) return
+                        scrollView.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                        pendingScrollY?.let { scrollView.scrollTo(0, it) }
+                        pendingScrollY = null
+                        scrollRestoreArmed = false
+                    }
+                })
+            }
+        } else scrollView?.post { if (alive) scrollView.scrollTo(0, scrollY) }
     }
 

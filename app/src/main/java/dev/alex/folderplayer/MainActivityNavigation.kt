@@ -37,6 +37,7 @@ internal fun MainActivity.showPage(value: String, animate: Boolean = true) {
         if (page != "translation") cancelTranslation()
         refreshTicker()
         if (page != "lyrics") {
+            pendingLyricsOpen = null
             stopDirectLyrics()
             lyricsRequestedId = null
         }

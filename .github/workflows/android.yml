@@ -48,7 +48,7 @@ jobs:
         # checks below compile ExtensionHttp.kt / OfflineTranslator.kt directly.
         run: |
           curl --fail --location --retry 3 -o /tmp/kotlinc.zip https://github.com/JetBrains/kotlin/releases/download/v2.1.20/kotlin-compiler-2.1.20.zip
-          echo '84bd8b98e1ffca3fc68c85a25ad462c9b93b0a1b0f4a9b504b0b8ba5b54d0e29  /tmp/kotlinc.zip' | sha256sum -c - || echo 'checksum skipped (release asset may be re-cut)'
+          echo 'a118197b0de55ffab2bc8d5cd03a5e39033cfb53383d6931bc761dec0784891a  /tmp/kotlinc.zip' | sha256sum -c -
           unzip -q /tmp/kotlinc.zip -d /tmp
           echo "/tmp/kotlinc/bin" >> "$GITHUB_PATH"
       - name: Redirect policy checks
@@ -56,7 +56,7 @@ jobs:
           mkdir -p /tmp/http-test
           # kotlinc parses Java sources for resolution but does not emit Java
           # class files, so the check class is compiled separately with javac.
-          kotlinc app/src/main/java/dev/alex/folderplayer/ExtensionHttp.kt -d /tmp/http-test 2>&1 | grep -v "warning:" || true
+          kotlinc app/src/main/java/dev/alex/folderplayer/ExtensionHttp.kt -d /tmp/http-test
           javac -cp /tmp/http-test:/tmp/kotlinc/lib/kotlin-stdlib.jar -d /tmp/http-test tools/http-test/dev/alex/folderplayer/ExtensionHttpCheck.java
           java -cp /tmp/http-test:/tmp/kotlinc/lib/kotlin-stdlib.jar dev.alex.folderplayer.ExtensionHttpCheck
       - name: Release checkpoint tests

@@ -79,8 +79,8 @@ internal fun MainActivity.buildActions(): PlayerScreens.Actions {
                         cancelTranslation()
                         translationId = track?.uri
                         runAsync(
-                            {
-                                track?.let { loadLyrics(it) }?.let { LyricsDocument(it).plain }
+                            { context ->
+                                track?.let { SongContent(context).load(it) }?.let { LyricsDocument(it).plain }
                                     ?: ""
                             },
                         ) { result ->
@@ -119,7 +119,11 @@ internal fun MainActivity.buildActions(): PlayerScreens.Actions {
                     }
 
                     override fun retryLyrics() {
-                        currentTrack()?.let { directLyrics(it) }
+                        if (libraryLoading) openLyrics() else currentTrack()?.let { directLyrics(it) }
+                    }
+
+                    override fun searchLyricsInBrowser() {
+                        currentTrack()?.let { LyricsWeb.open(activity, it.title, it.artist) }
                     }
 
                     override fun chooseLyrics(index: Int) {

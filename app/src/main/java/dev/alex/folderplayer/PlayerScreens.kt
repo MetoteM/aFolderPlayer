@@ -53,6 +53,8 @@ internal class PlayerScreens(private val context: Context, private val actions: 
 
         fun retryLyrics() {}
 
+        fun searchLyricsInBrowser() {}
+
         fun chooseLyrics(index: Int) {}
 
         fun recognize() {}
@@ -317,6 +319,7 @@ internal class PlayerScreens(private val context: Context, private val actions: 
                         actions.retryLyrics()
                     }
                 content!!.addView(retryButton)
+                content!!.addView(button("В браузере", "Открыть поиск текста в браузере") { actions.searchLyricsInBrowser() })
                 resultPanel = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
                 content!!.addView(resultPanel)
                 content!!.setOnClickListener {
