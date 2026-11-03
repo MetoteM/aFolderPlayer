@@ -124,10 +124,13 @@ jobs:
         run: |
           chmod +x gradlew
           (
-            sleep 240
-            jcmd -l
-            for pid in $(jcmd -l | awk '/GradleWorkerMain/ {print $1}'); do
-              jcmd "$pid" Thread.print
+            sleep 180
+            for sample in 1 2 3 4; do
+              sleep 60
+              jcmd -l
+              for pid in $(jcmd -l | awk '/GradleWorkerMain/ {print $1}'); do
+                jcmd "$pid" Thread.print
+              done
             done
           ) &
           diagnostic_pid=$!
