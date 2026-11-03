@@ -15,7 +15,8 @@ class SongTranslationTest {
   "Je t'aime. Nous sommes dans la nuit, mon amour toujours avec toi." to "opus-fr-ru-v1",
   "Yo te quiero. Mi corazón siempre contigo, nunca sin tu amor." to "opus-es-ru-v1",
   "I love you. You are always on my mind and in my heart." to "opus-en-ru-v2",
-  "我爱你，你是我的爱。我们在这里。" to "opus-zh-ru-v1"
+  "我爱你，你是我的爱。我们在这里。" to "opus-zh-ru-v1",
+  "Io sono qui, il mio cuore è con te. Voglio stare insieme, grazie amore mio." to "opus-it-ru-v1"
  )
  @Test fun mixedPlaylistSelectsEachLanguageWithoutChangingGlobalPackage() {
   val app=RuntimeEnvironment.getApplication();val prefs=app.getSharedPreferences("extensions",0);val installed=TranslationClient.MODELS.keys.toSet()
