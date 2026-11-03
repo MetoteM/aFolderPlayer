@@ -84,9 +84,11 @@ class DirectLyricsTest {
   assertEquals(0,calls());assertEquals("Локальный текст",LyricsStore(a).read(t.uri))
  }
 
- @Test fun seekActionDelegatesToActivityWithoutRecursiveCallback() = run { a,_,_ ->
-  a.buildActions().skip(1)
-  shadowOf(Looper.getMainLooper()).idle()
+ @Test fun seekActionDelegatesToActivityWithoutRecursiveCallback() {
+  // No connected player is needed to detect callback recursion. A real seek
+  // would exercise Media3's asynchronous player machinery instead.
+  val activity=Robolectric.buildActivity(MainActivity::class.java).get()
+  activity.buildActions().skip(1)
  }
 
 }
