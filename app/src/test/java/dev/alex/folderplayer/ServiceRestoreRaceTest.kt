@@ -46,6 +46,33 @@ class ServiceRestoreRaceTest {
         return Robolectric.buildService(PlaybackService::class.java).create()
     }
 
+    @Test fun removedEarlierTrackKeepsCheckpointOnCurrentTrack() {
+        val app = RuntimeEnvironment.getApplication()
+        LibraryDatabase.resetForTests(app)
+        val tracks = listOf(
+            Track("file:///b.mp3", "B", "Artist", 40000, "Music"),
+            Track("file:///c.mp3", "C", "Artist", 40000, "Music"),
+        )
+        app.getSharedPreferences("library", 0).edit().clear()
+            .putString("tracks", org.json.JSONArray(tracks.map { it.json() }).toString()).commit()
+        app.getSharedPreferences("playback", 0).edit().clear()
+            .putString("queue", "[\"file:///a.mp3\",\"file:///b.mp3\",\"file:///c.mp3\"]")
+            .putInt("index", 2).putLong("position", 4000).commit()
+        app.getSharedPreferences("playback-position", 0).edit().clear()
+            .putInt("index", 2).putString("uri", "file:///c.mp3").putLong("position", 7000).commit()
+        val host = serviceWithPendingRestore()
+        try {
+            runTask!!.run()
+            Shadows.shadowOf(Looper.getMainLooper()).idle()
+            assertEquals("file:///c.mp3", host.get().player.currentMediaItem!!.mediaId)
+            assertEquals(7000L, host.get().player.currentPosition)
+        } finally {
+            host.destroy()
+            app.getSharedPreferences("playback-position", 0).edit().clear().commit()
+            LibraryDatabase.resetForTests(app)
+        }
+    }
+
     @Test
     fun repeatDuringRestoreDoesNotDiscardRestoredQueue() {
         val controller = serviceWithPendingRestore()

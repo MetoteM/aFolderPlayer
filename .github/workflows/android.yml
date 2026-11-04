@@ -1,7 +1,7 @@
 name: Android checks
 on:
   push:
-    branches: [main]
+    branches: [main, stabilize/0.9.14]
     paths-ignore:
       - 'deployment/releases/**'
       - '.github/workflows/release.yml'
