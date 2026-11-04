@@ -312,16 +312,18 @@ class PlaybackService : MediaSessionService() {
             val onlineSaved = runCatching { OnlinePlayback.items(store.read("playing")?.optJSONArray("tracks")?.toString() ?: store.queue(prefs.getString("onlineQueueId", "").orEmpty()) ?: prefs.getString("onlineQueue", "[]")!!) }.getOrDefault(emptyList()).excludingHidden(OnlineLibraryActions(this).ids("hidden")).associateBy { it.mediaId }
             val restoredBook = books.book(prefs.getString("activeBook", "").orEmpty())
             val savedBookItems = restoredBook?.chapters?.associate { it.uri to it.item(restoredBook) }.orEmpty()
-            val saved =
-                Library.strings(prefs.getString("queue", "[]")!!).mapNotNull { savedBookItems[it] ?: tracks[it]?.item() ?: onlineSaved[it] }
-            val positionIndex = positionPrefs.getInt("index", -1)
-            if (
-                positionIndex in saved.indices &&
-                    saved[positionIndex].mediaId == positionPrefs.getString("uri", null)
-            ) {
-                savedIndex = positionIndex
-                savedPosition = positionPrefs.getLong("position", savedPosition).coerceAtLeast(0)
+            val originalQueue = Library.strings(prefs.getString("queue", "[]")!!)
+            val retained = originalQueue.mapIndexedNotNull { index, uri ->
+                (savedBookItems[uri] ?: tracks[uri]?.item() ?: onlineSaved[uri])?.let { index to it }
             }
+            val saved = retained.map { it.second }
+            val recovered = QueueRecovery.position(
+                originalQueue, retained.map { it.first }, savedIndex, savedPosition,
+                positionPrefs.getInt("index", -1), positionPrefs.getString("uri", null),
+                positionPrefs.getLong("position", savedPosition),
+            )
+            savedIndex = recovered.index
+            savedPosition = recovered.milliseconds
             if (restoredBook != null) {
                 val mark = books.position(restoredBook)
                 val found = saved.indexOfFirst { it.mediaId == mark.uri }
