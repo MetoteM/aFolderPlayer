@@ -75,4 +75,16 @@ class BookPlaybackTest {
             assertEquals(0,p.currentMediaItemIndex);assertEquals(0L,p.currentPosition);assertFalse(books.position(a).completed)
         }finally { host.destroy() }
     }
+    @Test fun booksKeepTwoSecondCheckpointWhileMusicUsesFiveSeconds() {
+        val b=book("checkpoint");books.put(b)
+        val host=buildServiceSync();val service=host.get()
+        try {
+            assertEquals(5000L,service.checkpointDelay())
+            assertEquals(SessionResult.RESULT_SUCCESS,start(service,b.id))
+            assertEquals(2000L,service.checkpointDelay())
+            service.player.setMediaItem(androidx.media3.common.MediaItem.fromUri("file:///music.mp3"))
+            assertEquals(5000L,service.checkpointDelay())
+        } finally { host.destroy() }
+    }
+
 }
