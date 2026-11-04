@@ -78,7 +78,7 @@ class PlaybackService : MediaSessionService() {
         object : Runnable {
             override fun run() {
                 savePosition()
-                if (player.isPlaying) handler.postDelayed(this, 2000)
+                if (player.isPlaying) handler.postDelayed(this, checkpointDelay())
             }
         }
     private var scheduledSleepDeadline = 0L
@@ -98,9 +98,14 @@ class PlaybackService : MediaSessionService() {
             handler.postDelayed(sleep, (deadline - System.currentTimeMillis()).coerceAtLeast(0))
     }
 
+    // Books keep precise recovery; music trades at most five seconds of crash
+    // recovery for fewer periodic preference writes. Player events still save immediately.
+    internal fun checkpointDelay(): Long =
+        if (player.currentMediaItem?.mediaMetadata?.extras?.getString("bookId") != null) 2000L else 5000L
+
     private fun scheduleCheckpoint() {
         handler.removeCallbacks(checkpoint)
-        if (player.isPlaying) handler.postDelayed(checkpoint, 2000)
+        if (player.isPlaying) handler.postDelayed(checkpoint, checkpointDelay())
     }
 
     override fun onCreate() {
