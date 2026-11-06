@@ -12,6 +12,26 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[28])
 class RecognitionUiTest {
+ @Test
+ @Config(qualifiers = "land")
+ fun landscapeLibraryToolbarContainsSourcesAndSorting() {
+  val host = Robolectric.buildActivity(MainActivity::class.java).create()
+  try {
+   val header = requireNotNull(host.get().chromeHeader)
+   val strip = (0 until header.childCount).map(header::getChildAt)
+       .filterIsInstance<android.widget.HorizontalScrollView>().single()
+   assertEquals(1, strip.childCount)
+   val row = strip.getChildAt(0) as android.widget.LinearLayout
+   val buttons = (0 until row.childCount).flatMap { index ->
+    val group = row.getChildAt(index) as android.widget.LinearLayout
+    (0 until group.childCount).map(group::getChildAt)
+   }
+   assertTrue(buttons.filterIsInstance<android.widget.Button>().any { it.text == "На устройстве" })
+   assertTrue(buttons.filterIsInstance<IconButton>().any { it.icon == IconButton.Kind.SORT })
+  } finally {
+   host.destroy()
+  }
+ }
  @Test fun leavingCompletedLyricsSearchKeepsChoicesButChangingTrackClearsThem() {
   val app=org.robolectric.RuntimeEnvironment.getApplication();org.robolectric.Shadows.shadowOf(app).setComponentNameAndServiceForBindService(android.content.ComponentName(app,PlaybackService::class.java),android.os.Binder());org.robolectric.Shadows.shadowOf(app).setUnbindServiceCallsOnServiceDisconnected(false)
   val host=Robolectric.buildActivity(MainActivity::class.java).setup();val activity=host.get()
