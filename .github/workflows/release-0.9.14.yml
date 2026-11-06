@@ -92,14 +92,15 @@ jobs:
             gh release create v0.9.14 --target "$RELEASE_COMMIT" --title 'aFolderPlayer 0.9.14' --notes-file release-output/release-notes.md --draft
           fi
           gh release upload v0.9.14 release-output/aFolderPlayer_0.9.14.apk release-output/AFP_Translate_0.3.6.apk release-output/AFP_Online_0.2.2.apk release-output/catalog.json release-output/catalog-v2.json release-output/SHA256SUMS --clobber
-          gh release edit v0.9.14 --draft=false --latest
-          gh api "repos/${{ github.repository }}/releases/tags/v0.9.14" > /tmp/published.json
+          gh api --paginate "repos/${{ github.repository }}/releases" \
+            --jq '.[] | select(.tag_name == "v0.9.14" and .draft)' > /tmp/draft-release.json
           python3 - <<'PY'
           import json,hashlib
           from pathlib import Path
-          r=json.load(open('/tmp/published.json'));assert not r['draft'] and not r['prerelease']
+          r=json.load(open('/tmp/draft-release.json'));assert r['draft'] and not r['prerelease']
           for a in r['assets']:
               p=Path('release-output',a['name'])
               assert p.exists() and a['size']==p.stat().st_size and a['digest']=='sha256:'+hashlib.sha256(p.read_bytes()).hexdigest()
           assert len(r['assets'])==6
           PY
+          gh release edit v0.9.14 --draft=false --latest

@@ -7,8 +7,10 @@ import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
@@ -72,6 +74,7 @@ class PlaybackService : MediaSessionService() {
                 handler.post(applyEq)
             }
         }
+    private val failedStreamIndices = mutableSetOf<Int>()
     private var savedQueue: List<String>? = null
     private var savedState: PlaybackSnapshot? = null
     private val checkpoint =
@@ -286,7 +289,26 @@ class PlaybackService : MediaSessionService() {
                 override fun onMediaItemTransition(item: androidx.media3.common.MediaItem?, reason: Int) {
                     this@PlaybackService.player.setWakeMode(if (item?.mediaId?.startsWith("afp-yandex://") == true) C.WAKE_MODE_NETWORK else C.WAKE_MODE_LOCAL)
                 }
+                override fun onPlayerError(error: PlaybackException) {
+                    if (error !is ExoPlaybackException || error.type != ExoPlaybackException.TYPE_SOURCE) return
+                    val index = player.currentMediaItemIndex
+                    if (!player.playWhenReady || player.currentMediaItem?.mediaId?.startsWith("afp-yandex://") != true) return
+                    val timeline = player.currentTimeline
+                    // Media3 delivers this callback before switching the player to IDLE.
+                    handler.post {
+                        if (destroyed || player.playerError !== error || !player.playWhenReady ||
+                            player.currentTimeline != timeline || player.currentMediaItemIndex != index
+                        ) return@post
+                        failedStreamIndices.add(index)
+                        val next = player.nextMediaItemIndex
+                        if (next == C.INDEX_UNSET || next in failedStreamIndices) return@post
+                        player.seekTo(next, 0L)
+                        player.prepare()
+                    }
+                }
+
                 override fun onEvents(player: Player, events: Player.Events) {
+                    if (player.isPlaying) failedStreamIndices.clear()
                     saveState(events.contains(Player.EVENT_TIMELINE_CHANGED))
                     scheduleCheckpoint()
                 }
@@ -436,6 +458,7 @@ class PlaybackService : MediaSessionService() {
         if (queueChanged || savedQueue == null) {
             val queue = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
             if (queue != savedQueue) {
+                failedStreamIndices.clear()
                 val metadata=OnlineQueueMetadata.rows((0 until player.mediaItemCount).map { player.getMediaItemAt(it) })
                 OnlineLibraryStore(this).write("playing",org.json.JSONObject().put("tracks",metadata))
                 edit.putString("queue", JSONArray(queue).toString())

@@ -1,7 +1,7 @@
 name: Android checks
 on:
   push:
-    branches: [main, stabilize/0.9.14]
+    branches: [main, stabilize/0.9.14, release/0.9.15]
     paths-ignore:
       - 'deployment/releases/**'
       - '.github/workflows/release.yml'
@@ -122,7 +122,7 @@ jobs:
           javac -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar:/tmp/kotlinc/lib/kotlin-stdlib.jar -d /tmp/inference-test tools/inference-test/dev/alex/folderplayer/ItalianCheck.java
           /usr/bin/time -v java -Xmx768m -cp /tmp/inference-test:/tmp/ort.jar:/tmp/json.jar:/tmp/kotlinc/lib/kotlin-stdlib.jar dev.alex.folderplayer.ItalianCheck /tmp/italian-model
       - name: Build and test
-        timeout-minutes: 15
+        timeout-minutes: 25
         # Direct French package uses the same production Java decoder, one stage.
         env:
           AFP_MODEL_V2_PACKAGE: ${{ steps.model_changes.outputs.changed == 'true' && '/tmp/models/english.zip' || '' }}

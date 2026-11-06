@@ -135,7 +135,8 @@ internal fun MainActivity.buildChrome() {
             wideToolParams(),
         )
         attachToolbar(quick)
-        if (landscape) {
+        if (strip != null) {
+            strip.addView(stripRow)
             header.addView(strip, LinearLayout.LayoutParams(-1, dp(48)))
         }
         search =
